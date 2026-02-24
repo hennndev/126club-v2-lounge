@@ -9,3 +9,7 @@ Route::post('pos/{productId}/update-cart', [PosController::class, 'updateCartQua
 Route::delete('pos/{productId}/remove-from-cart', [PosController::class, 'removeFromCart'])->name('pos.remove-from-cart');
 Route::post('pos/clear-cart', [PosController::class, 'clearCart'])->name('pos.clear-cart');
 Route::post('pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
+
+// Printer integration
+Route::post('pos/print-receipt/{order?}', [PosController::class, 'printReceipt'])->name('pos.print-receipt');
+Route::post('pos/test-print', [PosController::class, 'testPrint'])->name('pos.test-print');
