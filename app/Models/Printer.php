@@ -42,9 +42,19 @@ class Printer extends Model
         return $query->where('is_default', true);
     }
 
+    public function scopeByLocation($query, string $location)
+    {
+        return $query->where('location', $location);
+    }
+
     public static function getDefault(): ?self
     {
         return static::active()->default()->first();
+    }
+
+    public static function getByLocation(string $location): ?self
+    {
+        return static::active()->byLocation($location)->first();
     }
 
     public function isNetwork(): bool

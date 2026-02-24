@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\BarOrder;
+use App\Models\KitchenOrder;
 use App\Models\Order;
 use App\Models\Printer;
 use Mike42\Escpos\EscposImage;
@@ -208,5 +210,109 @@ class PrinterService
         }
 
         return substr($str, 0, $length - 1).'.';
+    }
+
+    /**
+     * Print a kitchen order ticket.
+     */
+    public function printKitchenTicket(KitchenOrder $kitchenOrder, Printer $printer): bool
+    {
+        $connector = $this->createConnector($printer);
+        $escpos = new EscposPrinter($connector);
+
+        try {
+            // Header
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->setEmphasis(true);
+            $escpos->setTextSize(2, 2);
+            $escpos->text("KITCHEN\n");
+            $escpos->setTextSize(1, 1);
+            $escpos->text("Order #{$kitchenOrder->order_number}\n");
+            $escpos->setEmphasis(false);
+            $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+            $escpos->feed(1);
+
+            // Order info
+            $tableName = $kitchenOrder->table->name ?? 'N/A';
+            $escpos->text("Table: {$tableName}\n");
+            $escpos->text('Time: '.now()->format('H:i')."\n");
+            $escpos->text(str_repeat('-', $printer->width)."\n");
+
+            // Items
+            $escpos->setEmphasis(true);
+            $escpos->text("ITEM\n");
+            $escpos->setEmphasis(false);
+
+            foreach ($kitchenOrder->items as $item) {
+                $name = $item->recipe->inventoryItem->name ?? $item->recipe->type ?? 'Item';
+                $escpos->setEmphasis(true);
+                $escpos->text("  {$item->quantity}x {$name}\n");
+                $escpos->setEmphasis(false);
+            }
+
+            $escpos->text(str_repeat('-', $printer->width)."\n");
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->text("*** KITCHEN ORDER ***\n");
+
+            // Cut paper
+            $escpos->feed(3);
+            $escpos->cut();
+
+            return true;
+        } finally {
+            $escpos->close();
+        }
+    }
+
+    /**
+     * Print a bar order ticket.
+     */
+    public function printBarTicket(BarOrder $barOrder, Printer $printer): bool
+    {
+        $connector = $this->createConnector($printer);
+        $escpos = new EscposPrinter($connector);
+
+        try {
+            // Header
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->setEmphasis(true);
+            $escpos->setTextSize(2, 2);
+            $escpos->text("BAR\n");
+            $escpos->setTextSize(1, 1);
+            $escpos->text("Order #{$barOrder->order_number}\n");
+            $escpos->setEmphasis(false);
+            $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+            $escpos->feed(1);
+
+            // Order info
+            $tableName = $barOrder->table->name ?? 'N/A';
+            $escpos->text("Table: {$tableName}\n");
+            $escpos->text('Time: '.now()->format('H:i')."\n");
+            $escpos->text(str_repeat('-', $printer->width)."\n");
+
+            // Items
+            $escpos->setEmphasis(true);
+            $escpos->text("ITEM\n");
+            $escpos->setEmphasis(false);
+
+            foreach ($barOrder->items as $item) {
+                $name = $item->recipe->inventoryItem->name ?? $item->recipe->type ?? 'Item';
+                $escpos->setEmphasis(true);
+                $escpos->text("  {$item->quantity}x {$name}\n");
+                $escpos->setEmphasis(false);
+            }
+
+            $escpos->text(str_repeat('-', $printer->width)."\n");
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->text("*** BAR ORDER ***\n");
+
+            // Cut paper
+            $escpos->feed(3);
+            $escpos->cut();
+
+            return true;
+        } finally {
+            $escpos->close();
+        }
     }
 }

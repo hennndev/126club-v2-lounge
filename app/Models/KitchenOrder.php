@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class KitchenOrder extends Model
 {
     protected $fillable = [
+        'order_id',
         'order_number',
         'customer_user_id',
         'table_id',
@@ -20,6 +21,11 @@ class KitchenOrder extends Model
         'total_amount' => 'decimal:2',
         'progress' => 'integer',
     ];
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
+    }
 
     public function customer()
     {
@@ -41,12 +47,13 @@ class KitchenOrder extends Model
         $totalItems = $this->items()->count();
         if ($totalItems == 0) {
             $this->update(['progress' => 0]);
+
             return;
         }
 
         $completedItems = $this->items()->where('is_completed', true)->count();
         $progress = ($completedItems / $totalItems) * 100;
-        
+
         $this->update(['progress' => round($progress)]);
 
         // Auto update status

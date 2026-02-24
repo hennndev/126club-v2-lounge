@@ -9,19 +9,25 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class BarOrder extends Model
 {
     protected $fillable = [
+        'order_id',
         'order_number',
         'customer_user_id',
         'table_id',
         'total_amount',
         'payment_method',
         'status',
-        'progress'
+        'progress',
     ];
 
     protected $casts = [
         'total_amount' => 'decimal:2',
-        'progress' => 'integer'
+        'progress' => 'integer',
     ];
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
 
     public function customer(): BelongsTo
     {
@@ -44,16 +50,16 @@ class BarOrder extends Model
     public function updateProgress(): void
     {
         $totalItems = $this->items()->count();
-        
+
         if ($totalItems === 0) {
             $this->progress = 0;
             $this->status = 'baru';
         } else {
             $completedItems = $this->items()->where('is_completed', true)->count();
             $progress = round(($completedItems / $totalItems) * 100);
-            
+
             $this->progress = $progress;
-            
+
             if ($progress === 0) {
                 $this->status = 'baru';
             } elseif ($progress === 100) {
@@ -62,7 +68,7 @@ class BarOrder extends Model
                 $this->status = 'proses';
             }
         }
-        
+
         $this->save();
     }
 }

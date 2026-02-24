@@ -2,14 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BarOrder;
+use App\Models\BarOrderItem;
 use App\Models\BomRecipe;
 use App\Models\InventoryItem;
+use App\Models\KitchenOrder;
+use App\Models\KitchenOrderItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\TableSession;
 use App\Services\PrinterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PosController extends Controller
 {
@@ -201,7 +207,7 @@ class PosController extends Controller
             return back()->with('error', 'Keranjang kosong!');
         }
 
-        \DB::beginTransaction();
+        DB::beginTransaction();
         try {
             // Only booking for now
             if ($validated['customer_type'] === 'booking') {
@@ -217,14 +223,14 @@ class PosController extends Controller
 
                 // Generate order number
                 $orderNumber = 'ORD-'.date('Ymd').'-'.str_pad(
-                    \App\Models\Order::whereDate('created_at', today())->count() + 1,
+                    Order::whereDate('created_at', today())->count() + 1,
                     4,
                     '0',
                     STR_PAD_LEFT
                 );
 
                 // Create Order
-                $order = \App\Models\Order::create([
+                $order = Order::create([
                     'table_session_id' => $tableSession->id,
                     'created_by' => auth()->id(),
                     'order_number' => $orderNumber,
@@ -273,7 +279,7 @@ class PosController extends Controller
                     $itemsTotal += $subtotal;
 
                     // Create Order Item
-                    \App\Models\OrderItem::create([
+                    OrderItem::create([
                         'order_id' => $order->id,
                         'inventory_item_id' => $inventoryItemId,
                         'item_name' => $itemName,
@@ -293,6 +299,9 @@ class PosController extends Controller
                     'total' => $itemsTotal,
                 ]);
 
+                // Route items to Kitchen/Bar and print tickets
+                $this->routeOrderToPreparation($order, $tableSession, $orderNumber);
+
                 // Update Billing
                 if ($tableSession->billing) {
                     $billing = $tableSession->billing;
@@ -303,7 +312,7 @@ class PosController extends Controller
                     $billing->save();
                 }
 
-                \DB::commit();
+                DB::commit();
 
                 // Clear cart
                 session()->forget('pos_cart');
@@ -321,7 +330,7 @@ class PosController extends Controller
             return back()->with('error', 'Walk-in belum diimplementasikan');
 
         } catch (\Exception $e) {
-            \DB::rollBack();
+            DB::rollBack();
 
             return back()->with('error', 'Terjadi kesalahan: '.$e->getMessage());
         }
@@ -425,6 +434,140 @@ class PosController extends Controller
 
             $order->load(['items', 'tableSession.table']);
             $this->printerService->printReceipt($order, $printer);
+
+            return true;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Route order items to Kitchen/Bar preparation queues and print tickets.
+     */
+    protected function routeOrderToPreparation(Order $order, TableSession $tableSession, string $orderNumber): void
+    {
+        $kitchenItems = collect();
+        $barItems = collect();
+
+        // Categorize items by preparation location
+        foreach ($order->items as $item) {
+            if ($item->preparation_location === 'kitchen') {
+                $kitchenItems->push($item);
+            } else {
+                $barItems->push($item);
+            }
+        }
+
+        // Create Kitchen Order if there are kitchen items
+        if ($kitchenItems->isNotEmpty()) {
+            $kitchenOrder = KitchenOrder::create([
+                'order_id' => $order->id,
+                'order_number' => $orderNumber,
+                'customer_user_id' => $tableSession->customer_id,
+                'table_id' => $tableSession->table_id,
+                'total_amount' => $kitchenItems->sum('subtotal'),
+                'status' => 'baru',
+                'progress' => 0,
+            ]);
+
+            // Create kitchen order items
+            foreach ($kitchenItems as $item) {
+                // Find the BOM recipe for this item
+                $bomRecipe = BomRecipe::where('inventory_item_id', $item->inventory_item_id)->first();
+
+                if ($bomRecipe) {
+                    KitchenOrderItem::create([
+                        'kitchen_order_id' => $kitchenOrder->id,
+                        'bom_recipe_id' => $bomRecipe->id,
+                        'quantity' => $item->quantity,
+                        'price' => $item->price,
+                        'is_completed' => false,
+                    ]);
+                }
+            }
+
+            // Print kitchen ticket
+            $this->printKitchenTicket($kitchenOrder);
+        }
+
+        // Create Bar Order if there are bar items
+        if ($barItems->isNotEmpty()) {
+            $barOrder = BarOrder::create([
+                'order_id' => $order->id,
+                'order_number' => $orderNumber,
+                'customer_user_id' => $tableSession->customer_id,
+                'table_id' => $tableSession->table_id,
+                'total_amount' => $barItems->sum('subtotal'),
+                'status' => 'baru',
+                'progress' => 0,
+            ]);
+
+            // Create bar order items
+            foreach ($barItems as $item) {
+                // Find the BOM recipe for this item (if it's a BOM item)
+                $bomRecipe = BomRecipe::where('inventory_item_id', $item->inventory_item_id)->first();
+
+                if ($bomRecipe) {
+                    BarOrderItem::create([
+                        'bar_order_id' => $barOrder->id,
+                        'bom_recipe_id' => $bomRecipe->id,
+                        'quantity' => $item->quantity,
+                        'price' => $item->price,
+                        'is_completed' => false,
+                    ]);
+                }
+            }
+
+            // Print bar ticket
+            $this->printBarTicket($barOrder);
+        }
+    }
+
+    /**
+     * Print kitchen order ticket.
+     */
+    protected function printKitchenTicket(KitchenOrder $kitchenOrder): bool
+    {
+        try {
+            $printer = Printer::getByLocation('kitchen');
+
+            if (! $printer) {
+                // Fallback to default printer
+                $printer = Printer::getDefault();
+            }
+
+            if (! $printer) {
+                return false;
+            }
+
+            $kitchenOrder->load(['items.recipe.inventoryItem', 'table']);
+            $this->printerService->printKitchenTicket($kitchenOrder, $printer);
+
+            return true;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Print bar order ticket.
+     */
+    protected function printBarTicket(BarOrder $barOrder): bool
+    {
+        try {
+            $printer = Printer::getByLocation('bar');
+
+            if (! $printer) {
+                // Fallback to default printer
+                $printer = Printer::getDefault();
+            }
+
+            if (! $printer) {
+                return false;
+            }
+
+            $barOrder->load(['items.recipe.inventoryItem', 'table']);
+            $this->printerService->printBarTicket($barOrder, $printer);
 
             return true;
         } catch (\Exception $e) {

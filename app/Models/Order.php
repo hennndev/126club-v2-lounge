@@ -42,6 +42,16 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    public function kitchenOrder()
+    {
+        return $this->hasOne(KitchenOrder::class);
+    }
+
+    public function barOrder()
+    {
+        return $this->hasOne(BarOrder::class);
+    }
+
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -90,10 +100,10 @@ class Order extends Model
     public function updateStatus()
     {
         $itemStatuses = $this->items()->pluck('status')->unique();
-        
+
         if ($itemStatuses->contains('cancelled') && $itemStatuses->count() === 1) {
             $this->status = 'cancelled';
-        } elseif ($itemStatuses->every(fn($s) => $s === 'served')) {
+        } elseif ($itemStatuses->every(fn ($s) => $s === 'served')) {
             $this->status = 'completed';
             $this->completed_at = now();
         } elseif ($itemStatuses->contains('served') || $itemStatuses->contains('ready')) {
@@ -103,7 +113,7 @@ class Order extends Model
         } else {
             $this->status = 'pending';
         }
-        
+
         $this->save();
     }
 }
