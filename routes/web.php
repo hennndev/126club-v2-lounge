@@ -10,6 +10,7 @@ use App\Http\Controllers\KitchenController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RewardController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\Settings\ClubHoursController;
 use App\Http\Controllers\Settings\DailyAuthCodeController;
 use App\Http\Controllers\Settings\TierSettingsController;
 use App\Http\Controllers\TransactionCheckerController;
@@ -37,6 +38,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/redirect-after-login', function () {
         $user = Auth::user();
         if ($user->type === 'internal') {
+            // If static API token is configured, no OAuth flow needed
+            if (config('accurate.api_token')) {
+                return redirect()->route('admin.dashboard');
+            }
+
             if (! session()->has('accurate_access_token')) {
                 return redirect()->route('accurate.auth');
             }
@@ -149,6 +155,12 @@ Route::middleware('auth')->group(function () {
             Route::get('/', [TierSettingsController::class, 'index'])->name('index');
             Route::put('/', [TierSettingsController::class, 'update'])->name('update');
             Route::delete('/reset', [TierSettingsController::class, 'resetToDefault'])->name('reset');
+        });
+
+        // Club Hours
+        Route::prefix('settings/club-hours')->name('settings.club-hours.')->group(function () {
+            Route::get('/', [ClubHoursController::class, 'index'])->name('index');
+            Route::put('/', [ClubHoursController::class, 'update'])->name('update');
         });
     });
 });

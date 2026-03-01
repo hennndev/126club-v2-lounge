@@ -59,7 +59,7 @@
               $gradientClass = $isFood ? 'from-orange-500 to-red-600' : 'from-blue-400 to-cyan-500';
               $dotColor = $isFood ? 'bg-orange-400' : 'bg-blue-300';
               $outOfStock = isset($product['type']) && $product['type'] === 'item' && ($product['stock'] ?? 0) <= 0;
-              $unavailable = isset($product['type']) && $product['type'] === 'bom' && ! ($product['is_available'] ?? true);
+              $unavailable = isset($product['type']) && $product['type'] === 'bom' && !($product['is_available'] ?? true);
               $disabled = $outOfStock || $unavailable;
             @endphp
             <div class="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col {{ $disabled ? 'opacity-60' : '' }}">
@@ -203,7 +203,8 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <a href="{{ route('admin.pos.index') }}"
+            <a href="JavaScript:void(0)"
+               @click="openHistoryModal()"
                class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 font-medium transition">
               <svg class="w-4 h-4"
                    fill="none"
@@ -915,6 +916,7 @@
     {{-- Auth Modal for Reprint --}}
     <div x-show="showAuthModal"
          x-transition.opacity
+         style="display: none;"
          class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4"
          @click.self="showAuthModal = false">
       <div class="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
@@ -988,157 +990,295 @@
       </div>
     </div>
 
-  </div>
+    <script>
+      const posRoutes = {
+        selectCounter: "{{ route('admin.pos.select-counter') }}",
+        addToCart: "{{ route('admin.pos.add-to-cart', '__PRODUCT_ID__') }}",
+        updateCart: "{{ route('admin.pos.update-cart', '__PRODUCT_ID__') }}",
+        removeFromCart: "{{ route('admin.pos.remove-from-cart', '__PRODUCT_ID__') }}",
+        clearCart: "{{ route('admin.pos.clear-cart') }}",
+        checkout: "{{ route('admin.pos.checkout') }}",
+        verifyAuthCode: "{{ route('admin.settings.daily-auth-code.verify') }}",
+      };
+      const posInitialData = {
+        cart: {!! json_encode($cartItems->values()) !!},
+        cartTotal: {{ $cartTotal }},
+        cashier: {!! json_encode(auth()->user()?->name ?? 'Admin') !!},
+        currentCounter: {!! json_encode($currentCounter ?? '') !!},
+        kitchenUrl: "{{ route('admin.kitchen.index') }}",
+        barUrl: "{{ route('admin.bar.index') }}",
+      };
+    </script>
 
-  <script>
-    const posRoutes = {
-      selectCounter: "{{ route('admin.pos.select-counter') }}",
-      addToCart: "{{ route('admin.pos.add-to-cart', '__PRODUCT_ID__') }}",
-      updateCart: "{{ route('admin.pos.update-cart', '__PRODUCT_ID__') }}",
-      removeFromCart: "{{ route('admin.pos.remove-from-cart', '__PRODUCT_ID__') }}",
-      clearCart: "{{ route('admin.pos.clear-cart') }}",
-      checkout: "{{ route('admin.pos.checkout') }}",
-      verifyAuthCode: "{{ route('admin.settings.daily-auth-code.verify') }}",
-    };
-    const posInitialData = {
-      cart: {!! json_encode($cartItems->values()) !!},
-      cartTotal: {{ $cartTotal }},
-      cashier: {!! json_encode(auth()->user()?->name ?? 'Admin') !!},
-      currentCounter: {!! json_encode($currentCounter ?? '') !!},
-      kitchenUrl: "{{ route('admin.kitchen.index') }}",
-      barUrl: "{{ route('admin.bar.index') }}",
-    };
-  </script>
+    <script>
+      document.addEventListener('alpine:init', () => {
+        Alpine.data('posApp', () => ({
+          cart: posInitialData.cart,
+          cartTotal: posInitialData.cartTotal,
+          isProcessing: false,
+          showHistoryModal: false,
+          recentOrders: [],
+          historyLoading: false,
+          showCustomerTypeModal: false,
+          showCheckoutModal: false,
+          showReceiptModal: false,
+          receiptData: null,
+          checkerPrinted: {
+            kitchen: false,
+            bar: false
+          },
+          showAuthModal: false,
+          authCode: '',
+          authError: '',
+          authPending: null,
+          isVerifyingAuth: false,
+          cashier: posInitialData.cashier,
+          showToast: false,
+          toastMessage: '',
+          toastType: 'success',
+          counterLocation: posInitialData.currentCounter,
+          kitchenUrl: posInitialData.kitchenUrl,
+          barUrl: posInitialData.barUrl,
+          bookingStep: 'type',
+          checkoutForm: {
+            customer_type: '',
+            customer_user_id: '',
+            customerName: '',
+            customerInitial: '',
+            customerPhone: '',
+            table_id: '',
+            table_display: '',
+            waiter_id: '',
+            payment_method: 'cash',
+            cash_received: '',
+            minimumCharge: 0,
+            ordersTotal: 0,
+            tierName: '',
+            discountPercentage: 0,
+          },
 
-  <script>
-    document.addEventListener('alpine:init', () => {
-      Alpine.data('posApp', () => ({
-        cart: posInitialData.cart,
-        cartTotal: posInitialData.cartTotal,
-        isProcessing: false,
-        showCustomerTypeModal: false,
-        showCheckoutModal: false,
-        showReceiptModal: false,
-        receiptData: null,
-        checkerPrinted: {
-          kitchen: false,
-          bar: false
-        },
-        showAuthModal: false,
-        authCode: '',
-        authError: '',
-        authPending: null,
-        isVerifyingAuth: false,
-        cashier: posInitialData.cashier,
-        showToast: false,
-        toastMessage: '',
-        toastType: 'success',
-        counterLocation: posInitialData.currentCounter,
-        kitchenUrl: posInitialData.kitchenUrl,
-        barUrl: posInitialData.barUrl,
-        bookingStep: 'type',
-        checkoutForm: {
-          customer_type: '',
-          customer_user_id: '',
-          customerName: '',
-          customerInitial: '',
-          customerPhone: '',
-          table_id: '',
-          table_display: '',
-          waiter_id: '',
-          payment_method: 'cash',
-          cash_received: '',
-          minimumCharge: 0,
-          ordersTotal: 0,
-          tierName: '',
-          discountPercentage: 0,
-        },
+          init() {
+            this.cart = posInitialData.cart;
+            this.cartTotal = posInitialData.cartTotal;
+          },
 
-        init() {
-          this.cart = posInitialData.cart;
-          this.cartTotal = posInitialData.cartTotal;
-        },
+          formatCurrency(amount) {
+            return 'Rp ' + new Intl.NumberFormat('id-ID').format(amount);
+          },
 
-        formatCurrency(amount) {
-          return 'Rp ' + new Intl.NumberFormat('id-ID').format(amount);
-        },
+          getItemBgColor(id) {
+            const colors = ['bg-blue-500', 'bg-violet-500', 'bg-cyan-600', 'bg-orange-500', 'bg-teal-500', 'bg-pink-500'];
+            const hash = String(id).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+            return colors[hash % colors.length];
+          },
 
-        getItemBgColor(id) {
-          const colors = ['bg-blue-500', 'bg-violet-500', 'bg-cyan-600', 'bg-orange-500', 'bg-teal-500', 'bg-pink-500'];
-          const hash = String(id).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-          return colors[hash % colors.length];
-        },
-
-        getCounterLabel() {
-          const select = document.getElementById('counterLocationSelect');
-          if (select && this.counterLocation) {
-            const option = select.querySelector(`option[value="${this.counterLocation}"]`);
-            return option ? option.textContent : this.counterLocation;
-          }
-          return '';
-        },
-
-        async selectCounter(event) {
-          const location = event.target.value;
-          try {
-            const response = await fetch(posRoutes.selectCounter, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-              },
-              body: JSON.stringify({
-                counter_location: location
-              }),
-            });
-            const data = await response.json();
-            if (data.success) {
-              this.showToastMessage('Counter location updated', 'success');
+          getCounterLabel() {
+            const select = document.getElementById('counterLocationSelect');
+            if (select && this.counterLocation) {
+              const option = select.querySelector(`option[value="${this.counterLocation}"]`);
+              return option ? option.textContent : this.counterLocation;
             }
-          } catch (error) {
-            this.showToastMessage('Failed to update counter location', 'error');
-          }
-        },
+            return '';
+          },
 
-        async addToCart(productId) {
-          if (this.isProcessing) {
-            return;
-          }
-          this.isProcessing = true;
-          try {
-            const response = await fetch(
-              posRoutes.addToCart.replace('__PRODUCT_ID__', productId), {
+          async selectCounter(event) {
+            const location = event.target.value;
+            try {
+              const response = await fetch(posRoutes.selectCounter, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                },
+                body: JSON.stringify({
+                  counter_location: location
+                }),
+              });
+              const data = await response.json();
+              if (data.success) {
+                this.showToastMessage('Counter location updated', 'success');
+              }
+            } catch (error) {
+              this.showToastMessage('Failed to update counter location', 'error');
+            }
+          },
+
+          async addToCart(productId) {
+            if (this.isProcessing) {
+              return;
+            }
+            this.isProcessing = true;
+            try {
+              const response = await fetch(
+                posRoutes.addToCart.replace('__PRODUCT_ID__', productId), {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                    'Accept': 'application/json',
+                  },
+                },
+              );
+              const data = await response.json();
+              if (data.success) {
+                this.cart = data.cart;
+                this.cartTotal = data.cartTotal;
+                this.showToastMessage(data.message, 'success');
+              } else {
+                this.showToastMessage(data.message || 'Gagal menambah produk', 'error');
+              }
+            } catch (error) {
+              this.showToastMessage('Gagal menambah produk ke keranjang', 'error');
+            } finally {
+              this.isProcessing = false;
+            }
+          },
+
+          async updateCartQuantity(productId, action) {
+            if (this.isProcessing) {
+              return;
+            }
+            this.isProcessing = true;
+            try {
+              const response = await fetch(
+                posRoutes.updateCart.replace('__PRODUCT_ID__', productId), {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                    'Accept': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    action
+                  }),
+                },
+              );
+              const data = await response.json();
+              if (data.success) {
+                this.cart = data.cart;
+                this.cartTotal = data.cartTotal;
+              } else {
+                this.showToastMessage(data.message || 'Gagal mengupdate keranjang', 'error');
+              }
+            } catch (error) {
+              this.showToastMessage('Gagal mengupdate keranjang', 'error');
+            } finally {
+              this.isProcessing = false;
+            }
+          },
+
+          async removeFromCart(productId) {
+            if (this.isProcessing) {
+              return;
+            }
+            this.isProcessing = true;
+            try {
+              const response = await fetch(
+                posRoutes.removeFromCart.replace('__PRODUCT_ID__', productId), {
+                  method: 'DELETE',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                    'Accept': 'application/json',
+                  },
+                },
+              );
+              const data = await response.json();
+              if (data.success) {
+                this.cart = data.cart;
+                this.cartTotal = data.cartTotal;
+                this.showToastMessage(data.message, 'success');
+              } else {
+                this.showToastMessage(data.message || 'Gagal menghapus item', 'error');
+              }
+            } catch (error) {
+              this.showToastMessage('Gagal menghapus item', 'error');
+            } finally {
+              this.isProcessing = false;
+            }
+          },
+
+          async clearCart() {
+            if (this.isProcessing) {
+              return;
+            }
+            this.isProcessing = true;
+            try {
+              const response = await fetch(posRoutes.clearCart, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
                   'Accept': 'application/json',
                 },
-              },
-            );
-            const data = await response.json();
-            if (data.success) {
-              this.cart = data.cart;
-              this.cartTotal = data.cartTotal;
-              this.showToastMessage(data.message, 'success');
-            } else {
-              this.showToastMessage(data.message || 'Gagal menambah produk', 'error');
+              });
+              const data = await response.json();
+              if (data.success) {
+                this.cart = [];
+                this.cartTotal = 0;
+                this.showToastMessage(data.message, 'success');
+              } else {
+                this.showToastMessage(data.message || 'Gagal mengosongkan keranjang', 'error');
+              }
+            } catch (error) {
+              this.showToastMessage('Gagal mengosongkan keranjang', 'error');
+            } finally {
+              this.isProcessing = false;
             }
-          } catch (error) {
-            this.showToastMessage('Gagal menambah produk ke keranjang', 'error');
-          } finally {
-            this.isProcessing = false;
-          }
-        },
+          },
 
-        async updateCartQuantity(productId, action) {
-          if (this.isProcessing) {
-            return;
-          }
-          this.isProcessing = true;
-          try {
-            const response = await fetch(
-              posRoutes.updateCart.replace('__PRODUCT_ID__', productId), {
+          openCustomerTypeModal() {
+            if (this.cart.length === 0) {
+              this.showToastMessage('Keranjang masih kosong!', 'error');
+              return;
+            }
+            this.bookingStep = 'type';
+            this.showCustomerTypeModal = true;
+          },
+
+          selectCustomerType(type) {
+            this.checkoutForm.customer_type = type;
+            this.showCustomerTypeModal = false;
+            this.showCheckoutModal = true;
+          },
+
+          selectBookingSession(data) {
+            this.checkoutForm.customer_type = 'booking';
+            this.checkoutForm.customer_user_id = data.customerId;
+            this.checkoutForm.table_id = data.tableId;
+            this.checkoutForm.table_display = data.areaName + ' - Meja ' + data.tableName;
+            this.checkoutForm.customerName = data.customerName;
+            this.checkoutForm.customerInitial = data.customerInitial;
+            this.checkoutForm.customerPhone = data.customerPhone;
+            this.checkoutForm.minimumCharge = data.minimumCharge;
+            this.checkoutForm.ordersTotal = data.ordersTotal;
+            this.checkoutForm.tierName = data.tierName || '';
+            this.checkoutForm.discountPercentage = data.discountPercentage || 0;
+            this.checkoutForm.payment_method = 'cash';
+            this.showCustomerTypeModal = false;
+            this.bookingStep = 'type';
+            this.showCheckoutModal = true;
+          },
+
+          discountAmount() {
+            return Math.round(this.cartTotal * (this.checkoutForm.discountPercentage / 100));
+          },
+
+          finalTotal() {
+            return this.cartTotal - this.discountAmount();
+          },
+
+          pointsEarned() {
+            return Math.floor(this.finalTotal() / 10000);
+          },
+
+          async submitCheckout() {
+            if (this.isProcessing) {
+              return;
+            }
+            this.isProcessing = true;
+            try {
+              const response = await fetch(posRoutes.checkout, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -1146,349 +1286,380 @@
                   'Accept': 'application/json',
                 },
                 body: JSON.stringify({
-                  action
+                  ...this.checkoutForm,
+                  discount_percentage: this.checkoutForm.discountPercentage
                 }),
-              },
-            );
-            const data = await response.json();
-            if (data.success) {
-              this.cart = data.cart;
-              this.cartTotal = data.cartTotal;
-            } else {
-              this.showToastMessage(data.message || 'Gagal mengupdate keranjang', 'error');
+              });
+              const data = await response.json();
+              if (data.success) {
+                this.receiptData = {
+                  orderNumber: data.order_number,
+                  formattedTotal: data.formatted_total,
+                  customerName: this.checkoutForm.customerName,
+                  customerInitial: this.checkoutForm.customerInitial,
+                  customerType: this.checkoutForm.customer_type,
+                  tableDisplay: this.checkoutForm.table_display,
+                  minimumCharge: this.checkoutForm.minimumCharge,
+                  ordersTotal: this.checkoutForm.ordersTotal,
+                  printedAt: new Date().toLocaleString('id-ID', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                  items: this.cart.map(i => ({
+                    ...i
+                  })),
+                };
+                this.cart = [];
+                this.cartTotal = 0;
+                this.showCheckoutModal = false;
+                this.showReceiptModal = true;
+                this.checkoutForm = {
+                  customer_type: '',
+                  customer_user_id: '',
+                  customerName: '',
+                  customerInitial: '',
+                  customerPhone: '',
+                  table_id: '',
+                  table_display: '',
+                  waiter_id: '',
+                  payment_method: 'cash',
+                  cash_received: '',
+                  minimumCharge: 0,
+                  ordersTotal: 0,
+                  tierName: '',
+                  discountPercentage: 0,
+                };
+              } else {
+                this.showToastMessage(data.message || 'Checkout gagal', 'error');
+              }
+            } catch (error) {
+              this.showToastMessage('Terjadi kesalahan saat checkout', 'error');
+            } finally {
+              this.isProcessing = false;
             }
-          } catch (error) {
-            this.showToastMessage('Gagal mengupdate keranjang', 'error');
-          } finally {
-            this.isProcessing = false;
-          }
-        },
+          },
 
-        async removeFromCart(productId) {
-          if (this.isProcessing) {
-            return;
-          }
-          this.isProcessing = true;
-          try {
-            const response = await fetch(
-              posRoutes.removeFromCart.replace('__PRODUCT_ID__', productId), {
-                method: 'DELETE',
+          closeReceiptModal() {
+            this.showReceiptModal = false;
+            this.receiptData = null;
+          },
+
+          printCheckerAndNavigate(type, url) {
+            if (this.checkerPrinted[type]) {
+              this.authPending = {
+                type
+              };
+              this.authCode = '';
+              this.authError = '';
+              this.showAuthModal = true;
+              return;
+            }
+            this._doPrintChecker(type, false);
+          },
+
+          async verifyAndPrint() {
+            if (this.authCode.length !== 4 || this.isVerifyingAuth) {
+              return;
+            }
+            this.isVerifyingAuth = true;
+            this.authError = '';
+            try {
+              const response = await fetch(posRoutes.verifyAuthCode, {
+                method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-                  'Accept': 'application/json',
                 },
-              },
-            );
-            const data = await response.json();
-            if (data.success) {
-              this.cart = data.cart;
-              this.cartTotal = data.cartTotal;
-              this.showToastMessage(data.message, 'success');
-            } else {
-              this.showToastMessage(data.message || 'Gagal menghapus item', 'error');
-            }
-          } catch (error) {
-            this.showToastMessage('Gagal menghapus item', 'error');
-          } finally {
-            this.isProcessing = false;
-          }
-        },
-
-        async clearCart() {
-          if (this.isProcessing) {
-            return;
-          }
-          this.isProcessing = true;
-          try {
-            const response = await fetch(posRoutes.clearCart, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-                'Accept': 'application/json',
-              },
-            });
-            const data = await response.json();
-            if (data.success) {
-              this.cart = [];
-              this.cartTotal = 0;
-              this.showToastMessage(data.message, 'success');
-            } else {
-              this.showToastMessage(data.message || 'Gagal mengosongkan keranjang', 'error');
-            }
-          } catch (error) {
-            this.showToastMessage('Gagal mengosongkan keranjang', 'error');
-          } finally {
-            this.isProcessing = false;
-          }
-        },
-
-        openCustomerTypeModal() {
-          if (this.cart.length === 0) {
-            this.showToastMessage('Keranjang masih kosong!', 'error');
-            return;
-          }
-          this.bookingStep = 'type';
-          this.showCustomerTypeModal = true;
-        },
-
-        selectCustomerType(type) {
-          this.checkoutForm.customer_type = type;
-          this.showCustomerTypeModal = false;
-          this.showCheckoutModal = true;
-        },
-
-        selectBookingSession(data) {
-          this.checkoutForm.customer_type = 'booking';
-          this.checkoutForm.customer_user_id = data.customerId;
-          this.checkoutForm.table_id = data.tableId;
-          this.checkoutForm.table_display = data.areaName + ' - Meja ' + data.tableName;
-          this.checkoutForm.customerName = data.customerName;
-          this.checkoutForm.customerInitial = data.customerInitial;
-          this.checkoutForm.customerPhone = data.customerPhone;
-          this.checkoutForm.minimumCharge = data.minimumCharge;
-          this.checkoutForm.ordersTotal = data.ordersTotal;
-          this.checkoutForm.tierName = data.tierName || '';
-          this.checkoutForm.discountPercentage = data.discountPercentage || 0;
-          this.checkoutForm.payment_method = 'cash';
-          this.showCustomerTypeModal = false;
-          this.bookingStep = 'type';
-          this.showCheckoutModal = true;
-        },
-
-        discountAmount() {
-          return Math.round(this.cartTotal * (this.checkoutForm.discountPercentage / 100));
-        },
-
-        finalTotal() {
-          return this.cartTotal - this.discountAmount();
-        },
-
-        pointsEarned() {
-          return Math.floor(this.finalTotal() / 10000);
-        },
-
-        async submitCheckout() {
-          if (this.isProcessing) {
-            return;
-          }
-          this.isProcessing = true;
-          try {
-            const response = await fetch(posRoutes.checkout, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-                'Accept': 'application/json',
-              },
-              body: JSON.stringify({
-                ...this.checkoutForm,
-                discount_percentage: this.checkoutForm.discountPercentage
-              }),
-            });
-            const data = await response.json();
-            if (data.success) {
-              this.receiptData = {
-                orderNumber: data.order_number,
-                formattedTotal: data.formatted_total,
-                customerName: this.checkoutForm.customerName,
-                customerInitial: this.checkoutForm.customerInitial,
-                customerType: this.checkoutForm.customer_type,
-                tableDisplay: this.checkoutForm.table_display,
-                minimumCharge: this.checkoutForm.minimumCharge,
-                ordersTotal: this.checkoutForm.ordersTotal,
-                printedAt: new Date().toLocaleString('id-ID', {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
+                body: JSON.stringify({
+                  code: this.authCode
                 }),
-                items: this.cart.map(i => ({
-                  ...i
-                })),
-              };
-              this.cart = [];
-              this.cartTotal = 0;
-              this.showCheckoutModal = false;
-              this.showReceiptModal = true;
-              this.checkoutForm = {
-                customer_type: '',
-                customer_user_id: '',
-                customerName: '',
-                customerInitial: '',
-                customerPhone: '',
-                table_id: '',
-                table_display: '',
-                waiter_id: '',
-                payment_method: 'cash',
-                cash_received: '',
-                minimumCharge: 0,
-                ordersTotal: 0,
-                tierName: '',
-                discountPercentage: 0,
-              };
-            } else {
-              this.showToastMessage(data.message || 'Checkout gagal', 'error');
-            }
-          } catch (error) {
-            this.showToastMessage('Terjadi kesalahan saat checkout', 'error');
-          } finally {
-            this.isProcessing = false;
-          }
-        },
-
-        closeReceiptModal() {
-          this.showReceiptModal = false;
-          this.receiptData = null;
-        },
-
-        printCheckerAndNavigate(type, url) {
-          if (this.checkerPrinted[type]) {
-            this.authPending = {
-              type
-            };
-            this.authCode = '';
-            this.authError = '';
-            this.showAuthModal = true;
-            return;
-          }
-          this._doPrintChecker(type, false);
-        },
-
-        async verifyAndPrint() {
-          if (this.authCode.length !== 4 || this.isVerifyingAuth) {
-            return;
-          }
-          this.isVerifyingAuth = true;
-          this.authError = '';
-          try {
-            const response = await fetch(posRoutes.verifyAuthCode, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-              },
-              body: JSON.stringify({
-                code: this.authCode
-              }),
-            });
-            const data = await response.json();
-            if (data.valid) {
-              const {
-                type
-              } = this.authPending;
-              this.showAuthModal = false;
-              this.authCode = '';
-              this.authPending = null;
-              this._doPrintChecker(type, true);
-            } else {
-              this.authError = 'PIN tidak valid. Periksa kembali kode harian Anda.';
-            }
-          } catch (e) {
-            this.authError = 'Terjadi kesalahan. Coba lagi.';
-          } finally {
-            this.isVerifyingAuth = false;
-          }
-        },
-
-        _doPrintChecker(type, isReprint) {
-          const d = this.receiptData;
-          const items = d ? d.items.filter(i => i.preparation_location === type) : [];
-          if (!d || items.length === 0) {
-            return;
-          }
-          this.checkerPrinted[type] = true;
-          const title = type === 'kitchen' ? 'KITCHEN ORDER' : 'BAR ORDER';
-          const rows = items.map(i =>
-            '<tr><td style="padding:3px 0">' + i.name + '</td><td style="text-align:right;padding:3px 0"><b>' + i.quantity + '</b></td></tr>'
-          ).join('');
-          const css = 'body{font-family:monospace;font-size:12px;margin:0;padding:16px;}' +
-            'table{width:100%;border-collapse:collapse;}' +
-            '.sep{border:none;border-top:1px dashed #000;margin:8px 0;}' +
-            'th{text-align:left;font-size:11px;border-bottom:1px solid #000;padding:2px 0;}' +
-            'th:last-child{text-align:right;}';
-          const watermarkHtml = isReprint ?
-            '<p style="text-align:center;font-size:14px;font-weight:bold;color:#dc2626;border:2px solid #dc2626;padding:4px;margin-bottom:8px;letter-spacing:2px;">CETAK ULANG</p>' :
-            '';
-          const body = watermarkHtml +
-            '<h3 style="text-align:center;margin:0 0 6px">' + title + '</h3>' +
-            '<hr class="sep">' +
-            '<p style="margin:2px 0">No: <b>' + d.orderNumber + '</b></p>' +
-            '<p style="margin:2px 0">Tanggal: ' + d.printedAt + '</p>' +
-            '<p style="margin:2px 0">Kasir: ' + this.cashier + '</p>' +
-            '<hr class="sep">' +
-            '<p style="margin:2px 0">Pelanggan: <b>' + d.customerName + '</b></p>' +
-            '<p style="margin:2px 0">Meja: <b>' + d.tableDisplay + '</b></p>' +
-            '<hr class="sep">' +
-            '<table><thead><tr><th>Item</th><th style="text-align:right">Qty</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-            '<hr class="sep">';
-          const html = '<html><head><title>' + title + '</' + 'title><style>' + css + '</' + 'style></' + 'head><body>' + body + '</' + 'body></' + 'html>';
-          this._printHtml(html);
-        },
-
-        printReceipt() {
-          if (!this.receiptData) {
-            return;
-          }
-          const d = this.receiptData;
-          const rows = d.items.map(i =>
-            '<tr><td style="padding:3px 0">' + i.name + '</td><td style="text-align:right;padding:3px 0">' + i.quantity + 'x</td><td style="text-align:right;padding:3px 0">Rp ' + new Intl.NumberFormat('id-ID').format(i.price * i.quantity) + '</td></tr>'
-          ).join('');
-          const css = 'body{font-family:monospace;font-size:12px;margin:0;padding:16px;}' +
-            'table{width:100%;border-collapse:collapse;}' +
-            '.sep{border:none;border-top:1px dashed #000;margin:8px 0;}' +
-            'th{text-align:left;font-size:11px;border-bottom:1px solid #000;padding:2px 0;}';
-          const body = '<h3 style="text-align:center;margin:0 0 6px">STRUK PEMBAYARAN</h3>' +
-            '<hr class="sep">' +
-            '<p style="margin:2px 0">No: <b>' + d.orderNumber + '</b></p>' +
-            '<p style="margin:2px 0">Tanggal: ' + d.printedAt + '</p>' +
-            '<p style="margin:2px 0">Kasir: ' + this.cashier + '</p>' +
-            '<p style="margin:2px 0">Pelanggan: ' + d.customerName + '</p>' +
-            '<p style="margin:2px 0">Meja: ' + d.tableDisplay + '</p>' +
-            '<hr class="sep">' +
-            '<table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Harga</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-            '<hr class="sep">' +
-            '<p style="text-align:right;font-weight:bold">TOTAL: ' + d.formattedTotal + '</p>' +
-            '<hr class="sep">' +
-            '<p style="text-align:center;margin-top:8px">Terima kasih!</p>';
-          const html = '<html><head><title>Struk</' + 'title><style>' + css + '</' + 'style></' + 'head><body>' + body + '</' + 'body></' + 'html>';
-          this._printHtml(html);
-        },
-
-        _printHtml(html) {
-          const iframe = document.createElement('iframe');
-          iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:340px;height:500px;border:none;visibility:hidden;';
-          document.body.appendChild(iframe);
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-          iframeDoc.open();
-          iframeDoc.write(html);
-          iframeDoc.close();
-          iframe.contentWindow.focus();
-          setTimeout(() => {
-            iframe.contentWindow.print();
-            let removed = false;
-            const cleanup = () => {
-              if (!removed && document.body.contains(iframe)) {
-                removed = true;
-                document.body.removeChild(iframe);
+              });
+              const data = await response.json();
+              if (data.valid) {
+                const {
+                  type
+                } = this.authPending;
+                this.showAuthModal = false;
+                this.authCode = '';
+                this.authPending = null;
+                this._doPrintChecker(type, true);
+              } else {
+                this.authError = 'PIN tidak valid. Periksa kembali kode harian Anda.';
               }
-            };
-            iframe.contentWindow.onafterprint = cleanup;
-            setTimeout(cleanup, 120000);
-          }, 250);
-        },
+            } catch (e) {
+              this.authError = 'Terjadi kesalahan. Coba lagi.';
+            } finally {
+              this.isVerifyingAuth = false;
+            }
+          },
 
-        showToastMessage(message, type = 'success') {
-          this.toastMessage = message;
-          this.toastType = type;
-          this.showToast = true;
-          setTimeout(() => {
-            this.showToast = false;
-          }, 3000);
-        },
-      }));
-    });
-  </script>
+          _doPrintChecker(type, isReprint) {
+            const d = this.receiptData;
+            const items = d ? d.items.filter(i => i.preparation_location === type) : [];
+            if (!d || items.length === 0) {
+              return;
+            }
+            this.checkerPrinted[type] = true;
+            const title = type === 'kitchen' ? 'KITCHEN ORDER' : 'BAR ORDER';
+            const rows = items.map(i =>
+              '<tr><td style="padding:3px 0">' + i.name + '</td><td style="text-align:right;padding:3px 0"><b>' + i.quantity + '</b></td></tr>'
+            ).join('');
+            const css = 'body{font-family:monospace;font-size:12px;margin:0;padding:16px;}' +
+              'table{width:100%;border-collapse:collapse;}' +
+              '.sep{border:none;border-top:1px dashed #000;margin:8px 0;}' +
+              'th{text-align:left;font-size:11px;border-bottom:1px solid #000;padding:2px 0;}' +
+              'th:last-child{text-align:right;}';
+            const watermarkHtml = isReprint ?
+              '<p style="text-align:center;font-size:14px;font-weight:bold;color:#dc2626;border:2px solid #dc2626;padding:4px;margin-bottom:8px;letter-spacing:2px;">CETAK ULANG</p>' :
+              '';
+            const body = watermarkHtml +
+              '<h3 style="text-align:center;margin:0 0 6px">' + title + '</h3>' +
+              '<hr class="sep">' +
+              '<p style="margin:2px 0">No: <b>' + d.orderNumber + '</b></p>' +
+              '<p style="margin:2px 0">Tanggal: ' + d.printedAt + '</p>' +
+              '<p style="margin:2px 0">Kasir: ' + this.cashier + '</p>' +
+              '<hr class="sep">' +
+              '<p style="margin:2px 0">Pelanggan: <b>' + d.customerName + '</b></p>' +
+              '<p style="margin:2px 0">Meja: <b>' + d.tableDisplay + '</b></p>' +
+              '<hr class="sep">' +
+              '<table><thead><tr><th>Item</th><th style="text-align:right">Qty</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+              '<hr class="sep">';
+            const html = '<html><head><title>' + title + '</' + 'title><style>' + css + '</' + 'style></' + 'head><body>' + body + '</' + 'body></' + 'html>';
+            this._printHtml(html);
+          },
+
+          printReceipt() {
+            if (!this.receiptData) {
+              return;
+            }
+            const d = this.receiptData;
+            const rows = d.items.map(i =>
+              '<tr><td style="padding:3px 0">' + i.name + '</td><td style="text-align:right;padding:3px 0">' + i.quantity + 'x</td><td style="text-align:right;padding:3px 0">Rp ' + new Intl.NumberFormat('id-ID').format(i.price * i.quantity) + '</td></tr>'
+            ).join('');
+            const css = 'body{font-family:monospace;font-size:12px;margin:0;padding:16px;}' +
+              'table{width:100%;border-collapse:collapse;}' +
+              '.sep{border:none;border-top:1px dashed #000;margin:8px 0;}' +
+              'th{text-align:left;font-size:11px;border-bottom:1px solid #000;padding:2px 0;}';
+            const body = '<h3 style="text-align:center;margin:0 0 6px">STRUK PEMBAYARAN</h3>' +
+              '<hr class="sep">' +
+              '<p style="margin:2px 0">No: <b>' + d.orderNumber + '</b></p>' +
+              '<p style="margin:2px 0">Tanggal: ' + d.printedAt + '</p>' +
+              '<p style="margin:2px 0">Kasir: ' + this.cashier + '</p>' +
+              '<p style="margin:2px 0">Pelanggan: ' + d.customerName + '</p>' +
+              '<p style="margin:2px 0">Meja: ' + d.tableDisplay + '</p>' +
+              '<hr class="sep">' +
+              '<table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Harga</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+              '<hr class="sep">' +
+              '<p style="text-align:right;font-weight:bold">TOTAL: ' + d.formattedTotal + '</p>' +
+              '<hr class="sep">' +
+              '<p style="text-align:center;margin-top:8px">Terima kasih!</p>';
+            const html = '<html><head><title>Struk</' + 'title><style>' + css + '</' + 'style></' + 'head><body>' + body + '</' + 'body></' + 'html>';
+            this._printHtml(html);
+          },
+
+          _printHtml(html) {
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:340px;height:500px;border:none;visibility:hidden;';
+            document.body.appendChild(iframe);
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(html);
+            iframeDoc.close();
+            iframe.contentWindow.focus();
+            setTimeout(() => {
+              iframe.contentWindow.print();
+              let removed = false;
+              const cleanup = () => {
+                if (!removed && document.body.contains(iframe)) {
+                  removed = true;
+                  document.body.removeChild(iframe);
+                }
+              };
+              iframe.contentWindow.onafterprint = cleanup;
+              setTimeout(cleanup, 120000);
+            }, 250);
+          },
+
+          showToastMessage(message, type = 'success') {
+            this.toastMessage = message;
+            this.toastType = type;
+            this.showToast = true;
+            setTimeout(() => {
+              this.showToast = false;
+            }, 3000);
+          },
+
+          async openHistoryModal() {
+            this.showHistoryModal = true;
+            this.historyLoading = true;
+            try {
+              const res = await fetch('{{ route('admin.pos.recent-orders') }}', {
+                headers: {
+                  'X-Requested-With': 'XMLHttpRequest'
+                },
+              });
+              const data = await res.json();
+              this.recentOrders = data.orders ?? [];
+            } catch (e) {
+              this.showToastMessage('Gagal memuat riwayat transaksi.', 'error');
+              this.showHistoryModal = false;
+            } finally {
+              this.historyLoading = false;
+            }
+          },
+
+          formatHistoryCurrency(amount) {
+            return 'Rp ' + new Intl.NumberFormat('id-ID').format(amount);
+          },
+        }));
+      });
+    </script>
+    <!-- History Modal -->
+    <div x-show="showHistoryModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         style="display: none;"
+         class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+           @click="showHistoryModal = false"></div>
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
+
+        <!-- Header -->
+        <div class="flex items-start justify-between px-6 pt-6 pb-4 flex-shrink-0">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">&#128221; Transaksi Terakhir</h2>
+            <p class="text-xs text-gray-400 mt-0.5">Klik transaksi untuk mencetak ulang</p>
+          </div>
+          <button @click="showHistoryModal = false"
+                  class="text-gray-400 hover:text-gray-600 transition">
+            <svg class="w-5 h-5"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Loading -->
+        <div x-show="historyLoading"
+             class="flex items-center justify-center py-12">
+          <svg class="w-7 h-7 text-gray-400 animate-spin"
+               fill="none"
+               viewBox="0 0 24 24">
+            <circle class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"></circle>
+            <path class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+        </div>
+
+        <!-- Order List -->
+        <div x-show="!historyLoading"
+             class="overflow-y-auto flex-1 px-4 pb-2 space-y-2">
+          <template x-if="recentOrders.length === 0">
+            <p class="text-center text-sm text-gray-400 py-10">Belum ada transaksi.</p>
+          </template>
+          <template x-for="order in recentOrders"
+                    :key="order.id">
+            <div class="flex items-start gap-3 p-4 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition">
+              <!-- Icon -->
+              <div class="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg class="w-4 h-4 text-green-600"
+                     fill="none"
+                     stroke="currentColor"
+                     viewBox="0 0 24 24">
+                  <path stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <!-- Content -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-sm font-bold text-gray-900"
+                        x-text="order.order_number"></span>
+                  <span class="px-1.5 py-0.5 text-xs font-semibold rounded bg-blue-100 text-blue-700"
+                        x-text="order.type"></span>
+                </div>
+                <p class="text-xs text-gray-400 mb-2"
+                   x-text="order.ordered_at"></p>
+                <div class="flex items-center gap-1 mb-0.5">
+                  <svg class="w-3 h-3 text-blue-400 flex-shrink-0"
+                       fill="none"
+                       stroke="currentColor"
+                       viewBox="0 0 24 24">
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span class="text-xs text-blue-600 font-medium truncate"
+                        x-text="order.customer_name"></span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <svg class="w-3 h-3 text-gray-400 flex-shrink-0"
+                       fill="none"
+                       stroke="currentColor"
+                       viewBox="0 0 24 24">
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span class="text-xs text-gray-500 truncate"
+                        x-text="order.area + ' - Meja ' + order.table"></span>
+                </div>
+                <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                  <span class="text-xs text-gray-400"
+                        x-text="order.items_count + ' item'"></span>
+                  <span class="text-sm font-bold text-gray-900"
+                        x-text="formatHistoryCurrency(order.total)"></span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-4 py-4 flex-shrink-0 border-t border-gray-100">
+          <button @click="showHistoryModal = false"
+                  class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
+            <svg class="w-4 h-4"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>{{-- /x-data="posApp" --}}
+
 </x-app-layout>

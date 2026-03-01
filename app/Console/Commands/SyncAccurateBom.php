@@ -35,13 +35,16 @@ class SyncAccurateBom extends Command
 
     public function handle(): int
     {
-        $accessToken = Cache::get('accurate_access_token') ?? session('accurate_access_token');
-        $database = Cache::get('accurate_database') ?? session('accurate_database');
+        // API token mode: no OAuth session needed, AccurateService handles auth automatically
+        if (! config('accurate.api_token')) {
+            $accessToken = Cache::get('accurate_access_token') ?? session('accurate_access_token');
+            $database = Cache::get('accurate_database') ?? session('accurate_database');
 
-        if (! $accessToken || ! $database) {
-            Log::error('Accurate BOM Sync: missing access token or database');
+            if (! $accessToken || ! $database) {
+                Log::error('Accurate BOM Sync: missing access token or database');
 
-            return 1;
+                return 1;
+            }
         }
 
         if (! $this->option('force')) {

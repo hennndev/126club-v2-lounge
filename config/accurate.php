@@ -10,6 +10,18 @@ return [
     |
     */
 
+    // Accurate API base URL
+    'api_url' => env('ACCURATE_API_URL', 'https://account.accurate.id'),
+
+    // OAuth credentials
+    'client_id' => env('ACCURATE_CLIENT_ID'),
+    'client_secret' => env('ACCURATE_CLIENT_SECRET'),
+
+    // API Token auth (static, no OAuth needed)
+    'api_token' => env('ACCURATE_API_TOKEN'),
+    'app_key' => env('ACCURATE_APP_KEY'),
+    'signature_secret' => env('ACCURATE_SIGNATURE_SECRET'),
+
     // Interval sync otomatis dalam jam (1, 2, 3, dst)
     'sync_interval_hours' => env('ACCURATE_SYNC_INTERVAL_HOURS', 2),
 

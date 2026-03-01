@@ -137,6 +137,43 @@ class PosController extends Controller
     }
 
     /**
+     * Get recent orders for the history modal.
+     */
+    public function recentOrders(): JsonResponse
+    {
+        $orders = Order::with([
+            'items',
+            'tableSession.table.area',
+            'tableSession.reservation.customer.profile',
+            'tableSession.reservation.customer.customerUser',
+        ])
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(function ($order) {
+                $session = $order->tableSession;
+                $customer = $session?->reservation?->customer;
+                $customerName = $customer?->profile?->name
+                    ?? $customer?->customerUser?->name
+                    ?? 'Walk-in';
+
+                return [
+                    'id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'ordered_at' => $order->ordered_at?->format('d M Y, H:i') ?? $order->created_at->format('d M Y, H:i'),
+                    'total' => (float) $order->total,
+                    'items_count' => $order->items->count(),
+                    'customer_name' => $customerName,
+                    'table' => $session?->table?->table_number ?? '-',
+                    'area' => $session?->table?->area?->name ?? '-',
+                    'type' => $session?->reservation ? 'Booking' : 'Walk-in',
+                ];
+            });
+
+        return response()->json(['orders' => $orders]);
+    }
+
+    /**
      * Select counter location for current session.
      */
     public function selectCounter(Request $request): JsonResponse
