@@ -5,10 +5,17 @@ use App\Http\Controllers\AreaController;
 use App\Http\Controllers\BarController;
 use App\Http\Controllers\BomController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\CustomerKeepController;
 use App\Http\Controllers\KitchenController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\RewardController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\Settings\DailyAuthCodeController;
+use App\Http\Controllers\Settings\TierSettingsController;
+use App\Http\Controllers\TransactionCheckerController;
+use App\Http\Controllers\TransactionHistoryController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\WaiterPerformanceController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -30,6 +37,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/redirect-after-login', function () {
         $user = Auth::user();
         if ($user->type === 'internal') {
+            if (! session()->has('accurate_access_token')) {
+                return redirect()->route('accurate.auth');
+            }
+
             return redirect()->route('admin.dashboard');
         }
 
@@ -79,6 +90,7 @@ Route::middleware('auth')->group(function () {
         // BOM Management
         Route::resource('bom', BomController::class)->except(['show', 'create', 'edit']);
         Route::patch('bom/{bom}/toggle-status', [BomController::class, 'toggleStatus'])->name('bom.toggleStatus');
+        Route::patch('bom/{bom}/toggle-availability', [BomController::class, 'toggleAvailability'])->name('bom.toggleAvailability');
 
         // Point of Sale
         require __DIR__.'/pos.php';
@@ -100,6 +112,44 @@ Route::middleware('auth')->group(function () {
 
         // Customer Management
         Route::resource('customers', CustomerController::class)->except(['show', 'create', 'edit']);
+
+        // Customer Keep
+        Route::resource('customer-keep', CustomerKeepController::class)->except(['show', 'create', 'edit']);
+        Route::patch('customer-keep/{customerKeep}/mark-used', [CustomerKeepController::class, 'markUsed'])->name('customer-keep.mark-used');
+        Route::resource('rewards', RewardController::class)->except(['show', 'create', 'edit']);
+
+        // Transaction Checker
+        Route::get('transaction-checker', [TransactionCheckerController::class, 'index'])->name('transaction-checker.index');
+        Route::patch('transaction-checker/items/{item}/check', [TransactionCheckerController::class, 'checkItem'])->name('transaction-checker.check-item');
+        Route::patch('transaction-checker/orders/{order}/check-all', [TransactionCheckerController::class, 'checkAll'])->name('transaction-checker.check-all');
+
+        // Transaction History
+        Route::get('transaction-history', [TransactionHistoryController::class, 'index'])->name('transaction-history.index');
+        Route::post('transaction-history/{order}/print', [TransactionHistoryController::class, 'print'])->name('transaction-history.print');
+
+        // Waiter Performance
+        Route::get('waiter-performance', [WaiterPerformanceController::class, 'index'])->name('waiter-performance.index');
+
+        // Settings
+        Route::get('settings', function () {
+            return view('settings.index');
+        })->name('settings.index');
+
+        // Daily Auth Code
+        Route::prefix('settings/daily-auth-code')->name('settings.daily-auth-code.')->group(function () {
+            Route::get('/', [DailyAuthCodeController::class, 'index'])->name('index');
+            Route::post('/regenerate', [DailyAuthCodeController::class, 'regenerate'])->name('regenerate');
+            Route::post('/override', [DailyAuthCodeController::class, 'override'])->name('override');
+            Route::delete('/override', [DailyAuthCodeController::class, 'clearOverride'])->name('clear-override');
+            Route::post('/verify', [DailyAuthCodeController::class, 'verify'])->name('verify');
+        });
+
+        // Tier Settings
+        Route::prefix('settings/tier-settings')->name('settings.tier-settings.')->group(function () {
+            Route::get('/', [TierSettingsController::class, 'index'])->name('index');
+            Route::put('/', [TierSettingsController::class, 'update'])->name('update');
+            Route::delete('/reset', [TierSettingsController::class, 'resetToDefault'])->name('reset');
+        });
     });
 });
 

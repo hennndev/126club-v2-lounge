@@ -17,19 +17,19 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RolePermissionsSeeder::class,
             UsersSeeder::class,
-            AreaSeeder::class,
-            TabelSeeder::class,
-            CustomerSeeder::class,
-            InventoryCategorySeeder::class,
-            InventoryItemSeeder::class,
-            BomSeeder::class,
+            // AreaSeeder::class,
+            // TabelSeeder::class,
+            // CustomerSeeder::class,
+            // InventoryCategorySeeder::class,
+            // InventoryItemSeeder::class,
+            // BomSeeder::class,
             // TableReservationSeeder::class,
             // DisplayMessageSeeder::class,
             // SongRequestSeeder::class,
             // EventSeeder::class,
             // KitchenOrderSeeder::class,
             // BarOrderSeeder::class,
-            PosTestSeeder::class, // Run after all other seeders
+            // PosTestSeeder::class,
         ]);
     }
 }

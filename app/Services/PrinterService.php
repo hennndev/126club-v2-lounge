@@ -32,6 +32,29 @@ class PrinterService
     }
 
     /**
+     * Write a human-readable print simulation to storage/logs/printer.log.
+     */
+    protected function logPrint(string $title, array $lines): void
+    {
+        $separator = str_repeat('-', 42);
+        $content = implode("\n", [
+            '',
+            $separator,
+            '  [PRINT SIMULATION] '.$title,
+            '  '.now()->format('d/m/Y H:i:s'),
+            $separator,
+            ...array_map(fn ($l) => '  '.$l, $lines),
+            $separator,
+        ]);
+
+        file_put_contents(
+            storage_path('logs/printer.log'),
+            $content."\n",
+            FILE_APPEND
+        );
+    }
+
+    /**
      * Print a receipt for the given order.
      */
     public function printReceipt(Order $order, Printer $printer): bool
@@ -51,7 +74,7 @@ class PrinterService
             $escpos->text("Order: {$order->order_number}\n");
             $escpos->setEmphasis(false);
             $escpos->text("Date: {$order->ordered_at->format('d/m/Y H:i')}\n");
-            $tableName = $order->tableSession->table->name ?? 'N/A';
+            $tableName = $order->tableSession?->table?->table_number ?? 'N/A';
             $escpos->text("Table: {$tableName}\n");
             $escpos->text(str_repeat('-', $printer->width)."\n");
 
@@ -96,6 +119,16 @@ class PrinterService
      */
     public function testPrint(Printer $printer): bool
     {
+        if ($printer->connection_type === 'log') {
+            $this->logPrint('TEST PRINT', [
+                "Printer    : {$printer->name}",
+                'Connection : log (simulation)',
+                'Status     : OK — printer simulation working!',
+            ]);
+
+            return true;
+        }
+
         $connector = $this->createConnector($printer);
         $escpos = new EscposPrinter($connector);
 
@@ -217,6 +250,22 @@ class PrinterService
      */
     public function printKitchenTicket(KitchenOrder $kitchenOrder, Printer $printer): bool
     {
+        if ($printer->connection_type === 'log') {
+            $lines = [
+                "Order : #{$kitchenOrder->order_number}",
+                'Table : '.($kitchenOrder->table?->table_number ?? 'N/A'),
+                'Time  : '.now()->format('H:i'),
+                '',
+            ];
+            foreach ($kitchenOrder->items as $item) {
+                $name = $item->recipe->inventoryItem->name ?? 'Item';
+                $lines[] = "  {$item->quantity}x {$name}";
+            }
+            $this->logPrint('KITCHEN ORDER', $lines);
+
+            return true;
+        }
+
         $connector = $this->createConnector($printer);
         $escpos = new EscposPrinter($connector);
 
@@ -233,7 +282,7 @@ class PrinterService
             $escpos->feed(1);
 
             // Order info
-            $tableName = $kitchenOrder->table->name ?? 'N/A';
+            $tableName = $kitchenOrder->table?->table_number ?? 'N/A';
             $escpos->text("Table: {$tableName}\n");
             $escpos->text('Time: '.now()->format('H:i')."\n");
             $escpos->text(str_repeat('-', $printer->width)."\n");
@@ -269,6 +318,22 @@ class PrinterService
      */
     public function printBarTicket(BarOrder $barOrder, Printer $printer): bool
     {
+        if ($printer->connection_type === 'log') {
+            $lines = [
+                "Order : #{$barOrder->order_number}",
+                'Table : '.($barOrder->table?->table_number ?? 'N/A'),
+                'Time  : '.now()->format('H:i'),
+                '',
+            ];
+            foreach ($barOrder->items as $item) {
+                $name = $item->recipe?->inventoryItem?->name ?? $item->inventoryItem?->name ?? 'Item';
+                $lines[] = "  {$item->quantity}x {$name}";
+            }
+            $this->logPrint('BAR ORDER', $lines);
+
+            return true;
+        }
+
         $connector = $this->createConnector($printer);
         $escpos = new EscposPrinter($connector);
 
@@ -285,7 +350,7 @@ class PrinterService
             $escpos->feed(1);
 
             // Order info
-            $tableName = $barOrder->table->name ?? 'N/A';
+            $tableName = $barOrder->table?->table_number ?? 'N/A';
             $escpos->text("Table: {$tableName}\n");
             $escpos->text('Time: '.now()->format('H:i')."\n");
             $escpos->text(str_repeat('-', $printer->width)."\n");
@@ -296,7 +361,7 @@ class PrinterService
             $escpos->setEmphasis(false);
 
             foreach ($barOrder->items as $item) {
-                $name = $item->recipe->inventoryItem->name ?? $item->recipe->type ?? 'Item';
+                $name = $item->recipe?->inventoryItem?->name ?? $item->inventoryItem?->name ?? 'Item';
                 $escpos->setEmphasis(true);
                 $escpos->text("  {$item->quantity}x {$name}\n");
                 $escpos->setEmphasis(false);

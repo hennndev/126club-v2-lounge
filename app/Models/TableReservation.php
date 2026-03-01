@@ -33,8 +33,13 @@ class TableReservation extends Model
         return $this->belongsTo(User::class, 'customer_id');
     }
 
+    public function tableSession()
+    {
+        return $this->hasOne(TableSession::class, 'table_reservation_id');
+    }
+
     public function getBookingCodeFormattedAttribute()
     {
-        return 'BKG-' . $this->booking_code;
+        return 'BKG-'.$this->booking_code;
     }
 }

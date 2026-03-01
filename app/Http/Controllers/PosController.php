@@ -13,6 +13,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\TableSession;
+use App\Models\Tier;
 use App\Services\PrinterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,8 +33,8 @@ class PosController extends Controller
                 $q->whereIn('category_type', ['food', 'bar']);
             });
 
-        // Get inventory items with category_type = 'drink'
-        $inventoryQuery = InventoryItem::where('category_type', 'drink');
+        // Get inventory items with category_type = 'beverage'
+        $inventoryQuery = InventoryItem::where('category_type', 'beverage');
 
         // Search functionality
         if ($request->filled('search')) {
@@ -49,10 +50,10 @@ class PosController extends Controller
                 'id' => 'bom_'.$bom->id,
                 'bom_id' => $bom->id,
                 'name' => $bom->inventoryItem->name ?? 'Unknown',
-                'category' => 'drink',
+                'category' => $bom->inventoryItem->category_type ?? 'food',
                 'price' => $bom->selling_price,
-                'stock' => $bom->inventoryItem->quantity ?? 0,
                 'type' => 'bom',
+                'is_available' => $bom->is_available,
             ];
         });
 
@@ -63,8 +64,8 @@ class PosController extends Controller
                 'item_id' => $item->id,
                 'name' => $item->name,
                 'category' => $item->category_type,
-                'price' => $item->unit_price ?? 0,
-                'stock' => $item->quantity ?? 0,
+                'price' => $item->price ?? 0,
+                'stock' => $item->stock_quantity ?? 0,
                 'type' => 'item',
             ];
         });
@@ -81,6 +82,7 @@ class PosController extends Controller
                 'name' => $item['name'],
                 'price' => $item['price'],
                 'quantity' => $item['quantity'],
+                'preparation_location' => $item['preparation_location'] ?? 'bar',
             ];
         });
 
@@ -89,11 +91,19 @@ class PosController extends Controller
         });
 
         // Get active table sessions for booking customers
-        $tableSessions = TableSession::with(['customer', 'table.area'])
+        $tableSessions = TableSession::with(['customer.profile', 'customer.customerUser', 'table.area', 'billing'])
             ->where('status', 'active')
             ->whereNotNull('checked_in_at')
             ->whereNull('checked_out_at')
             ->get();
+
+        // Get waiters for the Pilih Waiter dropdown
+        $waiters = \App\Models\User::role('Waiter/Server')
+            ->with('profile')
+            ->get();
+
+        // Get tiers for discount calculation (highest level first)
+        $tiers = Tier::orderBy('level', 'desc')->get();
 
         // Get printer locations for counter selection
         $printerLocations = $this->getPrinterLocations();
@@ -101,7 +111,7 @@ class PosController extends Controller
         // Get current counter location from session
         $currentCounter = session()->get('pos_counter_location');
 
-        return view('pos.index', compact('products', 'cartItems', 'cartTotal', 'tableSessions', 'printerLocations', 'currentCounter'));
+        return view('pos.index', compact('products', 'cartItems', 'cartTotal', 'tableSessions', 'waiters', 'tiers', 'printerLocations', 'currentCounter'));
     }
 
     /**
@@ -164,12 +174,13 @@ class PosController extends Controller
                 'name' => $bom->inventoryItem->name,
                 'price' => $bom->selling_price,
                 'type' => 'bom',
+                'preparation_location' => in_array($bom->inventoryItem->category_type, ['food']) ? 'kitchen' : 'bar',
             ];
         } else {
             // Inventory Item
             $itemId = str_replace('item_', '', $productId);
             $inventoryItem = InventoryItem::where('id', $itemId)
-                ->where('category_type', 'drink')
+                ->where('category_type', 'beverage')
                 ->first();
 
             if (! $inventoryItem) {
@@ -182,8 +193,9 @@ class PosController extends Controller
             $product = [
                 'id' => $productId,
                 'name' => $inventoryItem->name,
-                'price' => $inventoryItem->unit_price ?? 0,
+                'price' => $inventoryItem->price ?? 0,
                 'type' => 'item',
+                'preparation_location' => 'bar',
             ];
         }
 
@@ -197,6 +209,7 @@ class PosController extends Controller
                 'name' => $product['name'],
                 'price' => $product['price'],
                 'quantity' => 1,
+                'preparation_location' => $product['preparation_location'],
             ];
         }
 
@@ -252,6 +265,9 @@ class PosController extends Controller
             'customer_type' => 'required|in:booking,walk-in',
             'customer_user_id' => 'required|exists:users,id',
             'table_id' => 'nullable|exists:tables,id',
+            'waiter_id' => 'nullable|exists:users,id',
+            'payment_method' => 'nullable|in:cash,kredit,debit',
+            'discount_percentage' => 'nullable|integer|min:0|max:100',
         ]);
 
         $cart = session()->get('pos_cart', []);
@@ -288,6 +304,9 @@ class PosController extends Controller
                     STR_PAD_LEFT
                 );
 
+                $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
+                $paymentNotes = isset($validated['payment_method']) ? 'Payment: '.strtoupper($validated['payment_method']) : null;
+
                 // Create Order
                 $order = Order::create([
                     'table_session_id' => $tableSession->id,
@@ -298,6 +317,7 @@ class PosController extends Controller
                     'discount_amount' => 0,
                     'total' => 0,
                     'ordered_at' => now(),
+                    'notes' => $paymentNotes,
                 ]);
 
                 $itemsTotal = 0;
@@ -352,10 +372,15 @@ class PosController extends Controller
                     ]);
                 }
 
+                // Apply tier discount
+                $discountAmount = (int) round($itemsTotal * $discountPercentage / 100);
+                $finalTotal = $itemsTotal - $discountAmount;
+
                 // Update Order totals
                 $order->update([
                     'items_total' => $itemsTotal,
-                    'total' => $itemsTotal,
+                    'discount_amount' => $discountAmount,
+                    'total' => $finalTotal,
                 ]);
 
                 // Route items to Kitchen/Bar and print tickets
@@ -386,8 +411,8 @@ class PosController extends Controller
                     'message' => "Order #{$orderNumber} berhasil dibuat!",
                     'order_number' => $orderNumber,
                     'order_id' => $order->id,
-                    'total' => $itemsTotal,
-                    'formatted_total' => 'Rp '.number_format($itemsTotal, 0, ',', '.'),
+                    'total' => $finalTotal,
+                    'formatted_total' => 'Rp '.number_format($finalTotal, 0, ',', '.'),
                 ]);
             }
 
@@ -529,12 +554,16 @@ class PosController extends Controller
             }
         }
 
+        // Get customer_users.id from users.id
+        $customerUser = \App\Models\CustomerUser::where('user_id', $tableSession->customer_id)->first();
+        $customerUserId = $customerUser?->id;
+
         // Create Kitchen Order if there are kitchen items
         if ($kitchenItems->isNotEmpty()) {
             $kitchenOrder = KitchenOrder::create([
                 'order_id' => $order->id,
                 'order_number' => $orderNumber,
-                'customer_user_id' => $tableSession->customer_id,
+                'customer_user_id' => $customerUserId,
                 'table_id' => $tableSession->table_id,
                 'total_amount' => $kitchenItems->sum('subtotal'),
                 'status' => 'baru',
@@ -557,7 +586,7 @@ class PosController extends Controller
                 }
             }
 
-            // Print kitchen ticket
+            // Auto-print kitchen ticket if a printer is configured for 'kitchen' location
             $this->printKitchenTicket($kitchenOrder);
         }
 
@@ -566,7 +595,7 @@ class PosController extends Controller
             $barOrder = BarOrder::create([
                 'order_id' => $order->id,
                 'order_number' => $orderNumber,
-                'customer_user_id' => $tableSession->customer_id,
+                'customer_user_id' => $customerUserId,
                 'table_id' => $tableSession->table_id,
                 'total_amount' => $barItems->sum('subtotal'),
                 'status' => 'baru',
@@ -575,21 +604,19 @@ class PosController extends Controller
 
             // Create bar order items
             foreach ($barItems as $item) {
-                // Find the BOM recipe for this item (if it's a BOM item)
                 $bomRecipe = BomRecipe::where('inventory_item_id', $item->inventory_item_id)->first();
 
-                if ($bomRecipe) {
-                    BarOrderItem::create([
-                        'bar_order_id' => $barOrder->id,
-                        'bom_recipe_id' => $bomRecipe->id,
-                        'quantity' => $item->quantity,
-                        'price' => $item->price,
-                        'is_completed' => false,
-                    ]);
-                }
+                BarOrderItem::create([
+                    'bar_order_id' => $barOrder->id,
+                    'bom_recipe_id' => $bomRecipe?->id,
+                    'inventory_item_id' => $bomRecipe ? null : $item->inventory_item_id,
+                    'quantity' => $item->quantity,
+                    'price' => $item->price,
+                    'is_completed' => false,
+                ]);
             }
 
-            // Print bar ticket
+            // Auto-print bar ticket if a printer is configured for 'bar' location
             $this->printBarTicket($barOrder);
         }
     }
@@ -627,7 +654,7 @@ class PosController extends Controller
                 return false;
             }
 
-            $barOrder->load(['items.recipe.inventoryItem', 'table']);
+            $barOrder->load(['items.recipe.inventoryItem', 'items.inventoryItem', 'table']);
             $this->printerService->printBarTicket($barOrder, $printer);
 
             return true;
@@ -674,6 +701,7 @@ class PosController extends Controller
                 'price' => (float) $item['price'],
                 'quantity' => (int) $item['quantity'],
                 'subtotal' => (float) $item['price'] * (int) $item['quantity'],
+                'preparation_location' => $item['preparation_location'] ?? 'bar',
             ];
         });
 

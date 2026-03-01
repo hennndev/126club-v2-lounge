@@ -22,19 +22,35 @@
         <h1 class="text-2xl font-bold text-gray-900">BOM - Bill of Materials</h1>
         <p class="text-sm text-gray-500">Kelola resep makanan dan minuman</p>
       </div>
-      <button onclick="openModal('add')"
-              class="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition flex items-center gap-2">
-        <svg class="w-5 h-5"
-             fill="none"
-             stroke="currentColor"
-             viewBox="0 0 24 24">
-          <path stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 4v16m8-8H4" />
-        </svg>
-        Tambah Recipe
-      </button>
+      <div class="flex items-center gap-3">
+        <button data-bom-sync-btn
+                onclick="syncBomFromAccurate()"
+                class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
+          <svg class="w-5 h-5"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span data-bom-sync-text>Sync dari Accurate</span>
+        </button>
+        <button onclick="openModal('add')"
+                class="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition flex items-center gap-2">
+          <svg class="w-5 h-5"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 4v16m8-8H4" />
+          </svg>
+          Tambah Recipe
+        </button>
+      </div>
     </div>
 
     <!-- Stats Cards -->
@@ -154,12 +170,17 @@
               <!-- Header -->
               <div class="flex items-start justify-between mb-4">
                 <div class="flex-1">
-                  <div class="flex items-center gap-2 mb-2">
+                  <div class="flex items-center gap-2 mb-2 flex-wrap">
                     <h3 class="text-lg font-bold text-gray-900">{{ $recipe->name }}</h3>
                     @if ($recipe->type === 'food')
                       <span class="px-2 py-1 text-xs font-medium rounded bg-orange-100 text-orange-700">🍽️ Food</span>
                     @else
                       <span class="px-2 py-1 text-xs font-medium rounded bg-purple-100 text-purple-700">🍹 Beverage</span>
+                    @endif
+                    @if ($recipe->is_available)
+                      <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">✔ Tersedia</span>
+                    @else
+                      <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700">✖ Habis</span>
                     @endif
                   </div>
                   @if ($recipe->description)
@@ -200,15 +221,26 @@
               </div>
 
               <!-- Actions -->
-              <div class="flex gap-2 mt-4 pt-4 border-t border-gray-200">
-                <button onclick="editRecipe({{ $recipe->id }})"
-                        class="flex-1 px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
-                  Edit
-                </button>
-                <button onclick="deleteRecipe({{ $recipe->id }})"
-                        class="flex-1 px-3 py-2 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition">
-                  Hapus
-                </button>
+              <div class="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-200">
+                <form action="{{ route('admin.bom.toggleAvailability', $recipe) }}"
+                      method="POST">
+                  @csrf @method('PATCH')
+                  <button type="submit"
+                          class="w-full px-3 py-2 text-sm font-semibold rounded-lg transition
+                            {{ $recipe->is_available ? 'bg-red-50 text-red-600 border border-red-300 hover:bg-red-100' : 'bg-green-50 text-green-700 border border-green-300 hover:bg-green-100' }}">
+                    {{ $recipe->is_available ? '✖ Tandai Habis' : '✔ Tandai Tersedia' }}
+                  </button>
+                </form>
+                <div class="flex gap-2">
+                  <button onclick="editRecipe({{ $recipe->id }})"
+                          class="flex-1 px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                    Edit
+                  </button>
+                  <button onclick="deleteRecipe({{ $recipe->id }})"
+                          class="flex-1 px-3 py-2 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition">
+                    Hapus
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -258,6 +290,37 @@
       const recipes = @json($recipes);
       const inventoryItems = @json($inventoryItems);
       let ingredientCounter = 0;
+
+      function syncBomFromAccurate() {
+        const btn = document.querySelector('[data-bom-sync-btn]');
+        const text = document.querySelector('[data-bom-sync-text]');
+
+        btn.disabled = true;
+        text.innerHTML = '<span class="animate-spin inline-block mr-2">⚙️</span> Syncing...';
+
+        fetch('{{ route('admin.accurate.sync.bom') }}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            }
+          })
+          .then(res => res.json())
+          .then(data => {
+            btn.disabled = false;
+            text.textContent = 'Sync dari Accurate';
+            if (data.success) {
+              window.location.reload();
+            } else {
+              alert('❌ ' + data.message);
+            }
+          })
+          .catch(err => {
+            btn.disabled = false;
+            text.textContent = 'Sync dari Accurate';
+            alert('❌ Error: ' + err.message);
+          });
+      }
 
       function openModal(mode, recipeId = null) {
         const modal = document.getElementById('recipeModal');
@@ -335,10 +398,10 @@
                     class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm">
               <option value="">Pilih Bahan (Condiments)</option>
               ${condimentsItems.map(item => `
-                                        <option value="${item.id}" ${item.id == itemId ? 'selected' : ''}>
-                                          ${item.name} (${item.unit})
-                                        </option>
-                                      `).join('')}
+                                                <option value="${item.id}" ${item.id == itemId ? 'selected' : ''}>
+                                                  ${item.name} (${item.unit})
+                                                </option>
+                                              `).join('')}
             </select>
             <input type="number" name="items[${index}][quantity]" value="${quantity}" required min="0.01" step="0.01"
                    placeholder="Qty"

@@ -17,6 +17,8 @@ class Billing extends Model
         'grand_total',
         'paid_amount',
         'billing_status',
+        'transaction_code',
+        'payment_method',
         'notes',
     ];
 

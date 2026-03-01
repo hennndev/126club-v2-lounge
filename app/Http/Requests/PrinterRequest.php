@@ -20,7 +20,7 @@ class PrinterRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'in:'.implode(',', $validLocations)],
-            'connection_type' => ['required', 'in:network,file,windows'],
+            'connection_type' => ['required', 'in:network,file,windows,log'],
             'ip' => ['required_if:connection_type,network', 'nullable', 'ip'],
             'port' => ['required_if:connection_type,network', 'nullable', 'integer', 'min:1', 'max:65535'],
             'path' => ['required_if:connection_type,file,windows', 'nullable', 'string', 'max:255'],

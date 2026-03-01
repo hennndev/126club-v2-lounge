@@ -12,6 +12,7 @@ class BomRecipe extends Model
         'selling_price' => 'decimal:2',
         'total_cost' => 'decimal:2',
         'is_active' => 'boolean',
+        'is_available' => 'boolean',
     ];
 
     public function inventoryItem()
@@ -36,7 +37,10 @@ class BomRecipe extends Model
 
     public function getProfitMarginAttribute()
     {
-        if ($this->selling_price == 0) return 0;
+        if ($this->selling_price == 0) {
+            return 0;
+        }
+
         return ($this->gross_profit / $this->selling_price) * 100;
     }
 }
