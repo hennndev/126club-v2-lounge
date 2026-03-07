@@ -14,15 +14,19 @@ class BarController extends Controller
         $status = $request->get('status');
 
         $query = BarOrder::with([
+            'customer.user',
             'customer.profile',
             'table.area',
-            'items.recipe',
+            'items.recipe.inventoryItem',
         ])->orderBy('created_at', 'desc');
 
-        if ($status === 'dalam-proses') {
+        if ($status === 'proses') {
             $query->where('status', 'proses');
         } elseif ($status === 'selesai') {
             $query->where('status', 'selesai');
+        } else {
+            // default: exclude selesai
+            $query->whereIn('status', ['baru', 'proses']);
         }
 
         $orders = $query->get();
@@ -35,14 +39,7 @@ class BarController extends Controller
             'selesai' => BarOrder::where('status', 'selesai')->count(),
         ];
 
-        // Count by filter
-        $counts = [
-            'semua' => BarOrder::count(),
-            'dalam_proses' => BarOrder::where('status', 'proses')->count(),
-            'selesai' => BarOrder::where('status', 'selesai')->count(),
-        ];
-
-        return view('bar.index', compact('orders', 'stats', 'counts', 'status'));
+        return view('bar.index', compact('orders', 'stats'));
     }
 
     /**
@@ -53,15 +50,19 @@ class BarController extends Controller
         $status = $request->get('status');
 
         $query = BarOrder::with([
+            'customer.user',
             'customer.profile',
             'table.area',
-            'items.recipe',
+            'items.recipe.inventoryItem',
         ])->orderBy('created_at', 'desc');
 
-        if ($status === 'dalam-proses') {
+        if ($status === 'proses') {
             $query->where('status', 'proses');
         } elseif ($status === 'selesai') {
             $query->where('status', 'selesai');
+        } else {
+            // default: exclude selesai
+            $query->whereIn('status', ['baru', 'proses']);
         }
 
         $orders = $query->get()->map(function ($order) {
@@ -75,17 +76,10 @@ class BarController extends Controller
             'selesai' => BarOrder::where('status', 'selesai')->count(),
         ];
 
-        $counts = [
-            'semua' => BarOrder::count(),
-            'dalam_proses' => BarOrder::where('status', 'proses')->count(),
-            'selesai' => BarOrder::where('status', 'selesai')->count(),
-        ];
-
         return response()->json([
             'success' => true,
             'orders' => $orders,
             'stats' => $stats,
-            'counts' => $counts,
         ]);
     }
 
@@ -100,9 +94,10 @@ class BarController extends Controller
 
         // Refresh the order to get updated data
         $order = BarOrder::with([
+            'customer.user',
             'customer.profile',
             'table.area',
-            'items.recipe',
+            'items.recipe.inventoryItem',
         ])->find($item->bar_order_id);
 
         return response()->json([
@@ -123,14 +118,18 @@ class BarController extends Controller
         // Mark all items as completed
         $order->items()->update(['is_completed' => true]);
 
-        // Update order progress
-        $order->updateProgress();
+        // Explicitly set progress and status
+        $order->update([
+            'progress' => 100,
+            'status' => 'selesai',
+        ]);
 
         // Refresh the order to get updated data
         $order = BarOrder::with([
+            'customer.user',
             'customer.profile',
             'table.area',
-            'items.recipe',
+            'items.recipe.inventoryItem',
         ])->find($orderId);
 
         return response()->json([
@@ -153,7 +152,7 @@ class BarController extends Controller
             'created_at' => $order->created_at->format('d M Y H:i'),
             'customer' => $order->customer ? [
                 'id' => $order->customer->id,
-                'name' => $order->customer->name,
+                'name' => $order->customer->user?->name ?? 'N/A',
                 'phone' => $order->customer->profile?->phone ?? null,
             ] : null,
             'table' => $order->table ? [
@@ -167,8 +166,8 @@ class BarController extends Controller
             'items' => $order->items->map(function ($item) {
                 return [
                     'id' => $item->id,
-                    'recipe_id' => $item->recipe_id,
-                    'recipe_name' => $item->recipe?->name ?? 'Unknown',
+                    'recipe_id' => $item->bom_recipe_id,
+                    'recipe_name' => $item->recipe?->inventoryItem?->name ?? 'Unknown',
                     'quantity' => $item->quantity,
                     'is_completed' => $item->is_completed,
                 ];

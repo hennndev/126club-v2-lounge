@@ -23,6 +23,9 @@ class TransactionCheckerController extends Controller
             $query->whereIn('status', ['pending', 'preparing', 'ready']);
         } elseif ($tab === 'selesai') {
             $query->where('status', 'completed');
+        } else {
+            // default 'all': exclude completed
+            $query->whereIn('status', ['pending', 'preparing', 'ready']);
         }
 
         $orders = $query->latest('ordered_at')->get();

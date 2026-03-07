@@ -3,7 +3,6 @@
 use App\Models\InventoryItem;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
-use App\Models\User;
 
 function makeInventoryItem(array $attrs = []): InventoryItem
 {
@@ -21,7 +20,7 @@ function makeInventoryItem(array $attrs = []): InventoryItem
 }
 
 test('index page is accessible to authenticated users', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
 
     $this->actingAs($user)
         ->withSession(['accurate_database' => 'test'])
@@ -31,7 +30,7 @@ test('index page is accessible to authenticated users', function () {
 });
 
 test('store creates a draft stock opname', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
     $item = makeInventoryItem();
 
     $response = $this->actingAs($user)
@@ -57,7 +56,7 @@ test('store creates a draft stock opname', function () {
 });
 
 test('complete finalizes opname and adjusts inventory stock', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
     $item = makeInventoryItem(['stock_quantity' => 50]);
 
     $opname = StockOpname::create([
@@ -90,7 +89,7 @@ test('complete finalizes opname and adjusts inventory stock', function () {
 });
 
 test('history page is accessible', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
 
     $this->actingAs($user)
         ->withSession(['accurate_database' => 'test'])
@@ -100,7 +99,7 @@ test('history page is accessible', function () {
 });
 
 test('show page displays a specific opname', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
     $opname = StockOpname::create([
         'opname_date' => now()->format('Y-m-d'),
         'officer_name' => 'Officer',

@@ -76,6 +76,14 @@ class WaiterController extends Controller
 
     public function notifications(): View
     {
+        $waiter = auth()->user();
+
+        // Personal notifications for this waiter (assigned bookings)
+        $assignedNotifications = $waiter->unreadNotifications()
+            ->where('type', \App\Notifications\WaiterAssignedNotification::class)
+            ->latest()
+            ->get();
+
         $pendingCheckIns = TableReservation::with(['table.area', 'customer.profile'])
             ->where('status', 'confirmed')
             ->orderByDesc('created_at')
@@ -88,7 +96,12 @@ class WaiterController extends Controller
             ->take(10)
             ->get();
 
-        return view('waiter.notifications', compact('pendingCheckIns', 'recentCheckIns'));
+        // Mark assigned notifications as read when viewing this page
+        $waiter->unreadNotifications()
+            ->where('type', \App\Notifications\WaiterAssignedNotification::class)
+            ->update(['read_at' => now()]);
+
+        return view('waiter.notifications', compact('pendingCheckIns', 'recentCheckIns', 'assignedNotifications'));
     }
 
     public function settings(): View

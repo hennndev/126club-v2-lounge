@@ -377,6 +377,7 @@
             document.getElementById('table_number').value = table.table_number;
             document.getElementById('capacity').value = table.capacity;
             document.getElementById('minimum_charge').value = table.minimum_charge;
+            setMinChargeDisplay(table.minimum_charge);
             document.getElementById('status').value = table.status;
             document.getElementById('notes').value = table.notes || '';
             document.getElementById('is_active').checked = table.is_active;
@@ -388,6 +389,21 @@
 
       function closeModal() {
         document.getElementById('tableModal').classList.add('hidden');
+      }
+
+      function formatMinCharge(input) {
+        // Strip non-digits
+        const raw = input.value.replace(/\D/g, '');
+        const numeric = raw === '' ? '' : parseInt(raw, 10);
+        input.value = numeric === '' ? '' : new Intl.NumberFormat('id-ID').format(numeric);
+        document.getElementById('minimum_charge').value = numeric;
+      }
+
+      function setMinChargeDisplay(value) {
+        const numeric = parseFloat(value) || 0;
+        document.getElementById('minimum_charge_display').value =
+          numeric > 0 ? new Intl.NumberFormat('id-ID').format(numeric) : '';
+        document.getElementById('minimum_charge').value = numeric > 0 ? numeric : '';
       }
 
       function editTable(tableId) {
@@ -585,7 +601,6 @@
       function closeReservationModal() {
         document.getElementById('reservationModal').classList.add('hidden');
       }
-
     </script>
     <script src="/js/tables-print.js"></script>
   @endpush

@@ -20,6 +20,7 @@ class Billing extends Model
         'transaction_code',
         'payment_method',
         'notes',
+        'closing_notes',
     ];
 
     protected $casts = [

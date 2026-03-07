@@ -24,16 +24,19 @@
       </div>
       <button data-sync-btn
               onclick="syncFromAccurate()"
-              class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
-        <svg class="w-5 h-5"
-             fill="none"
-             stroke="currentColor"
-             viewBox="0 0 24 24">
-          <path stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
+              class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
+        <span data-sync-icon
+              class="flex items-center">
+          <svg class="w-5 h-5"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </span>
         <span data-sync-text>Sync dari Accurate</span>
       </button>
       {{-- <button onclick="openModal('add')"
@@ -114,36 +117,6 @@
       </div>
     </div>
 
-    <!-- Filters -->
-    <div class="bg-slate-800 text-white rounded-xl p-4 mb-6 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <svg class="w-5 h-5"
-             fill="none"
-             stroke="currentColor"
-             viewBox="0 0 24 24">
-          <path stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-        </svg>
-        <span class="font-medium">Semua Produk ({{ $totalItems }})</span>
-      </div>
-      <button onclick="toggleStockFilter()"
-              id="lowStockBtn"
-              class="px-4 py-2 bg-yellow-500 text-gray-900 rounded-lg hover:bg-yellow-600 transition flex items-center gap-2">
-        <svg class="w-4 h-4"
-             fill="none"
-             stroke="currentColor"
-             viewBox="0 0 24 24">
-          <path stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        Low Stock ({{ $lowStockCount }})
-      </button>
-    </div>
-
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
       <div class="p-4">
         <div class="relative">
@@ -192,7 +165,7 @@
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kategori</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Harga</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stok</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">⚠ Threshold</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stok vs Threshold</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
             </tr>
@@ -230,11 +203,21 @@
                     </span>
                   </div>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-sm">
-                    <span class="px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-700">
-                      {{ $item->threshold }} {{ $item->unit }}
-                    </span>
+                <td class="px-6 py-4">
+                  @php
+                    $pct = $item->threshold > 0 ? min(100, round(($item->stock_quantity / $item->threshold) * 100)) : 100;
+                    $barColor = $pct <= 25 ? 'bg-red-500' : ($pct <= 75 ? 'bg-yellow-400' : 'bg-green-500');
+                    $textColor = $pct <= 25 ? 'text-red-700' : ($pct <= 75 ? 'text-yellow-700' : 'text-green-700');
+                  @endphp
+                  <div class="min-w-[110px]">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-xs font-semibold {{ $textColor }}">{{ $pct }}%</span>
+                      <span class="text-xs text-gray-400">min {{ $item->threshold }} {{ $item->unit }}</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-1.5">
+                      <div class="h-1.5 rounded-full {{ $barColor }}"
+                           style="width: {{ $pct }}%"></div>
+                    </div>
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
@@ -276,6 +259,101 @@
             @endforeach
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Threshold Bulk Edit Modal -->
+  <div id="thresholdModal"
+       class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+      <div class="p-6 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-bold text-gray-900">Edit Threshold Sekaligus</h3>
+          <p class="text-sm text-gray-500">Atur batas minimum stok untuk setiap produk</p>
+        </div>
+        <button onclick="closeThresholdModal()"
+                class="p-2 hover:bg-gray-100 rounded-lg transition">
+          <svg class="w-5 h-5 text-gray-500"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-4 border-b border-gray-100">
+        <input type="text"
+               id="thresholdSearch"
+               placeholder="Cari produk..."
+               oninput="filterThresholdList()"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent">
+      </div>
+      <form id="thresholdForm"
+            method="POST"
+            action="{{ route('admin.inventory.updateThreshold') }}"
+            class="flex flex-col flex-1 min-h-0">
+        @csrf
+        <div class="overflow-y-auto flex-1 divide-y divide-gray-100"
+             id="thresholdList">
+          @foreach ($items as $index => $item)
+            <div class="flex items-center gap-4 px-6 py-3 hover:bg-gray-50 threshold-item"
+                 data-name="{{ strtolower($item->name) }}">
+              <input type="hidden"
+                     name="items[{{ $index }}][id]"
+                     value="{{ $item->id }}">
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 truncate">{{ $item->name }}</p>
+                <p class="text-xs text-gray-500">{{ $item->stock_quantity }} {{ $item->unit }} tersedia</p>
+              </div>
+              <div class="shrink-0 flex items-center gap-2">
+                <span class="text-xs text-gray-500">Min stok:</span>
+                <input type="number"
+                       name="items[{{ $index }}][threshold]"
+                       value="{{ $item->threshold }}"
+                       min="0"
+                       class="w-24 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent text-center">
+                <span class="text-xs text-gray-500 w-8">{{ $item->unit }}</span>
+              </div>
+            </div>
+          @endforeach
+        </div>
+        <div class="p-4 border-t border-gray-200 flex gap-3">
+          <button type="button"
+                  onclick="closeThresholdModal()"
+                  class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition font-medium">
+            Batal
+          </button>
+          <button type="submit"
+                  class="flex-1 px-4 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition font-semibold">
+            Simpan Semua
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sync Result Modal -->
+  <div id="syncResultModal"
+       class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div class="p-6">
+        <div id="syncResultIcon"
+             class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4">
+        </div>
+        <h3 id="syncResultTitle"
+            class="text-lg font-bold text-gray-900 text-center mb-1"></h3>
+        <p id="syncResultMessage"
+           class="text-sm text-gray-500 text-center mb-4"></p>
+        <pre id="syncResultOutput"
+             class="hidden bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 max-h-40 overflow-y-auto whitespace-pre-wrap mb-4"></pre>
+        <button onclick="document.getElementById('syncResultModal').classList.add('hidden'); window.location.reload();"
+                class="w-full px-4 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 font-semibold transition">
+          Tutup &amp; Refresh
+        </button>
       </div>
     </div>
   </div>
@@ -450,13 +528,16 @@
       const items = @json($items);
       let lowStockFilterActive = false;
 
-      function syncFromAccurate() {
-        const btn = document.querySelector('[data-sync-btn]'); // atau gunakan ID/class spesifik
-        const text = document.querySelector('[data-sync-text]'); // atau gunakan ID/class spesifik
+      const SYNC_ICON_HTML = document.querySelector('[data-sync-icon]').innerHTML;
 
-        // Disable button
+      function syncFromAccurate() {
+        const btn = document.querySelector('[data-sync-btn]');
+        const icon = document.querySelector('[data-sync-icon]');
+        const text = document.querySelector('[data-sync-text]');
+
         btn.disabled = true;
-        text.innerHTML = '<span class="animate-spin inline-block mr-2">⚙️</span> Syncing...';
+        icon.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>`;
+        text.textContent = 'Syncing...';
 
         fetch('/admin/accurate/sync/items', {
             method: 'POST',
@@ -468,14 +549,45 @@
           .then(res => res.json())
           .then(data => {
             btn.disabled = false;
+            icon.innerHTML = SYNC_ICON_HTML;
             text.textContent = 'Sync dari Accurate';
-            window.location.reload()
+            showSyncResult(data.success, data.message, data.output ?? null);
           })
           .catch(err => {
             btn.disabled = false;
+            icon.innerHTML = SYNC_ICON_HTML;
             text.textContent = 'Sync dari Accurate';
-            alert('❌ Error: ' + err.message);
+            showSyncResult(false, 'Koneksi gagal: ' + err.message, null);
           });
+      }
+
+      function showSyncResult(success, message, output) {
+        const modal = document.getElementById('syncResultModal');
+        const icon = document.getElementById('syncResultIcon');
+        const title = document.getElementById('syncResultTitle');
+        const msg = document.getElementById('syncResultMessage');
+        const pre = document.getElementById('syncResultOutput');
+
+        if (success) {
+          icon.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-green-100';
+          icon.innerHTML = `<svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+          title.textContent = 'Sync Berhasil!';
+        } else {
+          icon.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-red-100';
+          icon.innerHTML = `<svg class="w-7 h-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`;
+          title.textContent = 'Sync Gagal';
+        }
+
+        msg.textContent = message;
+
+        if (output && output.trim()) {
+          pre.textContent = output.trim();
+          pre.classList.remove('hidden');
+        } else {
+          pre.classList.add('hidden');
+        }
+
+        modal.classList.remove('hidden');
       }
 
       function openModal(mode, itemId = null) {
@@ -527,6 +639,23 @@
         document.getElementById('deleteModal').classList.add('hidden');
       }
 
+      function openThresholdModal() {
+        document.getElementById('thresholdSearch').value = '';
+        filterThresholdList();
+        document.getElementById('thresholdModal').classList.remove('hidden');
+      }
+
+      function closeThresholdModal() {
+        document.getElementById('thresholdModal').classList.add('hidden');
+      }
+
+      function filterThresholdList() {
+        const q = document.getElementById('thresholdSearch').value.toLowerCase();
+        document.querySelectorAll('.threshold-item').forEach(function(el) {
+          el.style.display = el.dataset.name.includes(q) ? '' : 'none';
+        });
+      }
+
       function toggleStockFilter() {
         lowStockFilterActive = !lowStockFilterActive;
         const btn = document.getElementById('lowStockBtn');
@@ -566,6 +695,7 @@
         if (e.key === 'Escape') {
           closeModal();
           closeDeleteModal();
+          closeThresholdModal();
         }
       });
 
@@ -576,6 +706,10 @@
 
       document.getElementById('deleteModal').addEventListener('click', function(e) {
         if (e.target === this) closeDeleteModal();
+      });
+
+      document.getElementById('thresholdModal').addEventListener('click', function(e) {
+        if (e.target === this) closeThresholdModal();
       });
     </script>
   @endpush

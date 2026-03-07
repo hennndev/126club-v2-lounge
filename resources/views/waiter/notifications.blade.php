@@ -6,6 +6,58 @@
       <p class="text-slate-700 text-xs mt-0.5">Reservasi & check-in terbaru</p>
     </div>
 
+    <!-- Assigned to Me -->
+    @if ($assignedNotifications->isNotEmpty())
+      <div class="mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-base text-slate-900">Assign Baru ke Kamu</h2>
+          <span class="inline-flex items-center gap-1 bg-teal-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+            <span class="w-1.5 h-1.5 rounded-full bg-white opacity-80 animate-pulse"></span>
+            {{ $assignedNotifications->count() }} baru
+          </span>
+        </div>
+        <div class="space-y-3">
+          @foreach ($assignedNotifications as $notif)
+            @php $data = $notif->data; @endphp
+            <div class="bg-teal-50 border border-teal-200 rounded-2xl p-4">
+              <div class="flex items-start gap-3">
+                <div class="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0">
+                  <svg class="w-4 h-4 text-teal-600"
+                       fill="none"
+                       stroke="currentColor"
+                       viewBox="0 0 24 24">
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-semibold text-teal-700 mb-0.5">Kamu di-assign ke booking ini</p>
+                  <p class="font-semibold text-sm text-slate-900">{{ $data['customer_name'] }}</p>
+                  <p class="text-xs text-slate-600 mt-0.5">
+                    Meja {{ $data['table_number'] ?? '-' }}
+                    @if (!empty($data['area_name']))
+                      · {{ $data['area_name'] }}
+                    @endif
+                  </p>
+                  <p class="text-xs text-slate-500 mt-0.5">
+                    {{ \Carbon\Carbon::parse($data['reservation_date'])->translatedFormat('d M Y') }}
+                    @if (!empty($data['reservation_time']))
+                      · {{ \Carbon\Carbon::parse($data['reservation_time'])->format('H:i') }}
+                    @endif
+                  </p>
+                </div>
+                <span class="flex-shrink-0 text-xs text-slate-400">
+                  {{ $notif->created_at->timezone('Asia/Jakarta')->diffForHumans() }}
+                </span>
+              </div>
+            </div>
+          @endforeach
+        </div>
+      </div>
+    @endif
+
     <!-- Pending Check-ins -->
     <div class="mb-6">
       <div class="flex items-center justify-between mb-3">

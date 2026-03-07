@@ -58,7 +58,7 @@ class TableReservationController extends Controller
                 $query->where('reservation_date', '<=', $request->date_to);
             }
         } elseif ($tab === 'history') {
-            $query->whereIn('status', ['completed', 'cancelled', 'rejected']);
+            $query->whereIn('status', ['completed', 'cancelled', 'rejected', 'force_closed']);
 
             if ($request->filled('date_from')) {
                 $query->where('reservation_date', '>=', $request->date_from);
@@ -128,11 +128,12 @@ class TableReservationController extends Controller
             ->toArray();
 
         // History stats
-        $historyTotalCount = TableReservation::whereIn('status', ['completed', 'cancelled', 'rejected'])->count();
+        $historyTotalCount = TableReservation::whereIn('status', ['completed', 'cancelled', 'rejected', 'force_closed'])->count();
         $historyCompletedCount = TableReservation::where('status', 'completed')->count();
-        $historyTotalRevenue = \App\Models\Billing::whereHas('tableSession', function ($q) {
-            $q->whereHas('reservation', function ($q2) {
-                $q2->where('status', 'completed');
+        $historyForceClosedCount = TableReservation::where('status', 'force_closed')->count();
+        $historyTotalRevenue = \App\Models\Billing::whereHas('tableSession', function ($q): void {
+            $q->whereHas('reservation', function ($q2): void {
+                $q2->whereIn('status', ['completed', 'force_closed']);
             });
         })->sum('grand_total');
         $historyAvgSpending = $historyCompletedCount > 0
@@ -143,6 +144,26 @@ class TableReservationController extends Controller
             ->with('profile')
             ->orderBy('name')
             ->get();
+
+        // JSON response for waiter mobile scanner search
+        if ($request->get('format') === 'json' || $request->wantsJson()) {
+            return response()->json([
+                'reservations' => $bookings->map(fn ($b) => [
+                    'id' => $b->id,
+                    'status' => $b->status,
+                    'customer' => $b->customer ? [
+                        'name' => $b->customer->name,
+                        'email' => $b->customer->email,
+                    ] : null,
+                    'table' => $b->table ? [
+                        'table_number' => $b->table->table_number,
+                    ] : null,
+                    'reservation_date' => $b->reservation_date,
+                    'reservation_time' => $b->reservation_time,
+                    'booking_code' => $b->booking_code,
+                ])->values(),
+            ]);
+        }
 
         return view('bookings.index', compact(
             'bookings',
@@ -165,6 +186,7 @@ class TableReservationController extends Controller
             'checkedInTablesCount',
             'historyTotalCount',
             'historyCompletedCount',
+            'historyForceClosedCount',
             'historyTotalRevenue',
             'historyAvgSpending'
         ));
@@ -328,7 +350,7 @@ class TableReservationController extends Controller
                             'orders_total' => 0,
                             'subtotal' => 0,
                             'tax' => 0,
-                            'tax_percentage' => 10.00,
+                            'tax_percentage' => 0,
                             'discount_amount' => 0,
                             'grand_total' => 0,
                             'paid_amount' => 0,
@@ -393,15 +415,15 @@ class TableReservationController extends Controller
             DB::transaction(function () use ($booking, $session, $billing, $validated) {
                 // Recalculate final totals
                 $ordersTotal = $session->orders()->sum('total');
-                $subtotal = $billing->minimum_charge + $ordersTotal;
-                $tax = $subtotal * ($billing->tax_percentage / 100);
-                $grandTotal = $subtotal + $tax - $billing->discount_amount;
+                // Minimum charge = minimum spend, not additive fee. Tax not yet implemented.
+                $subtotal = max((float) $billing->minimum_charge, (float) $ordersTotal);
+                $grandTotal = $subtotal - $billing->discount_amount;
                 $transactionCode = 'TRX-'.now()->timestamp.rand(100, 999);
 
                 $billing->update([
                     'orders_total' => $ordersTotal,
                     'subtotal' => $subtotal,
-                    'tax' => $tax,
+                    'tax' => 0,
                     'grand_total' => $grandTotal,
                     'paid_amount' => $grandTotal,
                     'billing_status' => 'paid',
@@ -450,8 +472,8 @@ class TableReservationController extends Controller
                     'minimum_charge' => (float) $billing->minimum_charge,
                     'orders_total' => (float) $billing->orders_total,
                     'subtotal' => (float) $billing->subtotal,
-                    'tax' => (float) $billing->tax,
-                    'tax_percentage' => (float) $billing->tax_percentage,
+                    'tax' => 0,
+                    'tax_percentage' => 0,
                     'discount_amount' => (float) $billing->discount_amount,
                     'grand_total' => (float) $billing->grand_total,
                     'payment_method' => strtoupper($billing->payment_method),
@@ -475,10 +497,19 @@ class TableReservationController extends Controller
             return back()->withErrors(['error' => 'Sesi aktif tidak ditemukan untuk booking ini.']);
         }
 
-        $session->update(['waiter_id' => $validated['waiter_id'] ?? null]);
+        $previousWaiterId = $session->waiter_id;
+        $newWaiterId = $validated['waiter_id'] ?? null;
 
-        $waiterName = $validated['waiter_id']
-            ? (User::find($validated['waiter_id'])?->profile?->name ?? User::find($validated['waiter_id'])?->name ?? '-')
+        $session->update(['waiter_id' => $newWaiterId]);
+
+        // Send notification to newly assigned waiter (not when unassigning)
+        if ($newWaiterId && $newWaiterId !== $previousWaiterId) {
+            $waiter = User::find($newWaiterId);
+            $waiter?->notify(new \App\Notifications\WaiterAssignedNotification($booking->load(['table.area', 'customer.profile', 'customer.customerUser'])));
+        }
+
+        $waiterName = $newWaiterId
+            ? (User::find($newWaiterId)?->profile?->name ?? User::find($newWaiterId)?->name ?? '-')
             : 'tidak ada';
 
         return back()->with('success', "Waiter berhasil di-assign: {$waiterName}.");

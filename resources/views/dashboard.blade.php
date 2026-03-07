@@ -25,9 +25,9 @@
           </div>
         </div>
         <div class="mb-1">
-          <p class="text-2xl font-bold text-gray-800">Rp 49.990.000</p>
+          <p class="text-2xl font-bold text-gray-800">Rp {{ number_format($revenueToday, 0, ',', '.') }}</p>
         </div>
-        <p class="text-sm text-gray-500">5 transaksi</p>
+        <p class="text-sm text-gray-500">{{ $transactionsToday }} transaksi</p>
       </div>
 
       <!-- Transaksi Hari Ini -->
@@ -47,9 +47,9 @@
           </div>
         </div>
         <div class="mb-1">
-          <p class="text-2xl font-bold text-gray-800">5</p>
+          <p class="text-2xl font-bold text-gray-800">{{ $transactionsToday }}</p>
         </div>
-        <p class="text-sm text-gray-500">37 item terjual</p>
+        <p class="text-sm text-gray-500">{{ $itemsSoldToday }} item terjual</p>
       </div>
 
       <!-- Booking Pending -->
@@ -69,9 +69,9 @@
           </div>
         </div>
         <div class="mb-1">
-          <p class="text-2xl font-bold text-gray-800">3</p>
+          <p class="text-2xl font-bold text-gray-800">{{ $bookingPending }}</p>
         </div>
-        <p class="text-sm text-gray-500">1 confirmed</p>
+        <p class="text-sm text-gray-500">{{ $bookingConfirmed }} confirmed</p>
       </div>
 
       <!-- Meja Tersedia -->
@@ -91,7 +91,7 @@
           </div>
         </div>
         <div class="mb-1">
-          <p class="text-2xl font-bold text-gray-800">13/16</p>
+          <p class="text-2xl font-bold text-gray-800">{{ $availableTables }}/{{ $totalTables }}</p>
         </div>
         <p class="text-sm text-gray-500">meja siap digunakan</p>
       </div>
@@ -135,7 +135,7 @@
                 <p class="text-sm text-gray-600">Menunggu konfirmasi</p>
               </div>
             </div>
-            <div class="text-3xl font-bold text-orange-600">3</div>
+            <div class="text-3xl font-bold text-orange-600">{{ $bookingPending }}</div>
           </div>
 
           <!-- Confirmed -->
@@ -157,7 +157,7 @@
                 <p class="text-sm text-gray-600">Sudah dikonfirmasi</p>
               </div>
             </div>
-            <div class="text-3xl font-bold text-blue-600">1</div>
+            <div class="text-3xl font-bold text-blue-600">{{ $bookingConfirmed }}</div>
           </div>
 
           <!-- Completed -->
@@ -179,7 +179,7 @@
                 <p class="text-sm text-gray-600">Sudah selesai</p>
               </div>
             </div>
-            <div class="text-3xl font-bold text-green-600">2</div>
+            <div class="text-3xl font-bold text-green-600">{{ $bookingCompleted }}</div>
           </div>
         </div>
       </div>
@@ -220,7 +220,7 @@
                 <p class="text-sm text-gray-600">Semua produk</p>
               </div>
             </div>
-            <div class="text-3xl font-bold text-slate-700">102</div>
+            <div class="text-3xl font-bold text-slate-700">{{ $totalProducts }}</div>
           </div>
 
           <!-- Stok Rendah -->
@@ -242,7 +242,7 @@
                 <p class="text-sm text-gray-600">&lt; 10 item</p>
               </div>
             </div>
-            <div class="text-3xl font-bold text-yellow-600">17</div>
+            <div class="text-3xl font-bold text-yellow-600">{{ $lowStockCount }}</div>
           </div>
 
           <!-- Habis -->
@@ -264,7 +264,7 @@
                 <p class="text-sm text-gray-600">Stok = 0</p>
               </div>
             </div>
-            <div class="text-3xl font-bold text-red-600">1</div>
+            <div class="text-3xl font-bold text-red-600">{{ $outOfStockCount }}</div>
           </div>
         </div>
       </div>

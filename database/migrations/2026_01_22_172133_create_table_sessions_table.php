@@ -21,10 +21,10 @@ return new class extends Migration
             $table->timestamp('check_in_qr_expires_at')->nullable();
             $table->timestamp('checked_in_at')->nullable();
             $table->timestamp('checked_out_at')->nullable();
-            $table->enum('status', ['pending', 'active', 'completed'])->default('pending');
+            $table->enum('status', ['pending', 'active', 'completed', 'force_closed'])->default('pending');
             $table->text('notes')->nullable();
             $table->timestamps();
-            
+
             // Indexes untuk performa query
             $table->index('status');
             $table->index('checked_in_at');

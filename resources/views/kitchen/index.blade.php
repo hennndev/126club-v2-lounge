@@ -433,38 +433,47 @@
 
   <script>
     function kitchenOrdersApp() {
+      console.log({!! json_encode($orders) !!})
       return {
-        orders: {!! json_encode($orders->map(function ($order) {
-          return [
-            'id' => $order->id,
-            'order_number' => $order->order_number,
-            'status' => $order->status,
-            'progress' => $order->progress,
-            'created_at' => $order->created_at->format('d M Y H:i'),
-            'customer' => $order->customer ? [
-              'id' => $order->customer->id,
-              'name' => $order->customer->profile->name ?? $order->customer->name,
-              'phone' => $order->customer->profile->phone ?? null,
-            ] : null,
-            'table' => $order->table ? [
-              'id' => $order->table->id,
-              'table_number' => $order->table->number ?? $order->table->table_number,
-              'area' => $order->table->area ? [
-                'id' => $order->table->area->id,
-                'name' => $order->table->area->name,
-              ] : null,
-            ] : null,
-            'items' => $order->items->map(function ($item) {
-              return [
-                'id' => $item->id,
-                'recipe_id' => $item->recipe_id,
-                'recipe_name' => $item->recipe->name ?? 'Unknown',
-                'quantity' => $item->quantity,
-                'is_completed' => $item->is_completed,
-              ];
-            })->values(),
-          ];
-        })->values()) !!},
+        orders: {!! json_encode(
+            $orders->map(function ($order) {
+                    return [
+                        'id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'status' => $order->status,
+                        'progress' => $order->progress,
+                        'created_at' => $order->created_at->format('d M Y H:i'),
+                        'customer' => $order->customer
+                            ? [
+                                'id' => $order->customer->id,
+                                'name' => $order->customer->user->name ?? $order->customer->name,
+                                'phone' => $order->customer->profile->phone ?? null,
+                            ]
+                            : null,
+                        'table' => $order->table
+                            ? [
+                                'id' => $order->table->id,
+                                'table_number' => $order->table->number ?? $order->table->table_number,
+                                'area' => $order->table->area
+                                    ? [
+                                        'id' => $order->table->area->id,
+                                        'name' => $order->table->area->name,
+                                    ]
+                                    : null,
+                            ]
+                            : null,
+                        'items' => $order->items->map(function ($item) {
+                                return [
+                                    'id' => $item->id,
+                                    'recipe_id' => $item->bom_recipe_id,
+                                    'recipe_name' => $item->recipe?->inventoryItem?->name ?? 'Unknown',
+                                    'quantity' => $item->quantity,
+                                    'is_completed' => $item->is_completed,
+                                ];
+                            })->values(),
+                    ];
+                })->values(),
+        ) !!},
         stats: {!! json_encode(['total' => $totalOrders, 'baru' => $baruOrders, 'proses' => $prosesOrders, 'selesai' => $selesaiOrders]) !!},
         currentStatus: null,
         isLoading: false,
@@ -575,10 +584,12 @@
             const data = await response.json();
 
             if (data.success) {
-              // Update the specific order in the list
-              const orderIndex = this.orders.findIndex(o => o.id === orderId);
-              if (orderIndex !== -1) {
-                this.orders[orderIndex] = data.order;
+              // Remove order from list (default view excludes selesai)
+              this.orders = this.orders.filter(o => o.id !== orderId);
+              // Update stats
+              if (this.stats) {
+                this.stats.proses = Math.max(0, (this.stats.proses || 0) - 1);
+                this.stats.selesai = (this.stats.selesai || 0) + 1;
               }
               this.showToastMessage(data.message, 'success');
             } else {

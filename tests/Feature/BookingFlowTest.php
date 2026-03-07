@@ -39,7 +39,7 @@ function makeBookingCustomer(): User
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test('creating a booking always starts with pending status', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area);
     $customer = makeBookingCustomer();
@@ -64,7 +64,7 @@ test('creating a booking always starts with pending status', function () {
 });
 
 test('creating a booking does not change table status to reserved', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area);
     $customer = makeBookingCustomer();
@@ -82,7 +82,7 @@ test('creating a booking does not change table status to reserved', function () 
 });
 
 test('confirming a booking sets table status to reserved', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area);
     $customer = makeBookingCustomer();
@@ -108,7 +108,7 @@ test('confirming a booking sets table status to reserved', function () {
 });
 
 test('confirming a second booking for the same table and date fails', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area);
     $customerA = makeBookingCustomer();
@@ -145,7 +145,7 @@ test('confirming a second booking for the same table and date fails', function (
 });
 
 test('completing a booking sets table status back to available', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area, ['status' => 'reserved']);
     $customer = makeBookingCustomer();
@@ -168,7 +168,7 @@ test('completing a booking sets table status back to available', function () {
 });
 
 test('cancelling a booking sets table status back to available', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area, ['status' => 'reserved']);
     $customer = makeBookingCustomer();
@@ -191,7 +191,7 @@ test('cancelling a booking sets table status back to available', function () {
 });
 
 test('pending tab shows pending bookings and is accessible', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area);
     $customer = makeBookingCustomer();
@@ -215,7 +215,7 @@ test('pending tab shows pending bookings and is accessible', function () {
 });
 
 test('pending tab conflict keys include competing bookings', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area);
     $date = now()->addDays(5)->toDateString();
@@ -250,7 +250,7 @@ test('pending tab conflict keys include competing bookings', function () {
 });
 
 test('admin can assign a waiter to an active session', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area);
     $customer = makeBookingCustomer();
@@ -287,7 +287,7 @@ test('admin can assign a waiter to an active session', function () {
 });
 
 test('admin can unassign a waiter from an active session', function () {
-    $admin = User::factory()->create();
+    $admin = adminUser();
     $area = makeArea();
     $table = makeTable($area);
     $customer = makeBookingCustomer();

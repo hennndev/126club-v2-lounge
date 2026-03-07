@@ -59,6 +59,23 @@ class PrinterService
      */
     public function printReceipt(Order $order, Printer $printer): bool
     {
+        if ($printer->connection_type === 'log') {
+            $lines = [
+                "Order  : {$order->order_number}",
+                'Date   : '.$order->ordered_at->format('d/m/Y H:i'),
+                'Table  : '.($order->tableSession?->table?->table_number ?? 'N/A'),
+                '',
+            ];
+            foreach ($order->items as $item) {
+                $lines[] = "  {$item->quantity}x {$item->item_name}  Rp ".number_format($item->subtotal, 0, ',', '.');
+            }
+            $lines[] = '';
+            $lines[] = 'TOTAL  : Rp '.number_format($order->total, 0, ',', '.');
+            $this->logPrint('RECEIPT', $lines);
+
+            return true;
+        }
+
         $connector = $this->createConnector($printer);
         $escpos = new EscposPrinter($connector);
 

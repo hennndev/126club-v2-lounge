@@ -46,7 +46,7 @@
 
   {{-- Fixed Bottom Navigation --}}
   @php
-    $pendingNotifCount = \App\Models\TableReservation::where('status', 'confirmed')->count();
+    $pendingNotifCount = auth()->user()?->unreadNotifications()->where('type', \App\Notifications\WaiterAssignedNotification::class)->count();
   @endphp
 
   <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 shadow-lg">

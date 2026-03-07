@@ -1,6 +1,7 @@
 <x-app-layout>
   <div class="flex w-full h-[calc(100vh-6rem)]"
-       x-data="posApp">
+       x-data="posApp"
+       x-cloak>
 
     <!-- Products Section -->
     <div class="flex-1 flex flex-col overflow-hidden">
@@ -25,33 +26,24 @@
                    class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
           </form>
         </div>
-        <select class="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 min-w-[130px]">
-          <option value="all">All</option>
-          <option value="drink">Drink</option>
-          <option value="food">Food</option>
-          <option value="bar">Bar</option>
-        </select>
-        <select id="counterLocationSelect"
-                class="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 min-w-[160px]"
-                x-model="counterLocation"
-                @change="selectCounter($event)">
-          <option value="">— Pilih Counter —</option>
-          @foreach ($printerLocations as $group => $locations)
-            <optgroup label="{{ $group }}">
-              @foreach ($locations as $value => $label)
-                <option value="{{ $value }}">{{ $label }}</option>
-              @endforeach
-            </optgroup>
+        <!-- Grid Size Picker -->
+        <div class="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5">
+          <span class="text-xs text-gray-400 font-medium mr-1">Grid</span>
+          @foreach ([2, 3, 4, 5, 6] as $cols)
+            <button type="button"
+                    @click="gridCols = {{ $cols }}; localStorage.setItem('posGridCols', {{ $cols }})"
+                    :class="gridCols === {{ $cols }} ? 'bg-slate-800 text-white' : 'text-gray-500 hover:bg-gray-100'"
+                    class="w-7 h-7 rounded-lg text-xs font-semibold transition-colors">
+              {{ $cols }}
+            </button>
           @endforeach
-        </select>
-        <span x-show="counterLocation"
-              x-text="getCounterLabel()"
-              class="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full whitespace-nowrap"></span>
+        </div>
       </div>
 
       <!-- Products Grid -->
       <div class="overflow-y-auto flex-1 px-6 pb-6">
-        <div class="grid grid-cols-4 gap-4">
+        <div class="grid gap-4"
+             :style="`grid-template-columns: repeat(${gridCols}, minmax(0, 1fr))`">
           @forelse($products as $product)
             @php
               $category = strtolower($product['category'] ?? 'drink');
@@ -481,6 +473,7 @@
                     'tierName' => $tierName,
                     'discountPercentage' => $tierDiscount,
                     'waiterName' => $session->waiter?->profile?->name ?? ($session->waiter?->name ?? null),
+                    'reservationId' => $session->table_reservation_id,
                 ];
               @endphp
               <button type="button"
@@ -577,6 +570,7 @@
           </div>
 
           <!-- Waiter Info -->
+          <!-- Assigned: show chip -->
           <div x-show="checkoutForm.waiterName"
                style="display: none;"
                class="flex items-center gap-2.5 px-4 py-2.5 bg-indigo-50 border border-indigo-100 rounded-xl">
@@ -592,7 +586,43 @@
             <span class="text-sm text-indigo-700 font-medium"
                   x-text="'Waiter: ' + checkoutForm.waiterName"></span>
           </div>
-          <div x-show="!checkoutForm.waiterName"
+          <!-- Not assigned + has booking: assign dropdown -->
+          <div x-show="!checkoutForm.waiterName && checkoutForm.reservationId"
+               style="display: none;"
+               class="space-y-1.5">
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Assign Waiter</label>
+            <div class="flex items-center gap-2">
+              <select @change="assignWaiterFromPos($event.target.value)"
+                      :disabled="checkoutForm.assigningWaiter"
+                      class="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-white disabled:opacity-50">
+                <option value="">— Pilih Waiter —</option>
+                <template x-for="w in posWaiters"
+                          :key="w.id">
+                  <option :value="w.id"
+                          x-text="w.name"></option>
+                </template>
+              </select>
+              <svg x-show="checkoutForm.assigningWaiter"
+                   class="w-5 h-5 text-indigo-500 animate-spin flex-shrink-0"
+                   fill="none"
+                   viewBox="0 0 24 24">
+                <circle class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"></circle>
+                <path class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+            </div>
+            <p x-show="checkoutForm.assignWaiterError"
+               x-text="checkoutForm.assignWaiterError"
+               class="text-xs text-red-500"></p>
+          </div>
+          <!-- Not assigned + no reservation (walk-in): amber notice -->
+          <div x-show="!checkoutForm.waiterName && !checkoutForm.reservationId"
                style="display: none;"
                class="flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 border border-amber-100 rounded-xl">
             <svg class="w-4 h-4 text-amber-400 flex-shrink-0"
@@ -622,12 +652,12 @@
                  class="space-y-1">
               <div class="w-full bg-gray-700 rounded-full h-1.5">
                 <div class="h-1.5 rounded-full transition-all"
-                     :class="checkoutForm.ordersTotal >= checkoutForm.minimumCharge ? 'bg-green-400' : 'bg-orange-400'"
-                     :style="'width: ' + Math.min(cartTotal / checkoutForm.minimumCharge * 100, 100) + '%'"></div>
+                     :class="(checkoutForm.ordersTotal + cartTotal) >= checkoutForm.minimumCharge ? 'bg-green-400' : 'bg-orange-400'"
+                     :style="'width: ' + Math.min((checkoutForm.ordersTotal + cartTotal) / checkoutForm.minimumCharge * 100, 100) + '%'"></div>
               </div>
-              <p x-show="cartTotal < checkoutForm.minimumCharge"
+              <p x-show="(checkoutForm.ordersTotal + cartTotal) < checkoutForm.minimumCharge"
                  class="text-xs text-orange-400 font-medium"
-                 x-text="'Kurang ' + formatCurrency(checkoutForm.minimumCharge - cartTotal) + ' dari min. charge'"></p>
+                 x-text="'Kurang ' + formatCurrency(checkoutForm.minimumCharge - (checkoutForm.ordersTotal + cartTotal)) + ' dari min. charge'"></p>
             </div>
             <div x-show="checkoutForm.minimumCharge > 0"
                  style="display: none;"
@@ -891,7 +921,7 @@
             Lewati
           </button>
           <button type="button"
-                  @click="printReceipt()"
+                  @click="closeReceiptModal()"
                   class="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 font-semibold text-sm transition flex items-center justify-center gap-2">
             <svg class="w-4 h-4"
                  fill="none"
@@ -902,7 +932,7 @@
                     stroke-width="2"
                     d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
-            Cetak Struk
+            Done
           </button>
         </div>
       </div>
@@ -1003,6 +1033,7 @@
         kitchenUrl: "{{ route('admin.kitchen.index') }}",
         barUrl: "{{ route('admin.bar.index') }}",
       };
+      const posWaiters = @json($waiters);
     </script>
 
     <script>
@@ -1032,6 +1063,7 @@
           toastMessage: '',
           toastType: 'success',
           counterLocation: posInitialData.currentCounter,
+          gridCols: parseInt(localStorage.getItem('posGridCols') ?? '4'),
           kitchenUrl: posInitialData.kitchenUrl,
           barUrl: posInitialData.barUrl,
           bookingStep: 'type',
@@ -1044,11 +1076,15 @@
             table_id: '',
             table_display: '',
             waiterName: '',
+            reservationId: null,
+            assigningWaiter: false,
+            assignWaiterError: '',
             minimumCharge: 0,
             ordersTotal: 0,
             tierName: '',
             discountPercentage: 0,
           },
+          posWaiters: posWaiters,
 
           init() {
             this.cart = posInitialData.cart;
@@ -1248,9 +1284,41 @@
             this.checkoutForm.tierName = data.tierName || '';
             this.checkoutForm.discountPercentage = data.discountPercentage || 0;
             this.checkoutForm.waiterName = data.waiterName || '';
+            this.checkoutForm.reservationId = data.reservationId || null;
+            this.checkoutForm.assigningWaiter = false;
+            this.checkoutForm.assignWaiterError = '';
             this.showCustomerTypeModal = false;
             this.bookingStep = 'type';
             this.showCheckoutModal = true;
+          },
+
+          async assignWaiterFromPos(waiterId) {
+            if (!waiterId || !this.checkoutForm.reservationId) return;
+            this.checkoutForm.assigningWaiter = true;
+            this.checkoutForm.assignWaiterError = '';
+            try {
+              const res = await fetch(`/admin/pos/assign-waiter/${this.checkoutForm.reservationId}`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                  'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                  waiter_id: waiterId
+                }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                this.checkoutForm.waiterName = data.waiterName;
+              } else {
+                this.checkoutForm.assignWaiterError = data.message || 'Gagal assign waiter.';
+              }
+            } catch (e) {
+              this.checkoutForm.assignWaiterError = 'Terjadi kesalahan. Coba lagi.';
+            } finally {
+              this.checkoutForm.assigningWaiter = false;
+            }
           },
 
           discountAmount() {
@@ -1308,6 +1376,7 @@
                 this.cart = [];
                 this.cartTotal = 0;
                 this.showCheckoutModal = false;
+                this.showToastMessage('Transaksi berhasil!', 'success');
                 this.showReceiptModal = true;
                 this.checkoutForm = {
                   customer_type: '',

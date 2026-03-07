@@ -11,11 +11,14 @@ class KitchenController extends Controller
 {
     public function index(Request $request)
     {
-        $query = KitchenOrder::with(['customer.profile', 'table.area', 'items.recipe']);
+        $query = KitchenOrder::with(['customer.user', 'customer.profile', 'table.area', 'items.recipe.inventoryItem']);
 
         // Filter by status
         if ($request->has('status') && in_array($request->status, ['baru', 'proses', 'selesai'])) {
             $query->where('status', $request->status);
+        } else {
+            // default: exclude selesai
+            $query->whereIn('status', ['baru', 'proses']);
         }
 
         $orders = $query->latest()->get();
@@ -35,14 +38,18 @@ class KitchenController extends Controller
     public function fetchOrders(Request $request): JsonResponse
     {
         $query = KitchenOrder::with([
+            'customer.user',
             'customer.profile',
             'table.area',
-            'items.recipe',
+            'items.recipe.inventoryItem',
         ])->latest();
 
         // Filter by status
         if ($request->has('status') && in_array($request->status, ['baru', 'proses', 'selesai'])) {
             $query->where('status', $request->status);
+        } else {
+            // default: exclude selesai
+            $query->whereIn('status', ['baru', 'proses']);
         }
 
         $orders = $query->get()->map(function ($order) {
@@ -70,9 +77,10 @@ class KitchenController extends Controller
 
         // Refresh the order to get updated data
         $order = KitchenOrder::with([
+            'customer.user',
             'customer.profile',
             'table.area',
-            'items.recipe',
+            'items.recipe.inventoryItem',
         ])->find($item->kitchen_order_id);
 
         return response()->json([
@@ -96,9 +104,10 @@ class KitchenController extends Controller
 
         // Refresh the order to get updated data
         $order = KitchenOrder::with([
+            'customer.user',
             'customer.profile',
             'table.area',
-            'items.recipe',
+            'items.recipe.inventoryItem',
         ])->find($order->id);
 
         return response()->json([
@@ -121,7 +130,7 @@ class KitchenController extends Controller
             'created_at' => $order->created_at->format('d M Y H:i'),
             'customer' => $order->customer ? [
                 'id' => $order->customer->id,
-                'name' => $order->customer->name,
+                'name' => $order->customer->user?->name ?? 'N/A',
                 'phone' => $order->customer->profile?->phone ?? null,
             ] : null,
             'table' => $order->table ? [
@@ -135,8 +144,8 @@ class KitchenController extends Controller
             'items' => $order->items->map(function ($item) {
                 return [
                     'id' => $item->id,
-                    'recipe_id' => $item->recipe_id,
-                    'recipe_name' => $item->recipe?->name ?? 'Unknown',
+                    'recipe_id' => $item->bom_recipe_id,
+                    'recipe_name' => $item->recipe?->inventoryItem?->name ?? 'Unknown',
                     'quantity' => $item->quantity,
                     'is_completed' => $item->is_completed,
                 ];

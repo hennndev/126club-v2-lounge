@@ -146,26 +146,24 @@
         </div>
       </div>
 
-      <!-- Filter Tabs -->
-      <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
-        <div class="p-6">
-          <div class="flex space-x-2">
-            <button @click="filterByStatus(null)"
-                    :class="currentStatus === null ? 'bg-gray-100 text-gray-700 border-2 border-gray-300' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'"
-                    class="px-4 py-2 rounded-lg">
-              Semua (<span x-text="counts.semua"></span>)
-            </button>
-            <button @click="filterByStatus('dalam-proses')"
-                    :class="currentStatus === 'dalam-proses' ? 'bg-orange-400 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'"
-                    class="px-4 py-2 rounded-lg">
-              Dalam Proses (<span x-text="counts.dalam_proses"></span>)
-            </button>
-            <button @click="filterByStatus('selesai')"
-                    :class="currentStatus === 'selesai' ? 'bg-green-400 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'"
-                    class="px-4 py-2 rounded-lg">
-              Selesai (<span x-text="counts.selesai"></span>)
-            </button>
-          </div>
+      <!-- Tabs -->
+      <div class="bg-slate-800 text-white rounded-xl p-4 mb-6">
+        <div class="flex items-center gap-4">
+          <button @click="filterByStatus(null)"
+                  :class="currentStatus === null ? 'bg-white bg-opacity-20' : ''"
+                  class="px-4 py-2 rounded-lg font-medium transition hover:bg-white hover:bg-opacity-20">
+            Semua (<span x-text="stats.total"></span>)
+          </button>
+          <button @click="filterByStatus('proses')"
+                  :class="currentStatus === 'proses' ? 'bg-white bg-opacity-20' : ''"
+                  class="px-4 py-2 rounded-lg font-medium transition hover:bg-white hover:bg-opacity-20">
+            ⏳ Dalam Proses (<span x-text="stats.proses"></span>)
+          </button>
+          <button @click="filterByStatus('selesai')"
+                  :class="currentStatus === 'selesai' ? 'bg-white bg-opacity-20' : ''"
+                  class="px-4 py-2 rounded-lg font-medium transition hover:bg-white hover:bg-opacity-20">
+            ✅ Selesai (<span x-text="stats.selesai"></span>)
+          </button>
         </div>
       </div>
 
@@ -432,40 +430,47 @@
   <script>
     function barOrdersApp() {
       return {
-        orders: {!! json_encode($orders->map(function ($order) {
-          return [
-            'id' => $order->id,
-            'order_number' => $order->order_number,
-            'status' => $order->status,
-            'progress' => $order->progress,
-            'created_at' => $order->created_at->format('d M Y H:i'),
-            'customer' => $order->customer ? [
-              'id' => $order->customer->id,
-              'name' => $order->customer->profile->full_name ?? $order->customer->name,
-              'phone' => $order->customer->phone ?? null,
-            ] : null,
-            'table' => $order->table ? [
-              'id' => $order->table->id,
-              'table_number' => $order->table->number ?? $order->table->table_number,
-              'area' => $order->table->area ? [
-                'id' => $order->table->area->id,
-                'name' => $order->table->area->name,
-              ] : null,
-            ] : null,
-            'items' => $order->items->map(function ($item) {
-              return [
-                'id' => $item->id,
-                'recipe_id' => $item->recipe_id,
-                'recipe_name' => $item->recipe->name ?? 'Unknown',
-                'quantity' => $item->quantity,
-                'is_completed' => $item->is_completed,
-              ];
-            })->values(),
-          ];
-        })->values()) !!},
+        orders: {!! json_encode(
+            $orders->map(function ($order) {
+                    return [
+                        'id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'status' => $order->status,
+                        'progress' => $order->progress,
+                        'created_at' => $order->created_at->format('d M Y H:i'),
+                        'customer' => $order->customer
+                            ? [
+                                'id' => $order->customer->id,
+                                'name' => $order->customer->user->name ?? $order->customer->name,
+                                'phone' => $order->customer->profile->phone ?? null,
+                            ]
+                            : null,
+                        'table' => $order->table
+                            ? [
+                                'id' => $order->table->id,
+                                'table_number' => $order->table->number ?? $order->table->table_number,
+                                'area' => $order->table->area
+                                    ? [
+                                        'id' => $order->table->area->id,
+                                        'name' => $order->table->area->name,
+                                    ]
+                                    : null,
+                            ]
+                            : null,
+                        'items' => $order->items->map(function ($item) {
+                                return [
+                                    'id' => $item->id,
+                                    'recipe_id' => $item->bom_recipe_id,
+                                    'recipe_name' => $item->recipe?->inventoryItem?->name ?? $item->inventoryItem?->name ?? 'Unknown',
+                                    'quantity' => $item->quantity,
+                                    'is_completed' => $item->is_completed,
+                                ];
+                            })->values(),
+                    ];
+                })->values(),
+        ) !!},
         stats: {!! json_encode($stats) !!},
-        counts: {!! json_encode($counts) !!},
-        currentStatus: '{{ $status }}' || null,
+        currentStatus: null,
         isLoading: false,
         processingItemId: null,
         processingOrderId: null,
@@ -510,7 +515,6 @@
             if (data.success) {
               this.orders = data.orders;
               this.stats = data.stats;
-              this.counts = data.counts;
             }
           } catch (error) {
             console.error('Error fetching orders:', error);
@@ -575,10 +579,12 @@
             const data = await response.json();
 
             if (data.success) {
-              // Update the specific order in the list
-              const orderIndex = this.orders.findIndex(o => o.id === orderId);
-              if (orderIndex !== -1) {
-                this.orders[orderIndex] = data.order;
+              // Remove order from list (default view excludes selesai)
+              this.orders = this.orders.filter(o => o.id !== orderId);
+              // Update stats
+              if (this.stats) {
+                this.stats.proses = Math.max(0, (this.stats.proses || 0) - 1);
+                this.stats.selesai = (this.stats.selesai || 0) + 1;
               }
               this.showToastMessage(data.message, 'success');
             } else {

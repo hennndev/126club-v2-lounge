@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\Tabel;
 use App\Models\Area;
+use App\Models\Tabel;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
 class TabelSeeder extends Seeder
@@ -18,6 +18,7 @@ class TabelSeeder extends Seeder
 
         if ($areas->isEmpty()) {
             $this->command->warn('No areas found. Please seed areas first.');
+
             return;
         }
 
@@ -28,21 +29,18 @@ class TabelSeeder extends Seeder
                 'tables' => [
                     ['table_number' => 'VIP Platinum Suite', 'capacity' => 12, 'minimum_charge' => 15.0, 'status' => 'available'],
                     ['table_number' => 'VIP Gold Suite', 'capacity' => 10, 'minimum_charge' => 12.0, 'status' => 'available'],
-                    ['table_number' => 'Private Sky Lounge', 'capacity' => 8, 'minimum_charge' => 10.0, 'status' => 'occupied'],
                     ['table_number' => 'Executive Room A', 'capacity' => 8, 'minimum_charge' => 8.0, 'status' => 'available'],
                     ['table_number' => 'Executive Room B', 'capacity' => 8, 'minimum_charge' => 8.0, 'status' => 'available'],
-                ]
+                ],
             ],
             // Main Bar
             [
                 'area_code' => 'BAR',
                 'tables' => [
                     ['table_number' => 'Bar Counter 1', 'capacity' => 6, 'minimum_charge' => 3.0, 'status' => 'available'],
-                    ['table_number' => 'Bar Counter 2', 'capacity' => 6, 'minimum_charge' => 3.0, 'status' => 'reserved'],
                     ['table_number' => 'Bar High Table 1', 'capacity' => 4, 'minimum_charge' => 2.5, 'status' => 'available'],
                     ['table_number' => 'Bar High Table 2', 'capacity' => 4, 'minimum_charge' => 2.5, 'status' => 'available'],
-                    ['table_number' => 'Bar Lounge Sofa', 'capacity' => 8, 'minimum_charge' => 5.0, 'status' => 'occupied'],
-                ]
+                ],
             ],
             // Dance Floor
             [
@@ -50,9 +48,8 @@ class TabelSeeder extends Seeder
                 'tables' => [
                     ['table_number' => 'Dance Floor VIP 1', 'capacity' => 10, 'minimum_charge' => 7.0, 'status' => 'available'],
                     ['table_number' => 'Dance Floor VIP 2', 'capacity' => 10, 'minimum_charge' => 7.0, 'status' => 'available'],
-                    ['table_number' => 'Stage Side Table', 'capacity' => 6, 'minimum_charge' => 5.0, 'status' => 'reserved'],
                     ['table_number' => 'Dance Booth 1', 'capacity' => 4, 'minimum_charge' => 3.5, 'status' => 'available'],
-                ]
+                ],
             ],
             // Lounge Area
             [
@@ -60,11 +57,9 @@ class TabelSeeder extends Seeder
                 'tables' => [
                     ['table_number' => 'Lounge Sofa 1', 'capacity' => 6, 'minimum_charge' => 4.0, 'status' => 'available'],
                     ['table_number' => 'Lounge Sofa 2', 'capacity' => 6, 'minimum_charge' => 4.0, 'status' => 'available'],
-                    ['table_number' => 'Lounge Sofa 3', 'capacity' => 8, 'minimum_charge' => 5.0, 'status' => 'occupied'],
                     ['table_number' => 'Corner Booth', 'capacity' => 4, 'minimum_charge' => 3.0, 'status' => 'available'],
                     ['table_number' => 'Window Table', 'capacity' => 4, 'minimum_charge' => 3.0, 'status' => 'available'],
-                    ['table_number' => 'Outdoor Terrace', 'capacity' => 10, 'minimum_charge' => 6.0, 'status' => 'maintenance'],
-                ]
+                ],
             ],
             // Outdoor Patio
             [
@@ -73,15 +68,14 @@ class TabelSeeder extends Seeder
                     ['table_number' => 'Patio Table 1', 'capacity' => 6, 'minimum_charge' => 3.5, 'status' => 'available'],
                     ['table_number' => 'Patio Table 2', 'capacity' => 6, 'minimum_charge' => 3.5, 'status' => 'available'],
                     ['table_number' => 'Garden Gazebo', 'capacity' => 8, 'minimum_charge' => 5.5, 'status' => 'available'],
-                    ['table_number' => 'Rooftop Premium', 'capacity' => 12, 'minimum_charge' => 9.0, 'status' => 'reserved'],
-                ]
+                ],
             ],
         ];
 
         foreach ($tables as $areaData) {
             $area = $areas->where('code', $areaData['area_code'])->first();
-            
-            if (!$area) {
+
+            if (! $area) {
                 continue;
             }
 
@@ -89,7 +83,7 @@ class TabelSeeder extends Seeder
                 Tabel::create([
                     'area_id' => $area->id,
                     'table_number' => $tableData['table_number'],
-                    'qr_code' => 'QR-' . strtoupper(Str::random(12)),
+                    'qr_code' => 'QR-'.strtoupper(Str::random(12)),
                     'capacity' => $tableData['capacity'],
                     'minimum_charge' => $tableData['minimum_charge'],
                     'status' => $tableData['status'],

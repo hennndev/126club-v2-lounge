@@ -43,12 +43,20 @@ class TransactionHistoryController extends Controller
             ->sum('total');
         $totalRevenue = Order::whereNotIn('status', ['cancelled'])->sum('total');
 
+        $printerLocations = Printer::active()
+            ->get(['location'])
+            ->pluck('location')
+            ->unique()
+            ->values()
+            ->toArray();
+
         return view('transaction-history.index', compact(
             'orders',
             'totalOrders',
             'todayOrders',
             'todayRevenue',
-            'totalRevenue'
+            'totalRevenue',
+            'printerLocations'
         ));
     }
 
@@ -59,12 +67,24 @@ class TransactionHistoryController extends Controller
         try {
             $order->load(['items', 'tableSession.table', 'tableSession.customer']);
 
-            $printer = Printer::getDefault();
+            $location = match ($type) {
+                'kitchen' => 'kitchen',
+                'bar' => 'bar',
+                default => 'cashier',
+            };
+
+            $printer = Printer::getByLocation($location);
 
             if (! $printer) {
+                $locationLabel = match ($location) {
+                    'kitchen' => 'Kitchen',
+                    'bar' => 'Bar',
+                    default => 'Kasir',
+                };
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tidak ada printer default yang dikonfigurasi.',
+                    'message' => "Tidak ada printer aktif untuk lokasi {$locationLabel}.",
                 ], 400);
             }
 

@@ -43,16 +43,25 @@ Route::middleware('auth')->group(function () {
                 return redirect()->route('waiter.scanner');
             }
 
+            // Determine default route based on role
+            $defaultRoute = match (true) {
+                $user->hasRole('DJ') => 'admin.song-requests.index',
+                $user->hasRole('Kitchen') => 'admin.kitchen.index',
+                $user->hasRole('Bar') => 'admin.bar.index',
+                $user->hasRole('Cashier') => 'admin.pos.index',
+                default => 'admin.dashboard',
+            };
+
             // If static API token is configured, no OAuth flow needed
             if (config('accurate.api_token')) {
-                return redirect()->route('admin.dashboard');
+                return redirect()->route($defaultRoute);
             }
 
             if (! session()->has('accurate_access_token')) {
                 return redirect()->route('accurate.auth');
             }
 
-            return redirect()->route('admin.dashboard');
+            return redirect()->route($defaultRoute);
         }
 
         return redirect('/login');
@@ -65,10 +74,8 @@ Route::middleware('auth')->group(function () {
         require __DIR__.'/waiter.php';
     });
 
-    Route::prefix('admin')->middleware('database_selected')->name('admin.')->group(function () {
-        Route::get('/dashboard', function () {
-            return view('dashboard');
-        })->name('dashboard');
+    Route::prefix('admin')->middleware(['database_selected', 'check.admin.role'])->name('admin.')->group(function () {
+        Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
 
         Route::get('/', function () {
             return redirect()->route('admin.dashboard');

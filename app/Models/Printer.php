@@ -49,7 +49,8 @@ class Printer extends Model
 
     public static function getDefault(): ?self
     {
-        return static::active()->default()->first();
+        return static::active()->default()->first()
+            ?? static::active()->first();
     }
 
     public static function getByLocation(string $location): ?self

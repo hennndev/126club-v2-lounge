@@ -162,62 +162,65 @@
                 $activeItems = $order->items->where('status', '!=', 'cancelled');
               @endphp
 
-              <tbody x-data="{
-                  expanded: false,
-                  loading: false,
-                  orderStatus: '{{ $order->status }}',
-                  servedCount: {{ $servedItems }},
-                  totalCount: {{ $totalItems }},
-                  items: @js($activeItems->map(fn($i) => ['id' => $i->id, 'item_name' => $i->item_name, 'quantity' => $i->quantity, 'price' => $i->price, 'status' => $i->status, 'preparation_location' => $i->preparation_location])->values()->toArray()),
-                  get progressPct() {
-                      return this.totalCount > 0 ? Math.round((this.servedCount / this.totalCount) * 100) : 0;
-                  },
-                  statusLabel(s) {
-                      return { pending: 'Baru', preparing: 'Dalam Proses', ready: 'Siap Saji', completed: 'Selesai', cancelled: 'Dibatalkan' } [s] || s;
-                  },
-                  statusClass(s) {
-                      return { pending: 'bg-red-100 text-red-700', preparing: 'bg-yellow-100 text-yellow-700', ready: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700', cancelled: 'bg-gray-100 text-gray-500' } [s] || 'bg-gray-100 text-gray-500';
-                  },
-                  async checkItem(itemId) {
-                      if (this.loading) return;
-                      this.loading = true;
-                      try {
-                          const url = '{{ route('admin.transaction-checker.check-item', ':id') }}'.replace(':id', itemId);
-                          const res = await fetch(url, {
-                              method: 'PATCH',
-                              headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' }
-                          });
-                          const data = await res.json();
-                          if (data.success) {
-                              this.items = this.items.map(i => i.id === itemId ? { ...i, status: 'served' } : i);
-                              this.servedCount = data.served_count;
-                              this.totalCount = data.total_count;
-                              this.orderStatus = data.order_status;
-                          }
-                      } finally {
-                          this.loading = false;
-                      }
-                  },
-                  async checkAll() {
-                      if (this.loading || this.orderStatus === 'completed') return;
-                      this.loading = true;
-                      try {
-                          const url = '{{ route('admin.transaction-checker.check-all', ':id') }}'.replace(':id', '{{ $order->id }}');
-                          const res = await fetch(url, {
-                              method: 'PATCH',
-                              headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' }
-                          });
-                          const data = await res.json();
-                          if (data.success) {
-                              this.items = this.items.map(i => ({ ...i, status: 'served' }));
-                              this.servedCount = this.totalCount;
-                              this.orderStatus = data.order_status;
-                          }
-                      } finally {
-                          this.loading = false;
-                      }
-                  }
-              }">
+              <tbody x-show="!hidden"
+                     x-data="{
+                         expanded: false,
+                         loading: false,
+                         hidden: false,
+                         orderStatus: '{{ $order->status }}',
+                         servedCount: {{ $servedItems }},
+                         totalCount: {{ $totalItems }},
+                         items: @js($activeItems->map(fn($i) => ['id' => $i->id, 'item_name' => $i->item_name, 'quantity' => $i->quantity, 'price' => $i->price, 'status' => $i->status, 'preparation_location' => $i->preparation_location])->values()->toArray()),
+                         get progressPct() {
+                             return this.totalCount > 0 ? Math.round((this.servedCount / this.totalCount) * 100) : 0;
+                         },
+                         statusLabel(s) {
+                             return { pending: 'Baru', preparing: 'Dalam Proses', ready: 'Siap Saji', completed: 'Selesai', cancelled: 'Dibatalkan' } [s] || s;
+                         },
+                         statusClass(s) {
+                             return { pending: 'bg-red-100 text-red-700', preparing: 'bg-yellow-100 text-yellow-700', ready: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700', cancelled: 'bg-gray-100 text-gray-500' } [s] || 'bg-gray-100 text-gray-500';
+                         },
+                         async checkItem(itemId) {
+                             if (this.loading) return;
+                             this.loading = true;
+                             try {
+                                 const url = '{{ route('admin.transaction-checker.check-item', ':id') }}'.replace(':id', itemId);
+                                 const res = await fetch(url, {
+                                     method: 'PATCH',
+                                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' }
+                                 });
+                                 const data = await res.json();
+                                 if (data.success) {
+                                     this.items = this.items.map(i => i.id === itemId ? { ...i, status: 'served' } : i);
+                                     this.servedCount = data.served_count;
+                                     this.totalCount = data.total_count;
+                                     this.orderStatus = data.order_status;
+                                 }
+                             } finally {
+                                 this.loading = false;
+                             }
+                         },
+                         async checkAll() {
+                             if (this.loading || this.orderStatus === 'completed') return;
+                             this.loading = true;
+                             try {
+                                 const url = '{{ route('admin.transaction-checker.check-all', ':id') }}'.replace(':id', '{{ $order->id }}');
+                                 const res = await fetch(url, {
+                                     method: 'PATCH',
+                                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' }
+                                 });
+                                 const data = await res.json();
+                                 if (data.success) {
+                                     this.items = this.items.map(i => ({ ...i, status: 'served' }));
+                                     this.servedCount = this.totalCount;
+                                     this.orderStatus = data.order_status;
+                                     this.hidden = true;
+                                 }
+                             } finally {
+                                 this.loading = false;
+                             }
+                         }
+                     }">
 
                 <!-- Main Row -->
                 <tr class="border-t border-gray-100 hover:bg-gray-50 transition-colors">

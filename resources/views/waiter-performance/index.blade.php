@@ -357,7 +357,7 @@
                           $displayTotal = (float) $sess->grand_total;
                       } elseif ($sess->orders_total !== null) {
                           $ot = (float) $sess->orders_total;
-                          $displayTotal = $ot + $ot * ((float) ($sess->tax_percentage ?? 0) / 100) - (float) ($sess->discount_amount ?? 0);
+                          $displayTotal = $ot - (float) ($sess->discount_amount ?? 0);
                       } else {
                           $displayTotal = null;
                       }

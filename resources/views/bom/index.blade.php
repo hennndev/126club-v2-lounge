@@ -25,16 +25,19 @@
       <div class="flex items-center gap-3">
         <button data-bom-sync-btn
                 onclick="syncBomFromAccurate()"
-                class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
-          <svg class="w-5 h-5"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+                class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
+          <span data-bom-sync-icon
+                class="flex items-center">
+            <svg class="w-5 h-5"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </span>
           <span data-bom-sync-text>Sync dari Accurate</span>
         </button>
         <button onclick="openModal('add')"
@@ -55,14 +58,14 @@
 
     <!-- Stats Cards -->
     <div class="grid grid-cols-3 gap-4 mb-6">
-      <div class="bg-gradient-to-br from-teal-400 to-teal-500 rounded-xl p-4 text-white">
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium opacity-90">Total Recipes</p>
-            <p class="text-3xl font-bold">{{ $totalRecipes }}</p>
+            <p class="text-sm text-gray-500 font-medium">Total Recipes</p>
+            <p class="text-2xl font-bold text-gray-900">{{ $totalRecipes }}</p>
           </div>
-          <div class="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-            <svg class="w-6 h-6"
+          <div class="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-teal-600"
                  fill="none"
                  stroke="currentColor"
                  viewBox="0 0 24 24">
@@ -74,15 +77,14 @@
           </div>
         </div>
       </div>
-
-      <div class="bg-gradient-to-br from-orange-400 to-orange-500 rounded-xl p-4 text-white">
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium opacity-90">Food Recipes</p>
-            <p class="text-3xl font-bold">{{ $foodRecipes }}</p>
+            <p class="text-sm text-gray-500 font-medium">Food Recipes</p>
+            <p class="text-2xl font-bold text-gray-900">{{ $foodRecipes }}</p>
           </div>
-          <div class="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-            <svg class="w-6 h-6"
+          <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-orange-600"
                  fill="none"
                  stroke="currentColor"
                  viewBox="0 0 24 24">
@@ -94,15 +96,14 @@
           </div>
         </div>
       </div>
-
-      <div class="bg-gradient-to-br from-purple-400 to-purple-500 rounded-xl p-4 text-white">
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium opacity-90">Beverage Recipes</p>
-            <p class="text-3xl font-bold">{{ $beverageRecipes }}</p>
+            <p class="text-sm text-gray-500 font-medium">Beverage Recipes</p>
+            <p class="text-2xl font-bold text-gray-900">{{ $beverageRecipes }}</p>
           </div>
-          <div class="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-            <svg class="w-6 h-6"
+          <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-purple-600"
                  fill="none"
                  stroke="currentColor"
                  viewBox="0 0 24 24">
@@ -117,24 +118,22 @@
     </div>
 
     <!-- Tabs -->
-    <div class="bg-teal-500 text-white rounded-xl p-4 mb-6">
-      <div class="flex items-center gap-4">
-        <button onclick="filterByType('')"
-                id="tabAll"
-                class="px-4 py-2 rounded-lg bg-white bg-opacity-20 font-medium transition hover:bg-opacity-30">
-          All ({{ $totalRecipes }})
-        </button>
-        <button onclick="filterByType('food')"
-                id="tabFood"
-                class="px-4 py-2 rounded-lg font-medium transition hover:bg-white hover:bg-opacity-20">
-          🍽️ Food ({{ $foodRecipes }})
-        </button>
-        <button onclick="filterByType('beverage')"
-                id="tabBeverage"
-                class="px-4 py-2 rounded-lg font-medium transition hover:bg-white hover:bg-opacity-20">
-          🍹 Beverage ({{ $beverageRecipes }})
-        </button>
-      </div>
+    <div class="flex items-center gap-2 mb-6 bg-white border border-gray-200 rounded-xl p-1.5">
+      <button onclick="filterByType('')"
+              id="tabAll"
+              class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition bg-slate-800 text-white">
+        All ({{ $totalRecipes }})
+      </button>
+      <button onclick="filterByType('food')"
+              id="tabFood"
+              class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition text-gray-600 hover:bg-gray-100">
+        Food ({{ $foodRecipes }})
+      </button>
+      <button onclick="filterByType('beverage')"
+              id="tabBeverage"
+              class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition text-gray-600 hover:bg-gray-100">
+        Beverage ({{ $beverageRecipes }})
+      </button>
     </div>
 
     @if ($recipes->count() > 0)
@@ -170,17 +169,17 @@
               <!-- Header -->
               <div class="flex items-start justify-between mb-4">
                 <div class="flex-1">
-                  <div class="flex items-center gap-2 mb-2 flex-wrap">
-                    <h3 class="text-lg font-bold text-gray-900">{{ $recipe->name }}</h3>
+                  <div class="flex items-center gap-2 mb-1 flex-wrap">
+                    <h3 class="text-base font-bold text-gray-900">{{ $recipe->name }}</h3>
                     @if ($recipe->type === 'food')
-                      <span class="px-2 py-1 text-xs font-medium rounded bg-orange-100 text-orange-700">🍽️ Food</span>
+                      <span class="px-2 py-0.5 text-xs font-medium rounded bg-orange-100 text-orange-700">Food</span>
                     @else
-                      <span class="px-2 py-1 text-xs font-medium rounded bg-purple-100 text-purple-700">🍹 Beverage</span>
+                      <span class="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700">Beverage</span>
                     @endif
                     @if ($recipe->is_available)
-                      <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">✔ Tersedia</span>
+                      <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">Tersedia</span>
                     @else
-                      <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-700">✖ Habis</span>
+                      <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700">Habis</span>
                     @endif
                   </div>
                   @if ($recipe->description)
@@ -221,26 +220,43 @@
               </div>
 
               <!-- Actions -->
-              <div class="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-200">
+              <div class="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
                 <form action="{{ route('admin.bom.toggleAvailability', $recipe) }}"
-                      method="POST">
+                      method="POST"
+                      class="flex-1">
                   @csrf @method('PATCH')
                   <button type="submit"
-                          class="w-full px-3 py-2 text-sm font-semibold rounded-lg transition
-                            {{ $recipe->is_available ? 'bg-red-50 text-red-600 border border-red-300 hover:bg-red-100' : 'bg-green-50 text-green-700 border border-green-300 hover:bg-green-100' }}">
-                    {{ $recipe->is_available ? '✖ Tandai Habis' : '✔ Tandai Tersedia' }}
+                          class="w-full px-3 py-2 text-xs font-semibold rounded-lg transition
+                            {{ $recipe->is_available ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100' : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100' }}">
+                    {{ $recipe->is_available ? 'Tandai Habis' : 'Tandai Tersedia' }}
                   </button>
                 </form>
-                <div class="flex gap-2">
-                  <button onclick="editRecipe({{ $recipe->id }})"
-                          class="flex-1 px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
-                    Edit
-                  </button>
-                  <button onclick="deleteRecipe({{ $recipe->id }})"
-                          class="flex-1 px-3 py-2 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition">
-                    Hapus
-                  </button>
-                </div>
+                <button onclick="editRecipe({{ $recipe->id }})"
+                        class="p-2 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition"
+                        title="Edit">
+                  <svg class="w-4 h-4"
+                       fill="none"
+                       stroke="currentColor"
+                       viewBox="0 0 24 24">
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button onclick="deleteRecipe({{ $recipe->id }})"
+                        class="p-2 text-gray-500 border border-gray-200 rounded-lg hover:bg-red-50 hover:text-red-600 transition"
+                        title="Hapus">
+                  <svg class="w-4 h-4"
+                       fill="none"
+                       stroke="currentColor"
+                       viewBox="0 0 24 24">
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
@@ -285,18 +301,44 @@
   <!-- Delete Modal -->
   @include('bom._components.delete-confirmation-modal')
 
+  <!-- Sync Result Modal -->
+  <div id="bomSyncResultModal"
+       class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div class="p-6">
+        <div id="bomSyncResultIcon"
+             class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4">
+        </div>
+        <h3 id="bomSyncResultTitle"
+            class="text-lg font-bold text-gray-900 text-center mb-1"></h3>
+        <p id="bomSyncResultMessage"
+           class="text-sm text-gray-500 text-center mb-4"></p>
+        <pre id="bomSyncResultOutput"
+             class="hidden bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 max-h-40 overflow-y-auto whitespace-pre-wrap mb-4"></pre>
+        <button onclick="document.getElementById('bomSyncResultModal').classList.add('hidden'); window.location.reload();"
+                class="w-full px-4 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 font-semibold transition">
+          Tutup &amp; Refresh
+        </button>
+      </div>
+    </div>
+  </div>
+
   @push('scripts')
     <script>
       const recipes = @json($recipes);
       const inventoryItems = @json($inventoryItems);
       let ingredientCounter = 0;
 
+      const BOM_SYNC_ICON_HTML = document.querySelector('[data-bom-sync-icon]').innerHTML;
+
       function syncBomFromAccurate() {
         const btn = document.querySelector('[data-bom-sync-btn]');
+        const icon = document.querySelector('[data-bom-sync-icon]');
         const text = document.querySelector('[data-bom-sync-text]');
 
         btn.disabled = true;
-        text.innerHTML = '<span class="animate-spin inline-block mr-2">⚙️</span> Syncing...';
+        icon.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>`;
+        text.textContent = 'Syncing...';
 
         fetch('{{ route('admin.accurate.sync.bom') }}', {
             method: 'POST',
@@ -308,18 +350,45 @@
           .then(res => res.json())
           .then(data => {
             btn.disabled = false;
+            icon.innerHTML = BOM_SYNC_ICON_HTML;
             text.textContent = 'Sync dari Accurate';
-            if (data.success) {
-              window.location.reload();
-            } else {
-              alert('❌ ' + data.message);
-            }
+            showBomSyncResult(data.success, data.message, data.output ?? null);
           })
           .catch(err => {
             btn.disabled = false;
+            icon.innerHTML = BOM_SYNC_ICON_HTML;
             text.textContent = 'Sync dari Accurate';
-            alert('❌ Error: ' + err.message);
+            showBomSyncResult(false, 'Koneksi gagal: ' + err.message, null);
           });
+      }
+
+      function showBomSyncResult(success, message, output) {
+        const modal = document.getElementById('bomSyncResultModal');
+        const icon = document.getElementById('bomSyncResultIcon');
+        const title = document.getElementById('bomSyncResultTitle');
+        const msg = document.getElementById('bomSyncResultMessage');
+        const pre = document.getElementById('bomSyncResultOutput');
+
+        if (success) {
+          icon.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-green-100';
+          icon.innerHTML = `<svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+          title.textContent = 'Sync Berhasil!';
+        } else {
+          icon.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-red-100';
+          icon.innerHTML = `<svg class="w-7 h-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`;
+          title.textContent = 'Sync Gagal';
+        }
+
+        msg.textContent = message;
+
+        if (output && output.trim()) {
+          pre.textContent = output.trim();
+          pre.classList.remove('hidden');
+        } else {
+          pre.classList.add('hidden');
+        }
+
+        modal.classList.remove('hidden');
       }
 
       function openModal(mode, recipeId = null) {
@@ -398,10 +467,10 @@
                     class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm">
               <option value="">Pilih Bahan (Condiments)</option>
               ${condimentsItems.map(item => `
-                                                <option value="${item.id}" ${item.id == itemId ? 'selected' : ''}>
-                                                  ${item.name} (${item.unit})
-                                                </option>
-                                              `).join('')}
+                                                    <option value="${item.id}" ${item.id == itemId ? 'selected' : ''}>
+                                                      ${item.name} (${item.unit})
+                                                    </option>
+                                                  `).join('')}
             </select>
             <input type="number" name="items[${index}][quantity]" value="${quantity}" required min="0.01" step="0.01"
                    placeholder="Qty"
@@ -435,27 +504,21 @@
       // Filter by type
       function filterByType(type) {
         const cards = document.querySelectorAll('.recipe-card');
-        const tabs = ['tabAll', 'tabFood', 'tabBeverage'];
 
-        // Reset tabs
-        tabs.forEach(tabId => {
-          const tab = document.getElementById(tabId);
-          tab.classList.remove('bg-white', 'bg-opacity-20');
-        });
+        // Reset all tabs
+        document.getElementById('tabAll').className = 'flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition text-gray-600 hover:bg-gray-100';
+        document.getElementById('tabFood').className = 'flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition text-gray-600 hover:bg-gray-100';
+        document.getElementById('tabBeverage').className = 'flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition text-gray-600 hover:bg-gray-100';
 
         // Set active tab
-        let activeTab = 'tabAll';
-        if (type === 'food') activeTab = 'tabFood';
-        if (type === 'beverage') activeTab = 'tabBeverage';
-        document.getElementById(activeTab).classList.add('bg-white', 'bg-opacity-20');
+        const activeClass = 'flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition bg-slate-800 text-white';
+        if (type === '') document.getElementById('tabAll').className = activeClass;
+        if (type === 'food') document.getElementById('tabFood').className = activeClass;
+        if (type === 'beverage') document.getElementById('tabBeverage').className = activeClass;
 
         // Filter cards
         cards.forEach(card => {
-          if (type === '' || card.dataset.type === type) {
-            card.style.display = '';
-          } else {
-            card.style.display = 'none';
-          }
+          card.style.display = (type === '' || card.dataset.type === type) ? '' : 'none';
         });
       }
 

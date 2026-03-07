@@ -16,6 +16,13 @@
   <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800&display=swap"
         rel="stylesheet" />
 
+  <!-- Alpine x-cloak — must be inline before any content renders -->
+  <style>
+    [x-cloak] {
+      display: none !important
+    }
+  </style>
+
   <!-- Scripts -->
   @vite(['resources/css/app.css', 'resources/js/app.js'])
 
@@ -23,7 +30,10 @@
 </head>
 
 <body class="font-sans antialiased bg-gray-50">
-  <div class="flex h-screen overflow-hidden">
+  <div class="flex h-screen overflow-hidden"
+       x-data="{ sidebarOpen: JSON.parse(localStorage.getItem('sidebarOpen') ?? 'true') }"
+       x-cloak
+       @keydown.escape.window="sidebarOpen = false; localStorage.setItem('sidebarOpen', false)">
     <!-- Sidebar -->
     @include('layouts.sidebar')
 

@@ -1,0 +1,33 @@
+{{-- Page Header --}}
+<div class="flex items-center justify-between mb-6">
+  <div class="flex items-center gap-3">
+    <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center">
+      <svg class="w-6 h-6 text-white"
+           fill="none"
+           stroke="currentColor"
+           viewBox="0 0 24 24">
+        <path stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    </div>
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Manajemen Booking</h1>
+      <p class="text-sm text-gray-500">Kelola reservasi nightclub</p>
+    </div>
+  </div>
+  <button @click="openModal(null)"
+          class="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg font-medium transition text-sm">
+    <svg class="w-4 h-4"
+         fill="none"
+         stroke="currentColor"
+         viewBox="0 0 24 24">
+      <path stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 4v16m8-8H4" />
+    </svg>
+    Booking Baru
+  </button>
+</div>

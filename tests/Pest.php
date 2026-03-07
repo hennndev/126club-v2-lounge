@@ -45,3 +45,12 @@ function something()
 {
     // ..
 }
+
+function adminUser(): \App\Models\User
+{
+    $user = \App\Models\User::factory()->create();
+    $role = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'Administrator']);
+    $user->assignRole($role);
+
+    return $user;
+}

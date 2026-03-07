@@ -334,8 +334,10 @@
           <div class="grid grid-cols-2 gap-3 mb-4">
             <!-- Struk Resmi -->
             <button @click="printReceipt('resmi')"
-                    :disabled="printing"
-                    class="flex flex-col items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-60">
+                    :disabled="printing || !hasPrinterFor('resmi')"
+                    :title="!hasPrinterFor('resmi') ? 'Tidak ada printer Kasir' : ''"
+                    :class="{ 'ring-2 ring-amber-400': hasBeenPrinted('resmi') }"
+                    class="relative flex flex-col items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
               <svg class="w-7 h-7"
                    fill="none"
                    stroke="currentColor"
@@ -345,13 +347,16 @@
                       stroke-width="2"
                       d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
-              Struk Resmi
+              <span x-show="!hasBeenPrinted('resmi')">Struk Resmi</span>
+              <span x-show="hasBeenPrinted('resmi')" class="text-amber-300 text-xs font-bold">↺ Cetak Ulang</span>
             </button>
 
             <!-- Kitchen -->
             <button @click="printReceipt('kitchen')"
-                    :disabled="printing"
-                    class="flex flex-col items-center justify-center gap-2 bg-orange-500 hover:bg-orange-400 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-60">
+                    :disabled="printing || !hasPrinterFor('kitchen')"
+                    :title="!hasPrinterFor('kitchen') ? 'Tidak ada printer Kitchen' : ''"
+                    :class="{ 'ring-2 ring-amber-400': hasBeenPrinted('kitchen') }"
+                    class="relative flex flex-col items-center justify-center gap-2 bg-orange-500 hover:bg-orange-400 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
               <svg class="w-7 h-7"
                    fill="none"
                    stroke="currentColor"
@@ -361,13 +366,16 @@
                       stroke-width="2"
                       d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
-              Kitchen
+              <span x-show="!hasBeenPrinted('kitchen')">Kitchen</span>
+              <span x-show="hasBeenPrinted('kitchen')" class="text-amber-300 text-xs font-bold">↺ Cetak Ulang</span>
             </button>
 
             <!-- Bar -->
             <button @click="printReceipt('bar')"
-                    :disabled="printing"
-                    class="flex flex-col items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-60">
+                    :disabled="printing || !hasPrinterFor('bar')"
+                    :title="!hasPrinterFor('bar') ? 'Tidak ada printer Bar' : ''"
+                    :class="{ 'ring-2 ring-amber-400': hasBeenPrinted('bar') }"
+                    class="relative flex flex-col items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
               <svg class="w-7 h-7"
                    fill="none"
                    stroke="currentColor"
@@ -377,13 +385,16 @@
                       stroke-width="2"
                       d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
-              Bar
+              <span x-show="!hasBeenPrinted('bar')">Bar</span>
+              <span x-show="hasBeenPrinted('bar')" class="text-amber-300 text-xs font-bold">↺ Cetak Ulang</span>
             </button>
 
             <!-- Checker Meja -->
             <button @click="printReceipt('checker')"
-                    :disabled="printing"
-                    class="flex flex-col items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-60">
+                    :disabled="printing || !hasPrinterFor('checker')"
+                    :title="!hasPrinterFor('checker') ? 'Tidak ada printer Kasir' : ''"
+                    :class="{ 'ring-2 ring-amber-400': hasBeenPrinted('checker') }"
+                    class="relative flex flex-col items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
               <svg class="w-7 h-7"
                    fill="none"
                    stroke="currentColor"
@@ -393,7 +404,8 @@
                       stroke-width="2"
                       d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
-              Checker Meja
+              <span x-show="!hasBeenPrinted('checker')">Checker Meja</span>
+              <span x-show="hasBeenPrinted('checker')" class="text-amber-300 text-xs font-bold">↺ Cetak Ulang</span>
             </button>
           </div>
 
@@ -424,8 +436,79 @@
       </div>
     </div>
 
+
+  {{-- Auth Modal for Reprint --}}
+  <div x-show="showAuthModal"
+       x-transition.opacity
+       style="display: none;"
+       class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4"
+       @click.self="showAuthModal = false; authCode = ''; authError = '';">
+    <div class="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+      <div class="px-6 pt-6 pb-4">
+        <div class="mb-4 flex items-center gap-3">
+          <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-amber-100">
+            <svg class="h-5 w-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-semibold text-gray-900">Autentikasi Diperlukan</h3>
+            <p class="text-xs text-gray-500">Masukkan kode harian untuk cetak ulang</p>
+          </div>
+        </div>
+
+        <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          Dokumen ini sudah pernah dicetak sebelumnya. Cetak ulang memerlukan kode otorisasi harian.
+        </div>
+
+        <div class="mb-4 space-y-1.5 rounded-lg bg-gray-50 p-3 text-xs">
+          <div class="flex justify-between">
+            <span class="text-gray-500">No. Transaksi</span>
+            <span class="font-medium text-gray-800" x-text="selectedOrder?.displayId ?? '-'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Jenis Cetak</span>
+            <span class="font-medium capitalize text-gray-800" x-text="{
+              'resmi': 'Struk Resmi',
+              'kitchen': 'Kitchen',
+              'bar': 'Bar',
+              'checker': 'Checker Meja'
+            }[pendingPrintType] ?? pendingPrintType"></span>
+          </div>
+        </div>
+
+        <div class="mb-1">
+          <label class="mb-1.5 block text-xs font-medium text-gray-700">Kode Harian (4 digit)</label>
+          <input x-model="authCode"
+                 @keydown.enter="verifyAndPrint()"
+                 type="password"
+                 inputmode="numeric"
+                 maxlength="4"
+                 placeholder="••••"
+                 class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-center text-2xl tracking-[0.5em] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none" />
+        </div>
+        <p x-show="authError"
+           x-text="authError"
+           style="display: none;"
+           class="mb-2 text-center text-xs font-medium text-red-600"></p>
+      </div>
+
+      <div class="flex gap-2 border-t border-gray-100 px-6 pb-6 pt-4">
+        <button @click="showAuthModal = false; authCode = ''; authError = '';"
+                class="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          Batal
+        </button>
+        <button @click="verifyAndPrint()"
+                :disabled="authCode.length !== 4 || isVerifyingAuth"
+                class="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
+          <span x-show="!isVerifyingAuth">Verifikasi & Cetak</span>
+          <span x-show="isVerifyingAuth">Memverifikasi...</span>
+        </button>
+      </div>
+    </div>
   </div>
 
+  </div>
   <script>
     function transactionHistory() {
       return {
@@ -435,6 +518,15 @@
         toastMessage: '',
         toastSuccess: false,
         toastTimer: null,
+
+        printedKeys: [],
+        availableLocations: @json($printerLocations),
+
+        showAuthModal: false,
+        authCode: '',
+        authError: '',
+        isVerifyingAuth: false,
+        pendingPrintType: null,
 
         openPrintModal(order) {
           this.selectedOrder = order;
@@ -448,8 +540,62 @@
           this.toastMessage = '';
         },
 
+        hasPrinterFor(type) {
+          const loc = type === 'kitchen' ? 'kitchen' : type === 'bar' ? 'bar' : 'cashier';
+          return this.availableLocations.includes(loc);
+        },
+
+        hasBeenPrinted(type) {
+          return this.printedKeys.includes(`${this.selectedOrder?.id}-${type}`);
+        },
+
         async printReceipt(type) {
           if (this.printing || !this.selectedOrder) return;
+
+          if (this.hasBeenPrinted(type)) {
+            this.pendingPrintType = type;
+            this.authCode = '';
+            this.authError = '';
+            this.showAuthModal = true;
+            return;
+          }
+
+          await this._doPrint(type);
+        },
+
+        async verifyAndPrint() {
+          if (this.authCode.length !== 4 || this.isVerifyingAuth) return;
+          this.isVerifyingAuth = true;
+          this.authError = '';
+
+          try {
+            const res = await fetch('{{ route('admin.settings.daily-auth-code.verify') }}', {
+              method: 'POST',
+              headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ code: this.authCode }),
+            });
+            const data = await res.json();
+            if (data.valid) {
+              this.showAuthModal = false;
+              this.authCode = '';
+              const type = this.pendingPrintType;
+              this.pendingPrintType = null;
+              await this._doPrint(type, true);
+            } else {
+              this.authError = 'Kode tidak valid. Coba lagi.';
+            }
+          } catch (e) {
+            this.authError = 'Terjadi kesalahan. Coba lagi.';
+          } finally {
+            this.isVerifyingAuth = false;
+          }
+        },
+
+        async _doPrint(type, isReprint = false) {
           this.printing = true;
           this.toastMessage = '';
 
@@ -462,19 +608,19 @@
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                type
-              }),
+              body: JSON.stringify({ type, is_reprint: isReprint }),
             });
             const data = await res.json();
             this.toastSuccess = data.success;
             this.toastMessage = data.message;
 
-            if (this.toastTimer) clearTimeout(this.toastTimer);
             if (data.success) {
-              this.toastTimer = setTimeout(() => {
-                this.toastMessage = '';
-              }, 3000);
+              const key = `${this.selectedOrder.id}-${type}`;
+              if (!this.printedKeys.includes(key)) {
+                this.printedKeys.push(key);
+              }
+              if (this.toastTimer) clearTimeout(this.toastTimer);
+              this.toastTimer = setTimeout(() => { this.toastMessage = ''; }, 3000);
             }
           } catch (e) {
             this.toastSuccess = false;

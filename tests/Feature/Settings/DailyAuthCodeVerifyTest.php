@@ -1,10 +1,9 @@
 <?php
 
 use App\Models\DailyAuthCode;
-use App\Models\User;
 
 test('verify returns valid true when code matches active code', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
     $today = now()->format('Y-m-d');
 
     DailyAuthCode::create([
@@ -21,7 +20,7 @@ test('verify returns valid true when code matches active code', function () {
 });
 
 test('verify returns valid false when code does not match', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
     $today = now()->format('Y-m-d');
 
     DailyAuthCode::create([
@@ -38,7 +37,7 @@ test('verify returns valid false when code does not match', function () {
 });
 
 test('verify uses override code when set', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
     $today = now()->format('Y-m-d');
 
     DailyAuthCode::create([
@@ -56,7 +55,7 @@ test('verify uses override code when set', function () {
 });
 
 test('verify requires exactly 4 digits', function () {
-    $user = User::factory()->create();
+    $user = adminUser();
 
     $this->actingAs($user)
         ->withSession(['accurate_database' => 'test'])

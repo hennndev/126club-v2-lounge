@@ -192,6 +192,19 @@
         <p class="font-bold text-green-700">Check-in Berhasil!</p>
         <p class="text-green-600 text-sm mt-1"
            x-text="checkInSuccessMsg"></p>
+        <div x-show="waiterAssigned"
+             class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-xs font-medium">
+          <svg class="w-3.5 h-3.5"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          Kamu di-assign sebagai waiter
+        </div>
       </div>
 
       <!-- How to Use -->
@@ -262,7 +275,6 @@
         </div>
       </div>
     </div>
-
   </div>
 
   @push('scripts')
@@ -279,6 +291,7 @@
           checkInSuccess: false,
           checkInSuccessMsg: '',
           processingCheckIn: false,
+          waiterAssigned: false,
           qrScanner: null,
           lastScannedCode: null,
 
@@ -330,7 +343,7 @@
             this.scanResult = null;
             this.checkInSuccess = false;
             try {
-              const res = await fetch('{{ route('admin.table-scanner.scan') }}', {
+              const res = await fetch('{{ route('waiter.table-scanner.scan') }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -355,7 +368,7 @@
 
           async processCheckInQr(code) {
             try {
-              const res = await fetch('{{ route('admin.table-scanner.process-checkin') }}', {
+              const res = await fetch('{{ route('waiter.table-scanner.process-checkin') }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -369,9 +382,11 @@
               if (data.success) {
                 this.scanResult = null;
                 this.checkInSuccess = true;
+                this.waiterAssigned = data.data?.waiter_assigned ?? false;
                 this.checkInSuccessMsg = `${data.data?.customer ?? ''} - Meja ${data.data?.table ?? ''}`;
                 setTimeout(() => {
                   this.checkInSuccess = false;
+                  this.waiterAssigned = false;
                 }, 5000);
               }
             } catch (_) {}
@@ -386,7 +401,7 @@
               const reservation = this.scanResult.data.reservation;
               if (!reservation?.check_in_qr_code) {
                 // Generate check-in QR first
-                const genRes = await fetch('{{ route('admin.table-scanner.generate-checkin-qr') }}', {
+                const genRes = await fetch('{{ route('waiter.table-scanner.generate-checkin-qr') }}', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -414,7 +429,7 @@
           async processCheckInById(reservationId) {
             this.processingCheckIn = true;
             try {
-              const genRes = await fetch('{{ route('admin.table-scanner.generate-checkin-qr') }}', {
+              const genRes = await fetch('{{ route('waiter.table-scanner.generate-checkin-qr') }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -430,7 +445,7 @@
                 return;
               }
 
-              const checkRes = await fetch('{{ route('admin.table-scanner.process-checkin') }}', {
+              const checkRes = await fetch('{{ route('waiter.table-scanner.process-checkin') }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -443,11 +458,13 @@
               const checkData = await checkRes.json();
               if (checkData.success) {
                 this.checkInSuccess = true;
+                this.waiterAssigned = checkData.data?.waiter_assigned ?? false;
                 this.checkInSuccessMsg = `${checkData.data?.customer ?? ''} - Meja ${checkData.data?.table ?? ''}`;
                 this.manualSearch = '';
                 this.searchResults = [];
                 setTimeout(() => {
                   this.checkInSuccess = false;
+                  this.waiterAssigned = false;
                 }, 5000);
               } else {
                 alert(checkData.message);
@@ -463,7 +480,7 @@
               return;
             }
             try {
-              const res = await fetch('{{ route('admin.bookings.index') }}?' + new URLSearchParams({
+              const res = await fetch('{{ route('waiter.bookings.index') }}?' + new URLSearchParams({
                 search: this.manualSearch,
                 status: 'confirmed',
                 format: 'json'
@@ -476,7 +493,7 @@
               this.searchResults = [];
             }
           },
-        };
+        }
       }
     </script>
   @endpush

@@ -18,9 +18,9 @@ return new class extends Migration
             $table->foreignId('customer_id')->constrained('users')->onDelete('restrict');
             $table->date('reservation_date');
             $table->time('reservation_time');
-            $table->enum('status', ['pending', 'confirmed', 'checked_in', 'completed', 'cancelled', 'rejected'])->default('pending');
+            $table->enum('status', ['pending', 'confirmed', 'checked_in', 'completed', 'cancelled', 'rejected', 'force_closed'])->default('pending');
             $table->timestamps();
-            
+
             // Indexes
             $table->index('table_id');
             $table->index('reservation_date');

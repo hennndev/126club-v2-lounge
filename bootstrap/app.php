@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CheckAdminRole;
 use App\Http\Middleware\EnsureDatabaseIsSelected;
 use App\Http\Middleware\EnsureWaiterRole;
 use Illuminate\Foundation\Application;
@@ -16,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'database_selected' => EnsureDatabaseIsSelected::class,
             'ensure_waiter' => EnsureWaiterRole::class,
+            'check.admin.role' => CheckAdminRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

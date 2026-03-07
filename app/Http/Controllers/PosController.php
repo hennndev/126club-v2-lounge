@@ -12,8 +12,10 @@ use App\Models\KitchenOrderItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Printer;
+use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\Tier;
+use App\Models\User;
 use App\Services\PrinterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -100,13 +102,19 @@ class PosController extends Controller
         // Get tiers for discount calculation (highest level first)
         $tiers = Tier::orderBy('level', 'desc')->get();
 
+        // Get waiter list for assignment in checkout modal
+        $waiters = User::whereHas('roles', fn ($q) => $q->where('name', 'Waiter/Server'))
+            ->with('profile')
+            ->get()
+            ->map(fn ($w) => ['id' => $w->id, 'name' => $w->profile?->name ?? $w->name]);
+
         // Get printer locations for counter selection
         $printerLocations = $this->getPrinterLocations();
 
         // Get current counter location from session
         $currentCounter = session()->get('pos_counter_location');
 
-        return view('pos.index', compact('products', 'cartItems', 'cartTotal', 'tableSessions', 'tiers', 'printerLocations', 'currentCounter'));
+        return view('pos.index', compact('products', 'cartItems', 'cartTotal', 'tableSessions', 'tiers', 'waiters', 'printerLocations', 'currentCounter'));
     }
 
     /**
@@ -419,9 +427,10 @@ class PosController extends Controller
                 if ($tableSession->billing) {
                     $billing = $tableSession->billing;
                     $billing->orders_total = $tableSession->orders()->sum('total');
-                    $billing->subtotal = $billing->minimum_charge + $billing->orders_total;
-                    $billing->tax = $billing->subtotal * ($billing->tax_percentage / 100);
-                    $billing->grand_total = $billing->subtotal + $billing->tax - $billing->discount_amount;
+                    // Minimum charge = minimum spend, not additive fee. Tax not yet implemented.
+                    $billing->subtotal = max((float) $billing->minimum_charge, (float) $billing->orders_total);
+                    $billing->tax = 0;
+                    $billing->grand_total = $billing->subtotal - $billing->discount_amount;
                     $billing->save();
                 }
 
@@ -743,5 +752,35 @@ class PosController extends Controller
             'cartTotal' => $cartTotal,
             'itemCount' => $cartItems->count(),
         ]);
+    }
+
+    public function assignWaiterFromPos(Request $request, TableReservation $booking): JsonResponse
+    {
+        $validated = $request->validate([
+            'waiter_id' => 'required|exists:users,id',
+        ]);
+
+        $session = $booking->tableSession;
+
+        if (! $session) {
+            return response()->json(['success' => false, 'message' => 'Sesi aktif tidak ditemukan.'], 422);
+        }
+
+        $previousWaiterId = $session->waiter_id;
+        $newWaiterId = (int) $validated['waiter_id'];
+
+        $session->update(['waiter_id' => $newWaiterId]);
+
+        if ($newWaiterId !== $previousWaiterId) {
+            $waiter = User::find($newWaiterId);
+            $waiter?->notify(new \App\Notifications\WaiterAssignedNotification(
+                $booking->load(['table.area', 'customer.profile', 'customer.customerUser'])
+            ));
+        }
+
+        $waiter = User::find($newWaiterId);
+        $waiterName = $waiter?->profile?->name ?? $waiter?->name ?? '-';
+
+        return response()->json(['success' => true, 'waiterName' => $waiterName]);
     }
 }
