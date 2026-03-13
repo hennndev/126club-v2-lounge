@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BarOrder;
+use App\Models\GeneralSetting;
 use App\Models\KitchenOrder;
 use App\Models\Order;
 use App\Models\Printer;
@@ -59,6 +60,8 @@ class PrinterService
      */
     public function printReceipt(Order $order, Printer $printer): bool
     {
+        $walkInTotals = $this->calculateWalkInReceiptTotals($order);
+
         if ($printer->connection_type === 'log') {
             $lines = [
                 "Order  : {$order->order_number}",
@@ -70,6 +73,21 @@ class PrinterService
                 $lines[] = "  {$item->quantity}x {$item->item_name}  Rp ".number_format($item->subtotal, 0, ',', '.');
             }
             $lines[] = '';
+            if ($walkInTotals !== null) {
+                $lines[] = 'Subtotal: Rp '.number_format($walkInTotals['items_total'], 0, ',', '.');
+
+                if ($walkInTotals['discount_amount'] > 0) {
+                    $lines[] = 'Diskon  : Rp '.number_format($walkInTotals['discount_amount'], 0, ',', '.');
+                }
+
+                if ($walkInTotals['service_charge'] > 0) {
+                    $lines[] = 'Service : Rp '.number_format($walkInTotals['service_charge'], 0, ',', '.');
+                }
+
+                if ($walkInTotals['tax'] > 0) {
+                    $lines[] = 'PPN     : Rp '.number_format($walkInTotals['tax'], 0, ',', '.');
+                }
+            }
             $lines[] = 'TOTAL  : Rp '.number_format($order->total, 0, ',', '.');
             $this->logPrint('RECEIPT', $lines);
 
@@ -108,6 +126,24 @@ class PrinterService
             $escpos->text(str_repeat('-', $printer->width)."\n");
 
             // Totals
+            if ($walkInTotals !== null) {
+                $escpos->text($this->padLine('Subtotal', '', '', 'Rp '.number_format($walkInTotals['items_total'], 0, ',', '.'), $printer->width));
+
+                if ($walkInTotals['discount_amount'] > 0) {
+                    $escpos->text($this->padLine('Diskon', '', '', 'Rp '.number_format($walkInTotals['discount_amount'], 0, ',', '.'), $printer->width));
+                }
+
+                if ($walkInTotals['service_charge'] > 0) {
+                    $escpos->text($this->padLine('Service', '', '', 'Rp '.number_format($walkInTotals['service_charge'], 0, ',', '.'), $printer->width));
+                }
+
+                if ($walkInTotals['tax'] > 0) {
+                    $escpos->text($this->padLine('PPN', '', '', 'Rp '.number_format($walkInTotals['tax'], 0, ',', '.'), $printer->width));
+                }
+
+                $escpos->text(str_repeat('-', $printer->width)."\n");
+            }
+
             $escpos->setEmphasis(true);
             $escpos->text($this->padLine('TOTAL', '', '', 'Rp '.number_format($order->total, 0, ',', '.'), $printer->width));
             $escpos->setEmphasis(false);
@@ -198,7 +234,7 @@ class PrinterService
     /**
      * Print the receipt header.
      */
-    protected function printHeader(Printer $escpos, Printer $printer): void
+    protected function printHeader(EscposPrinter $escpos, Printer $printer): void
     {
         $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
         $escpos->setEmphasis(true);
@@ -213,7 +249,7 @@ class PrinterService
     /**
      * Print the receipt footer.
      */
-    protected function printFooter(Printer $escpos, Printer $printer): void
+    protected function printFooter(EscposPrinter $escpos, Printer $printer): void
     {
         $escpos->feed(2);
         $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
@@ -260,6 +296,30 @@ class PrinterService
         }
 
         return substr($str, 0, $length - 1).'.';
+    }
+
+    /**
+     * @return array<string, float>|null
+     */
+    protected function calculateWalkInReceiptTotals(Order $order): ?array
+    {
+        if ($order->table_session_id !== null) {
+            return null;
+        }
+
+        $generalSettings = GeneralSetting::instance();
+        $itemsTotal = (float) $order->items_total;
+        $discountAmount = (float) $order->discount_amount;
+        $subtotalAfterDiscount = max($itemsTotal - $discountAmount, 0);
+        $serviceCharge = round($subtotalAfterDiscount * (((float) $generalSettings->service_charge_percentage) / 100));
+        $tax = round(($subtotalAfterDiscount + $serviceCharge) * (((float) $generalSettings->tax_percentage) / 100));
+
+        return [
+            'items_total' => $itemsTotal,
+            'discount_amount' => $discountAmount,
+            'service_charge' => $serviceCharge,
+            'tax' => $tax,
+        ];
     }
 
     /**

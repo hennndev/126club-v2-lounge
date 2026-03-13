@@ -225,7 +225,9 @@
                                displayId: '{{ $displayId }}',
                                total: 'Rp {{ number_format($order->total, 0, ',', '.') }}',
                                customer: '{{ $customerName ?? 'Walk-in' }}',
-                               time: '{{ $order->ordered_at?->format('H:i') ?? '—' }}'
+                               time: '{{ $order->ordered_at?->format('H:i') ?? '—' }}',
+                               printTypes: @js($order->print_types),
+                               printCounts: @js($order->print_counts)
                              })"
                             class="inline-flex items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 transition text-gray-400 hover:text-gray-700">
                       <svg class="w-5 h-5"
@@ -354,9 +356,11 @@
 
             <!-- Kitchen -->
             <button @click="printReceipt('kitchen')"
+                    x-show="selectedOrder?.printTypes?.kitchen"
                     :disabled="printing || !hasPrinterFor('kitchen')"
                     :title="!hasPrinterFor('kitchen') ? 'Tidak ada printer Kitchen' : ''"
                     :class="{ 'ring-2 ring-amber-400': hasBeenPrinted('kitchen') }"
+                    style="display: none;"
                     class="relative flex flex-col items-center justify-center gap-2 bg-orange-500 hover:bg-orange-400 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
               <svg class="w-7 h-7"
                    fill="none"
@@ -374,9 +378,11 @@
 
             <!-- Bar -->
             <button @click="printReceipt('bar')"
+                    x-show="selectedOrder?.printTypes?.bar"
                     :disabled="printing || !hasPrinterFor('bar')"
                     :title="!hasPrinterFor('bar') ? 'Tidak ada printer Bar' : ''"
                     :class="{ 'ring-2 ring-amber-400': hasBeenPrinted('bar') }"
+                    style="display: none;"
                     class="relative flex flex-col items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
               <svg class="w-7 h-7"
                    fill="none"
@@ -392,25 +398,6 @@
                     class="text-amber-300 text-xs font-bold">↺ Cetak Ulang</span>
             </button>
 
-            <!-- Checker Meja -->
-            <button @click="printReceipt('checker')"
-                    :disabled="printing || !hasPrinterFor('checker')"
-                    :title="!hasPrinterFor('checker') ? 'Tidak ada printer Kasir' : ''"
-                    :class="{ 'ring-2 ring-amber-400': hasBeenPrinted('checker') }"
-                    class="relative flex flex-col items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white rounded-xl py-5 px-4 font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
-              <svg class="w-7 h-7"
-                   fill="none"
-                   stroke="currentColor"
-                   viewBox="0 0 24 24">
-                <path stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
-              <span x-show="!hasBeenPrinted('checker')">Checker Meja</span>
-              <span x-show="hasBeenPrinted('checker')"
-                    class="text-amber-300 text-xs font-bold">↺ Cetak Ulang</span>
-            </button>
           </div>
 
           <!-- Toast message -->
@@ -483,8 +470,7 @@
                     x-text="{
               'resmi': 'Struk Resmi',
               'kitchen': 'Kitchen',
-              'bar': 'Bar',
-              'checker': 'Checker Meja'
+              'bar': 'Bar'
             }[pendingPrintType] ?? pendingPrintType"></span>
             </div>
           </div>
@@ -531,8 +517,8 @@
         toastSuccess: false,
         toastTimer: null,
 
-        printedKeys: [],
         availableLocations: @json($printerLocations),
+        hasAnyActivePrinter: @json($hasAnyActivePrinter),
 
         showAuthModal: false,
         authCode: '',
@@ -554,11 +540,15 @@
 
         hasPrinterFor(type) {
           const loc = type === 'kitchen' ? 'kitchen' : type === 'bar' ? 'bar' : 'cashier';
-          return this.availableLocations.includes(loc);
+          return this.availableLocations.includes(loc) || this.hasAnyActivePrinter;
         },
 
         hasBeenPrinted(type) {
-          return this.printedKeys.includes(`${this.selectedOrder?.id}-${type}`);
+          if (!this.selectedOrder || !this.selectedOrder.printCounts) {
+            return false;
+          }
+
+          return Number(this.selectedOrder.printCounts[type] ?? 0) > 0;
         },
 
         async printReceipt(type) {
@@ -632,10 +622,16 @@
             this.toastMessage = data.message;
 
             if (data.success) {
-              const key = `${this.selectedOrder.id}-${type}`;
-              if (!this.printedKeys.includes(key)) {
-                this.printedKeys.push(key);
+              if (!this.selectedOrder.printCounts) {
+                this.selectedOrder.printCounts = {
+                  resmi: 0,
+                  kitchen: 0,
+                  bar: 0,
+                };
               }
+
+              this.selectedOrder.printCounts[type] = Number(this.selectedOrder.printCounts[type] ?? 0) + 1;
+
               if (this.toastTimer) clearTimeout(this.toastTimer);
               this.toastTimer = setTimeout(() => {
                 this.toastMessage = '';

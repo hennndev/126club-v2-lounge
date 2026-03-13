@@ -176,6 +176,7 @@
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Category</th>
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Table</th>
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Date/Time</th>
+            <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Orders</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Total Spent</th>
           </tr>
         </thead>
@@ -184,6 +185,17 @@
           @foreach ($bookings as $booking)
             @php
               $totalSpent = $booking->tableSession?->billing?->grand_total;
+              $orderedItems =
+                  $booking->tableSession?->orders
+                      ?->flatMap(fn($order) => $order->items)
+                      ->groupBy('item_name')
+                      ->map(
+                          fn($group) => [
+                              'name' => $group->first()->item_name,
+                              'qty' => (int) $group->sum('quantity'),
+                          ],
+                      )
+                      ->values() ?? collect();
               $histAreaName = $booking->table?->area?->name ?? '';
               $histAreaKey = strtolower($histAreaName);
               $histAreaBadge = match (true) {
@@ -263,6 +275,17 @@
                   <span class="text-gray-400 text-sm">-</span>
                 @endif
               </td>
+              <td class="px-5 py-4">
+                @if ($orderedItems->isNotEmpty())
+                  <button type="button"
+                          onclick="openHistoryBookingOrdersModal({{ $booking->id }})"
+                          class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+                    Lihat Orders ({{ $orderedItems->count() }} item)
+                  </button>
+                @else
+                  <span class="text-gray-300 text-sm">-</span>
+                @endif
+              </td>
               <td class="px-5 py-4 whitespace-nowrap text-right">
                 @if ($totalSpent)
                   <span class="text-base font-bold text-gray-900">
@@ -279,3 +302,113 @@
     </div>
   @endif
 </div>
+
+@php
+  $historyOrdersMap = $bookings
+      ->mapWithKeys(function ($booking) {
+          $orders =
+              $booking->tableSession?->orders
+                  ?->map(function ($order) {
+                      return [
+                          'order_number' => $order->order_number,
+                          'ordered_at' => $order->ordered_at?->setTimezone('Asia/Jakarta')?->format('d M Y H:i') ?? null,
+                          'status' => $order->status,
+                          'total' => (float) $order->total,
+                          'items' => $order->items
+                              ->map(
+                                  fn($item) => [
+                                      'name' => $item->item_name,
+                                      'qty' => (int) $item->quantity,
+                                      'price' => (float) $item->price,
+                                      'subtotal' => (float) $item->subtotal,
+                                  ],
+                              )
+                              ->values()
+                              ->all(),
+                      ];
+                  })
+                  ->values()
+                  ->all() ?? [];
+
+          return [
+              $booking->id => [
+                  'customer' => $booking->customer->name,
+                  'table' => $booking->table?->table_number ?? '-',
+                  'orders' => $orders,
+              ],
+          ];
+      })
+      ->all();
+@endphp
+
+<script>
+  const historyOrdersData = @json($historyOrdersMap);
+
+  function openHistoryBookingOrdersModal(bookingId) {
+    const data = historyOrdersData[String(bookingId)] || historyOrdersData[bookingId];
+    if (!data) {
+      return;
+    }
+
+    const title = document.getElementById('orderHistoryTitle');
+    const body = document.getElementById('orderHistoryBody');
+    const modal = document.getElementById('orderHistoryModal');
+
+    if (!title || !body || !modal) {
+      return;
+    }
+
+    title.textContent = `${data.customer} — Meja ${data.table}`;
+
+    if (!data.orders || data.orders.length === 0) {
+      body.innerHTML = '<p class="text-sm text-gray-400 text-center py-6">Belum ada order.</p>';
+      modal.classList.remove('hidden');
+      return;
+    }
+
+    body.innerHTML = data.orders.map((order) => {
+      const statusClass = {
+        pending: 'bg-yellow-100 text-yellow-700',
+        preparing: 'bg-blue-100 text-blue-700',
+        ready: 'bg-indigo-100 text-indigo-700',
+        completed: 'bg-green-100 text-green-700',
+        cancelled: 'bg-red-100 text-red-700',
+      } [order.status] || 'bg-gray-100 text-gray-600';
+
+      const rows = order.items.map((item) => `
+        <tr class="border-b border-gray-50 last:border-0">
+          <td class="py-1.5 pr-3 text-sm text-gray-700">${item.name}</td>
+          <td class="py-1.5 px-3 text-sm text-gray-500 text-center">${item.qty}</td>
+          <td class="py-1.5 pl-3 text-sm text-gray-500 text-right">Rp ${Number(item.price).toLocaleString('id-ID')}</td>
+          <td class="py-1.5 pl-3 text-sm font-medium text-gray-700 text-right">Rp ${Number(item.subtotal).toLocaleString('id-ID')}</td>
+        </tr>
+      `).join('');
+
+      return `
+        <div class="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+          <div class="flex items-center justify-between bg-gray-50 px-4 py-2.5">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono font-semibold text-gray-600">${order.order_number}</span>
+              <span class="text-xs text-gray-400">${order.ordered_at ?? ''}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}">${order.status}</span>
+              <span class="text-sm font-bold text-gray-900">Rp ${Number(order.total).toLocaleString('id-ID')}</span>
+            </div>
+          </div>
+          <table class="w-full px-4">
+            <thead><tr class="bg-white">
+              <th class="px-4 py-1.5 text-left text-xs text-gray-400 font-medium">Item</th>
+              <th class="px-3 py-1.5 text-center text-xs text-gray-400 font-medium">Qty</th>
+              <th class="px-3 py-1.5 text-right text-xs text-gray-400 font-medium">Harga</th>
+              <th class="px-3 py-1.5 text-right text-xs text-gray-400 font-medium">Subtotal</th>
+            </tr></thead>
+            <tbody class="divide-y divide-gray-50 px-4">${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }).join('');
+
+    modal.classList.remove('hidden');
+  }
+</script>

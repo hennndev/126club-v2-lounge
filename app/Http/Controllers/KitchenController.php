@@ -11,7 +11,13 @@ class KitchenController extends Controller
 {
     public function index(Request $request)
     {
-        $query = KitchenOrder::with(['customer.user', 'customer.profile', 'table.area', 'items.inventoryItem']);
+        $query = KitchenOrder::with([
+            'customer.user',
+            'customer.profile',
+            'table.area',
+            'items.inventoryItem',
+            'order.tableSession.customer.profile',
+        ]);
 
         // Filter by status
         if ($request->has('status') && in_array($request->status, ['baru', 'proses', 'selesai'])) {
@@ -42,6 +48,7 @@ class KitchenController extends Controller
             'customer.profile',
             'table.area',
             'items.inventoryItem',
+            'order.tableSession.customer.profile',
         ])->latest();
 
         // Filter by status
@@ -81,6 +88,7 @@ class KitchenController extends Controller
             'customer.profile',
             'table.area',
             'items.inventoryItem',
+            'order.tableSession.customer.profile',
         ])->find($item->kitchen_order_id);
 
         return response()->json([
@@ -108,6 +116,7 @@ class KitchenController extends Controller
             'customer.profile',
             'table.area',
             'items.inventoryItem',
+            'order.tableSession.customer.profile',
         ])->find($order->id);
 
         return response()->json([
@@ -122,17 +131,25 @@ class KitchenController extends Controller
      */
     protected function formatOrder(KitchenOrder $order): array
     {
+        $sessionCustomer = $order->order?->tableSession?->customer;
+        $customerName = $order->customer?->user?->name
+            ?? $sessionCustomer?->name
+            ?? 'Walk-in';
+        $customerPhone = $order->customer?->profile?->phone
+            ?? $sessionCustomer?->profile?->phone
+            ?? null;
+
         return [
             'id' => $order->id,
             'order_number' => $order->order_number,
             'status' => $order->status,
             'progress' => $order->progress,
             'created_at' => $order->created_at->format('d M Y H:i'),
-            'customer' => $order->customer ? [
-                'id' => $order->customer->id,
-                'name' => $order->customer->user?->name ?? 'N/A',
-                'phone' => $order->customer->profile?->phone ?? null,
-            ] : null,
+            'customer' => [
+                'id' => $order->customer?->id,
+                'name' => $customerName,
+                'phone' => $customerPhone,
+            ],
             'table' => $order->table ? [
                 'id' => $order->table->id,
                 'table_number' => $order->table->table_number,
@@ -149,7 +166,7 @@ class KitchenController extends Controller
                     'is_completed' => $item->is_completed,
                     'notes' => $item->notes,
                 ];
-            }),
+            })->values()->all(),
         ];
     }
 }

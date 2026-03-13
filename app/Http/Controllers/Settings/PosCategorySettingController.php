@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Settings\SavePosCategorySettingRequest;
 use App\Models\InventoryItem;
 use App\Models\PosCategorySetting;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class PosCategorySettingController extends Controller
@@ -19,18 +19,16 @@ class PosCategorySettingController extends Controller
         return view('settings.pos-categories', compact('knownTypes', 'settings'));
     }
 
-    public function save(Request $request): RedirectResponse
+    public function save(SavePosCategorySettingRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'categories' => 'present|array',
-            'categories.*.preparation_location' => 'required|in:kitchen,bar,direct',
-        ]);
+        $validated = $request->validated();
 
         foreach ($validated['categories'] as $categoryType => $data) {
             PosCategorySetting::updateOrCreate(
                 ['category_type' => $categoryType],
                 [
-                    'show_in_pos' => isset($request->input('show_in_pos', [])[$categoryType]),
+                    'show_in_pos' => (bool) ($data['show_in_pos'] ?? false),
+                    'is_menu' => (bool) ($data['is_menu'] ?? false),
                     'preparation_location' => $data['preparation_location'],
                 ]
             );

@@ -127,6 +127,9 @@
               // Compute live total: orders - discount
               $ordersSubtotal = (float) ($billing?->orders_total ?? 0);
               $computedGrandTotal = $ordersSubtotal - (float) ($billing?->discount_amount ?? 0);
+              $checkerItems = $session->orders->flatMap->items->where('status', '!=', 'cancelled');
+              $checkerTotalItems = $checkerItems->count();
+              $checkerCheckedItems = $checkerItems->where('status', 'served')->count();
             @endphp
             <tr class="hover:bg-gray-50 transition-colors">
 
@@ -276,7 +279,15 @@
                   </button>
                   @if ($reservation)
                     @if ($canClose)
-                      <button onclick="openCloseBillingModal({{ $reservation->id }}, {{ (float) $billing->minimum_charge }}, {{ (float) $billing->orders_total }}, {{ (float) $billing->discount_amount }}, {{ (float) $computedGrandTotal }})"
+                      <button type="button"
+                              data-booking-id="{{ $reservation->id }}"
+                              data-minimum-charge="{{ (float) $billing->minimum_charge }}"
+                              data-orders-total="{{ (float) $billing->orders_total }}"
+                              data-discount-amount="{{ (float) $billing->discount_amount }}"
+                              data-grand-total="{{ (float) $computedGrandTotal }}"
+                              data-checker-checked="{{ $checkerCheckedItems }}"
+                              data-checker-total="{{ $checkerTotalItems }}"
+                              onclick="openCloseBillingModal(this)"
                               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition">
                         <svg class="w-3.5 h-3.5"
                              fill="none"

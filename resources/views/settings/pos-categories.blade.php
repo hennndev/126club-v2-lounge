@@ -1,4 +1,65 @@
 <x-app-layout>
+  <style>
+    .settings-toggle {
+      position: relative;
+      display: inline-flex;
+      cursor: pointer;
+      align-items: center;
+    }
+
+    .settings-toggle__input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
+    .settings-toggle__track {
+      position: relative;
+      display: inline-block;
+      width: 2.25rem;
+      height: 1.25rem;
+      border-radius: 9999px;
+      background-color: rgb(226 232 240);
+      transition: background-color 150ms ease-in-out;
+    }
+
+    .settings-toggle__track::after {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 1rem;
+      height: 1rem;
+      content: '';
+      border-radius: 9999px;
+      background-color: rgb(255 255 255);
+      box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.15);
+      transition: transform 150ms ease-in-out;
+    }
+
+    .settings-toggle__input:checked+.settings-toggle__track {
+      background-color: rgb(99 102 241);
+    }
+
+    .settings-toggle--menu .settings-toggle__input:checked+.settings-toggle__track {
+      background-color: rgb(16 185 129);
+    }
+
+    .settings-toggle__input:checked+.settings-toggle__track::after {
+      transform: translateX(1rem);
+    }
+
+    .settings-toggle__input:focus-visible+.settings-toggle__track {
+      outline: 2px solid rgb(165 180 252);
+      outline-offset: 2px;
+    }
+  </style>
+
   <div class="p-6">
 
     <!-- Back -->
@@ -28,11 +89,22 @@
       <p class="text-sm text-slate-500 mt-1">Atur kategori mana yang tampil di POS dan ke mana diarahkan</p>
     </div>
 
+    @if ($errors->any())
+      <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <ul class="list-inside list-disc space-y-1">
+          @foreach ($errors->all() as $error)
+            <li>{{ $error }}</li>
+          @endforeach
+        </ul>
+      </div>
+    @endif
+
     <!-- Info Box -->
     <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6 text-sm text-blue-700">
       <p class="font-semibold mb-2">Petunjuk:</p>
       <ul class="space-y-1 list-disc list-inside">
         <li><strong>Tampil di POS</strong> — aktifkan agar kategori ini muncul di halaman POS.</li>
+        <li><strong>Menu</strong> — kategori ini tidak memakai stok item jadi pengurangan stok akan mengikuti ingredient dari Accurate.</li>
         <li><strong>Arah</strong> — <em>Kitchen</em>: kirim ke dapur, <em>Bar</em>: kirim ke bar, <em>Langsung</em>: masuk transaksi saja tanpa order kitchen/bar.</li>
       </ul>
     </div>
@@ -51,6 +123,7 @@
               <tr>
                 <th class="px-5 py-3 text-left font-medium text-slate-600">Kategori</th>
                 <th class="px-5 py-3 text-center font-medium text-slate-600">Tampil di POS</th>
+                <th class="px-5 py-3 text-center font-medium text-slate-600">Menu</th>
                 <th class="px-5 py-3 text-left font-medium text-slate-600">Arah</th>
               </tr>
             </thead>
@@ -65,16 +138,30 @@
                     <input type="hidden"
                            name="categories[{{ $type }}][_present]"
                            value="1">
-                    <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="hidden"
+                           name="categories[{{ $type }}][show_in_pos]"
+                           value="0">
+                    <label class="settings-toggle">
                       <input type="checkbox"
-                             name="show_in_pos[{{ $type }}]"
+                             name="categories[{{ $type }}][show_in_pos]"
                              value="1"
-                             class="sr-only peer"
+                             class="settings-toggle__input"
                              {{ $s && $s->show_in_pos ? 'checked' : '' }}>
-                      <div class="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-indigo-500
-                                  after:content-[''] after:absolute after:top-0.5 after:left-[2px]
-                                  after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all
-                                  peer-checked:after:translate-x-full"></div>
+                      <span class="settings-toggle__track"></span>
+                    </label>
+                  </td>
+
+                  <td class="px-5 py-3 text-center">
+                    <input type="hidden"
+                           name="categories[{{ $type }}][is_menu]"
+                           value="0">
+                    <label class="settings-toggle settings-toggle--menu">
+                      <input type="checkbox"
+                             name="categories[{{ $type }}][is_menu]"
+                             value="1"
+                             class="settings-toggle__input"
+                             {{ $s && $s->is_menu ? 'checked' : '' }}>
+                      <span class="settings-toggle__track"></span>
                     </label>
                   </td>
 

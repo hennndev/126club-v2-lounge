@@ -255,6 +255,21 @@
     <span class="value">{{ strtoupper($billing?->payment_method ?? '-') }}</span>
   </div>
 
+  @if (($billing?->payment_mode ?? 'normal') === 'split')
+    <div class="two-col">
+      <span class="label">Mode Pembayaran</span>
+      <span class="value">SPLIT BILL</span>
+    </div>
+    <div class="two-col">
+      <span class="label">Cash</span>
+      <span class="value">Rp {{ number_format($billing?->split_cash_amount ?? 0, 0, ',', '.') }}</span>
+    </div>
+    <div class="two-col">
+      <span class="label">Debit</span>
+      <span class="value">Rp {{ number_format($billing?->split_debit_amount ?? 0, 0, ',', '.') }}</span>
+    </div>
+  @endif
+
   <hr class="sep">
 
   <!-- Footer -->

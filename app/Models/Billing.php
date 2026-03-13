@@ -21,6 +21,9 @@ class Billing extends Model
         'billing_status',
         'transaction_code',
         'payment_method',
+        'payment_mode',
+        'split_cash_amount',
+        'split_debit_amount',
         'notes',
         'closing_notes',
         'accurate_so_number',
@@ -38,6 +41,8 @@ class Billing extends Model
         'discount_amount' => 'decimal:2',
         'grand_total' => 'decimal:2',
         'paid_amount' => 'decimal:2',
+        'split_cash_amount' => 'decimal:2',
+        'split_debit_amount' => 'decimal:2',
     ];
 
     public function tableSession()

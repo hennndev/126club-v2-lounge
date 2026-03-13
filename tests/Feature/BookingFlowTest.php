@@ -1,8 +1,13 @@
 <?php
 
 use App\Models\Area;
+use App\Models\Billing;
+use App\Models\InventoryItem;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Tabel;
 use App\Models\TableReservation;
+use App\Models\TableSession;
 use App\Models\User;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -286,6 +291,211 @@ test('admin can assign a waiter to an active session', function () {
     expect($session->fresh()->waiter_id)->toBe($waiter->id);
 });
 
+test('active bookings page includes transaction checker progress for close billing', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'occupied']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => now()->format('H:i:s'),
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 120000,
+        'subtotal' => 120000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 120000,
+        'paid_amount' => 0,
+        'billing_status' => 'draft',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Checker Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 60000,
+        'stock_quantity' => 10,
+        'threshold' => 2,
+        'unit' => 'glass',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'ready',
+        'items_total' => 120000,
+        'discount_amount' => 0,
+        'total' => 120000,
+        'ordered_at' => now(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 60000,
+        'subtotal' => 60000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+        'served_at' => now(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 60000,
+        'subtotal' => 60000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'ready',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'active']))
+        ->assertOk()
+        ->assertSee('data-checker-checked="1"', false)
+        ->assertSee('data-checker-total="2"', false)
+        ->assertSee('Transaction Checker belum lengkap');
+});
+
+test('billing cannot be closed while transaction checker is incomplete', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'occupied']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => now()->format('H:i:s'),
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 120000,
+        'subtotal' => 120000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 120000,
+        'paid_amount' => 0,
+        'billing_status' => 'draft',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Checker Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 60000,
+        'stock_quantity' => 10,
+        'threshold' => 2,
+        'unit' => 'glass',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'ready',
+        'items_total' => 120000,
+        'discount_amount' => 0,
+        'total' => 120000,
+        'ordered_at' => now(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 60000,
+        'subtotal' => 60000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+        'served_at' => now(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 60000,
+        'subtotal' => 60000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'ready',
+    ]);
+
+    $this->actingAs($admin)
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'Billing tidak bisa ditutup karena masih ada item di Transaction Checker yang belum selesai.');
+
+    expect($billing->fresh()->billing_status)->toBe('draft')
+        ->and($session->fresh()->status)->toBe('active')
+        ->and($booking->fresh()->status)->toBe('checked_in')
+        ->and($table->fresh()->status)->toBe('occupied');
+});
+
 test('admin can unassign a waiter from an active session', function () {
     $admin = adminUser();
     $area = makeArea();
@@ -322,4 +532,71 @@ test('admin can unassign a waiter from an active session', function () {
         ->assertRedirect();
 
     expect($session->fresh()->waiter_id)->toBeNull();
+});
+
+test('history tab shows ordered items for each booking customer', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '19:00',
+        'status' => 'completed',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now()->subHours(2),
+        'checked_out_at' => now()->subHour(),
+        'status' => 'completed',
+    ]);
+
+    $item = InventoryItem::create([
+        'code' => 'HIST-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Nasi Goreng Test',
+        'category_type' => 'food',
+        'price' => 50000,
+        'stock_quantity' => 20,
+        'threshold' => 5,
+        'unit' => 'plate',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 100000,
+        'discount_amount' => 0,
+        'total' => 100000,
+        'ordered_at' => now()->subHours(2),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $item->id,
+        'item_name' => $item->name,
+        'item_code' => $item->code,
+        'quantity' => 2,
+        'price' => 50000,
+        'subtotal' => 100000,
+        'discount_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'history']))
+        ->assertOk()
+        ->assertSee('Lihat Orders (1 item)');
 });

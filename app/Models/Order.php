@@ -23,6 +23,10 @@ class Order extends Model
         'cancelled_by',
         'accurate_so_number',
         'accurate_inv_number',
+        'receipt_print_count',
+        'kitchen_print_count',
+        'bar_print_count',
+        'checker_print_count',
     ];
 
     protected $casts = [
@@ -32,6 +36,10 @@ class Order extends Model
         'ordered_at' => 'datetime',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'receipt_print_count' => 'integer',
+        'kitchen_print_count' => 'integer',
+        'bar_print_count' => 'integer',
+        'checker_print_count' => 'integer',
     ];
 
     // Relationships

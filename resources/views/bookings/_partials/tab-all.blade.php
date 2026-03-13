@@ -156,13 +156,26 @@
 
       <!-- Footer -->
       @if ($isCheckedIn && $tableBooking)
-        @php $billing = $tableBooking->tableSession?->billing; @endphp
+        @php
+          $billing = $tableBooking->tableSession?->billing;
+          $checkerItems = $tableBooking->tableSession?->orders?->flatMap->items?->where('status', '!=', 'cancelled') ?? collect();
+          $checkerTotalItems = $checkerItems->count();
+          $checkerCheckedItems = $checkerItems->where('status', 'served')->count();
+        @endphp
         <p class="text-sm font-semibold text-slate-800 truncate">
           {{ $tableBooking->booking_name ?? ($tableBooking->customer?->name ?? '-') }}
         </p>
         @if ($billing && in_array($billing->billing_status, ['draft', 'finalized']))
           @if ($billing->orders_total >= $billing->minimum_charge)
-            <button onclick="event.stopPropagation(); openCloseBillingModal({{ $tableBooking->id }}, {{ (float) $billing->minimum_charge }}, {{ (float) $billing->orders_total }}, {{ (float) $billing->discount_amount }}, {{ (float) (max($billing->minimum_charge, $billing->orders_total) - $billing->discount_amount) }})"
+            <button type="button"
+                    data-booking-id="{{ $tableBooking->id }}"
+                    data-minimum-charge="{{ (float) $billing->minimum_charge }}"
+                    data-orders-total="{{ (float) $billing->orders_total }}"
+                    data-discount-amount="{{ (float) $billing->discount_amount }}"
+                    data-grand-total="{{ (float) (max($billing->minimum_charge, $billing->orders_total) - $billing->discount_amount) }}"
+                    data-checker-checked="{{ $checkerCheckedItems }}"
+                    data-checker-total="{{ $checkerTotalItems }}"
+                    onclick="event.stopPropagation(); openCloseBillingModal(this)"
                     class="mt-2 w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
               Tutup Billing
             </button>

@@ -155,6 +155,9 @@
           <tbody class="bg-white divide-y divide-gray-200"
                  id="itemTableBody">
             @foreach ($items as $item)
+              @php
+                $isMenuCategory = in_array($item->category_type, $menuCategoryTypes ?? [], true);
+              @endphp
               <tr class="hover:bg-gray-50 transition item-row"
                   data-category="{{ $item->category_type }}"
                   data-low-stock="{{ $item->isLowStock() ? '1' : '0' }}">
@@ -179,11 +182,15 @@
                   <div class="text-sm text-gray-900">Rp {{ number_format($item->price, 0, ',', '.') }}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-sm">
-                    <span class="@if ($item->isLowStock()) text-red-600 font-bold @else text-green-600 font-medium @endif">
-                      {{ $item->stock_quantity }} {{ $item->unit }}
-                    </span>
-                  </div>
+                  @if ($isMenuCategory)
+                    <div class="text-sm text-gray-400 stock-empty-menu">&mdash;</div>
+                  @else
+                    <div class="text-sm">
+                      <span class="@if ($item->isLowStock()) text-red-600 font-bold @else text-green-600 font-medium @endif">
+                        {{ $item->stock_quantity }} {{ $item->unit }}
+                      </span>
+                    </div>
+                  @endif
                 </td>
                 <td class="px-6 py-4">
                   @php
@@ -228,30 +235,19 @@
                               d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
                     </button>
-                    <button onclick="editItem({{ $item->id }})"
-                            class="p-1 text-gray-600 hover:text-blue-600 transition">
-                      <svg class="w-5 h-5"
-                           fill="none"
-                           stroke="currentColor"
-                           viewBox="0 0 24 24">
-                        <path stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                    <button onclick="deleteItem({{ $item->id }})"
-                            class="p-1 text-gray-600 hover:text-red-600 transition">
-                      <svg class="w-5 h-5"
-                           fill="none"
-                           stroke="currentColor"
-                           viewBox="0 0 24 24">
-                        <path stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <form method="POST"
+                          action="{{ route('admin.inventory.toggle-active', $item) }}">
+                      @csrf
+                      @method('PATCH')
+                      <button type="submit"
+                              class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition {{ $item->is_active ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100' }}"
+                              title="Toggle Active/Inactive">
+                        <span class="inline-flex h-5 w-9 items-center rounded-full transition {{ $item->is_active ? 'bg-green-500 justify-end' : 'bg-gray-300 justify-start' }} px-0.5">
+                          <span class="h-4 w-4 rounded-full bg-white"></span>
+                        </span>
+                        <span class="text-xs font-semibold">{{ $item->is_active ? 'Active' : 'Inactive' }}</span>
+                      </button>
+                    </form>
                   </div>
                 </td>
               </tr>

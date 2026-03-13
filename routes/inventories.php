@@ -3,9 +3,10 @@
 use App\Http\Controllers\InventoryController;
 use illuminate\Support\Facades\Route;
 
-Route::resource('inventory', InventoryController::class)->except(['show', 'create', 'edit']);
+Route::resource('inventory', InventoryController::class)->only(['index', 'store']);
 Route::post('inventory/update-threshold', [InventoryController::class, 'updateThreshold'])->name('inventory.updateThreshold');
 Route::get('inventory/{inventory}/detail', [InventoryController::class, 'fetchDetail'])->name('inventory.fetchDetail');
+Route::patch('inventory/{inventory}/toggle-active', [InventoryController::class, 'toggleActive'])->name('inventory.toggle-active');
 
 use App\Http\Controllers\StockOpnameController;
 

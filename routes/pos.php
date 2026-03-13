@@ -9,6 +9,7 @@ Route::post('pos/{productId}/add-to-cart', [PosController::class, 'addToCart'])-
 Route::post('pos/{productId}/update-cart', [PosController::class, 'updateCartQuantity'])->name('pos.update-cart');
 Route::delete('pos/{productId}/remove-from-cart', [PosController::class, 'removeFromCart'])->name('pos.remove-from-cart');
 Route::post('pos/clear-cart', [PosController::class, 'clearCart'])->name('pos.clear-cart');
+Route::get('pos/preview-checkout-availability', [PosController::class, 'previewCheckoutAvailability'])->name('pos.preview-checkout-availability');
 Route::post('pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
 Route::get('pos/recent-orders', [PosController::class, 'recentOrders'])->name('pos.recent-orders');
 Route::post('pos/assign-waiter/{booking}', [PosController::class, 'assignWaiterFromPos'])->name('pos.assign-waiter');

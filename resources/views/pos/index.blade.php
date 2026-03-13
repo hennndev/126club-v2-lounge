@@ -1,7 +1,9 @@
 <x-app-layout>
   <div class="flex w-full h-[calc(100vh-6rem)]"
        x-data="posApp"
-       x-cloak>
+       x-cloak
+       @walk-in-proceed.window="receiveWalkIn($event.detail)"
+       @pos-toast.window="showToastMessage($event.detail.message, $event.detail.type)">
 
     <!-- Products Section -->
     <div class="flex-1 flex flex-col overflow-hidden">
@@ -47,11 +49,12 @@
           @forelse($products as $product)
             @php
               $category = strtolower($product['category'] ?? '');
-              $prepLoc = $posSettings->get($category)?->preparation_location ?? 'bar';
+              $prepLoc = $posSettings->get($product['category'] ?? '')?->preparation_location ?? 'bar';
               $isKitchen = $prepLoc === 'kitchen';
+              $isMenu = (bool) ($product['is_menu'] ?? false);
               $gradientClass = $isKitchen ? 'from-orange-500 to-red-600' : 'from-blue-400 to-cyan-500';
               $dotColor = $isKitchen ? 'bg-orange-400' : 'bg-blue-300';
-              $outOfStock = isset($product['type']) && $product['type'] === 'item' && ($product['stock'] ?? 0) <= 0;
+              $outOfStock = isset($product['type']) && $product['type'] === 'item' && !$isMenu && ($product['stock'] ?? 0) <= 0;
               $unavailable = isset($product['type']) && $product['type'] === 'bom' && !($product['is_available'] ?? true);
               $disabled = $outOfStock || $unavailable;
             @endphp
@@ -66,7 +69,11 @@
                     <span class="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded">Habis</span>
                   </div>
                 @endif
-                @if (!$isKitchen && isset($product['stock']))
+                @if ($isMenu)
+                  <div class="absolute bottom-2 left-2 z-10">
+                    <span class="px-2 py-0.5 bg-emerald-500 text-white text-xs font-bold rounded">Menu</span>
+                  </div>
+                @elseif (!$isKitchen && isset($product['stock']))
                   <div class="absolute bottom-2 left-2 z-10">
                     @if (($product['stock'] ?? 0) > 10)
                       <span class="px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded">Stock: {{ $product['stock'] }}</span>
@@ -287,6 +294,14 @@
                        maxlength="200"
                        class="w-full text-xs border-2 border-gray-300 rounded-lg pl-6 pr-2 py-1.5 focus:ring-2 focus:ring-gray-500 focus:border-gray-500 outline-none bg-white placeholder-gray-400 text-gray-800 font-medium" />
               </div>
+              <div x-show="hasMenuAvailabilityIssue(item.id)"
+                   style="display: none;"
+                   class="mt-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2">
+                <p class="text-[11px] font-semibold text-red-700"
+                   x-text="getMenuAvailabilityLabel(item.id)"></p>
+                <p class="mt-0.5 text-[11px] text-red-600"
+                   x-text="getMenuAvailabilityMessage(item.id)"></p>
+              </div>
             </div>
             <button type="button"
                     @click="removeFromCart(item.id)"
@@ -319,8 +334,8 @@
         </div>
         <button type="button"
                 @click="openCustomerTypeModal()"
-                :disabled="isProcessing"
-                :class="cart.length > 0 ? 'bg-gray-900 hover:bg-gray-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'"
+                :disabled="isProcessing || cart.length === 0 || !canProceedToCheckout()"
+                :class="cart.length > 0 && canProceedToCheckout() ? 'bg-gray-900 hover:bg-gray-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'"
                 class="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition disabled:opacity-70">
           <svg class="w-5 h-5"
                fill="none"
@@ -402,7 +417,7 @@
                 {{ $tableSessions->count() }} Booking Aktif
               </span>
             </button>
-            <button @click="bookingStep = 'walkin-customer'; walkInSearch = ''; walkInFoundCustomers = []; walkInSelected = null; walkInCreateMode = false; walkInNewName = ''; walkInNewPhone = ''; walkInSelectedTable = null;"
+            <button @click="bookingStep = 'walkin-customer'; $dispatch('walk-in-reset');"
                     class="p-5 border-2 border-gray-100 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition group text-center">
               <div class="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-105 transition-transform">
                 <svg class="w-6 h-6 text-white"
@@ -519,38 +534,15 @@
           </div>
         </div>
 
-        <!-- Step: Walk-in Customer -->
+        <!-- Step: Walk-in Customer — managed by separate walkInCheckout Alpine component -->
         <div x-show="bookingStep === 'walkin-customer'"
              style="display: none;">
-          <div class="flex items-center justify-between px-6 pb-3">
-            <span class="font-semibold text-gray-900">Customer Walk-in</span>
-            <button @click="bookingStep = 'type'"
-                    class="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition font-medium">
-              <svg class="w-4 h-4"
-                   fill="none"
-                   stroke="currentColor"
-                   viewBox="0 0 24 24">
-                <path stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M15 19l-7-7 7-7" />
-              </svg>
-              Kembali
-            </button>
-          </div>
-          <div class="px-6 pb-6 space-y-3">
-            <!-- Selected customer chip -->
-            <div x-show="walkInSelected !== null"
-                 style="display:none;"
-                 class="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-xl">
-              <div>
-                <p class="font-semibold text-green-800 text-sm"
-                   x-text="walkInSelected?.name ?? ''"></p>
-                <p class="text-xs text-green-600"
-                   x-text="walkInSelected?.phone || 'Tidak ada nomor'"></p>
-              </div>
-              <button @click="walkInSelected = null; walkInSearch = ''"
-                      class="text-green-400 hover:text-green-700 transition">
+          <div x-data="walkInCheckout()"
+               @walk-in-reset.window="reset()">
+            <div class="flex items-center justify-between px-6 pb-3">
+              <span class="font-semibold text-gray-900">Customer Walk-in</span>
+              <button @click="bookingStep = 'type'"
+                      class="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition font-medium">
                 <svg class="w-4 h-4"
                      fill="none"
                      stroke="currentColor"
@@ -558,117 +550,143 @@
                   <path stroke-linecap="round"
                         stroke-linejoin="round"
                         stroke-width="2"
-                        d="M6 18L18 6M6 6l12 12" />
+                        d="M15 19l-7-7 7-7" />
                 </svg>
+                Kembali
               </button>
             </div>
-
-            <!-- Search input (when no selection and not create mode) -->
-            <div x-show="walkInSelected === null && !walkInCreateMode"
-                 style="display:none;"
-                 class="space-y-2">
-              <div class="relative">
-                <input type="text"
-                       x-model="walkInSearch"
-                       @input.debounce.300ms="searchWalkInCustomers()"
-                       placeholder="Cari nama atau nomor HP..."
-                       class="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 focus:outline-none pr-10">
-                <svg x-show="walkInSearching"
-                     class="w-4 h-4 text-gray-400 absolute right-3 top-3 animate-spin"
-                     fill="none"
-                     viewBox="0 0 24 24">
-                  <circle class="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          stroke-width="4"></circle>
-                  <path class="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
+            <div class="px-6 pb-6 space-y-3">
+              <!-- Selected customer chip -->
+              <div x-show="walkInSelected !== null"
+                   style="display:none;"
+                   class="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-xl">
+                <div>
+                  <p class="font-semibold text-green-800 text-sm"
+                     x-text="walkInSelected?.name ?? ''"></p>
+                  <p class="text-xs text-green-600"
+                     x-text="walkInSelected?.phone || 'Tidak ada nomor'"></p>
+                </div>
+                <button @click="walkInSelected = null; walkInSearch = ''"
+                        class="text-green-400 hover:text-green-700 transition">
+                  <svg class="w-4 h-4"
+                       fill="none"
+                       stroke="currentColor"
+                       viewBox="0 0 24 24">
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-              <div x-show="walkInFoundCustomers.length > 0"
-                   class="border border-gray-100 rounded-xl overflow-hidden">
-                <template x-for="c in walkInFoundCustomers"
-                          :key="c.id">
+
+              <!-- Search input (when no selection and not create mode) -->
+              <div x-show="walkInSelected === null && !walkInCreateMode"
+                   style="display:none;"
+                   class="space-y-2">
+                <div class="relative">
+                  <input type="text"
+                         x-model="walkInSearch"
+                         @input.debounce.300ms="searchWalkInCustomers()"
+                         placeholder="Cari nama atau nomor HP..."
+                         class="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 focus:outline-none pr-10">
+                  <svg x-show="walkInSearching"
+                       class="w-4 h-4 text-gray-400 absolute right-3 top-3 animate-spin"
+                       fill="none"
+                       viewBox="0 0 24 24">
+                    <circle class="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            stroke-width="4"></circle>
+                    <path class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                </div>
+                <div x-show="walkInFoundCustomers.length > 0"
+                     class="border border-gray-100 rounded-xl overflow-hidden">
+                  <template x-for="c in walkInFoundCustomers"
+                            :key="c.id">
+                    <button type="button"
+                            @click="selectWalkInCustomer(c)"
+                            class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left">
+                      <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
+                        <span class="text-xs font-bold text-gray-600"
+                              x-text="c.name[0].toUpperCase()"></span>
+                      </div>
+                      <div>
+                        <p class="text-sm font-medium text-gray-900"
+                           x-text="c.name"></p>
+                        <p class="text-xs text-gray-400"
+                           x-text="c.phone || 'Tidak ada nomor'"></p>
+                      </div>
+                    </button>
+                  </template>
+                </div>
+                <p x-show="walkInSearch.length >= 2 && walkInFoundCustomers.length === 0 && !walkInSearching"
+                   class="text-xs text-gray-400 text-center py-1">Customer tidak ditemukan.</p>
+                <button type="button"
+                        @click="walkInCreateMode = true; walkInNewName = walkInSearch"
+                        class="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 transition font-medium">
+                  <svg class="w-4 h-4"
+                       fill="none"
+                       stroke="currentColor"
+                       viewBox="0 0 24 24">
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 4v16m8-8H4" />
+                  </svg>
+                  Buat Customer Baru
+                </button>
+              </div>
+
+              <!-- Create new customer form -->
+              <div x-show="walkInCreateMode"
+                   style="display:none;"
+                   class="space-y-3">
+                <div>
+                  <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Nama *</label>
+                  <input type="text"
+                         x-model="walkInNewName"
+                         placeholder="Nama customer"
+                         class="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 focus:outline-none">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">No. HP (opsional)</label>
+                  <input type="tel"
+                         x-model="walkInNewPhone"
+                         placeholder="08xxxxxxxxxx"
+                         class="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 focus:outline-none">
+                </div>
+                <div class="flex gap-2">
                   <button type="button"
-                          @click="selectWalkInCustomer(c)"
-                          class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition text-left">
-                    <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
-                      <span class="text-xs font-bold text-gray-600"
-                            x-text="c.name[0].toUpperCase()"></span>
-                    </div>
-                    <div>
-                      <p class="text-sm font-medium text-gray-900"
-                         x-text="c.name"></p>
-                      <p class="text-xs text-gray-400"
-                         x-text="c.phone || 'Tidak ada nomor'"></p>
-                    </div>
+                          @click="walkInCreateMode = false"
+                          class="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-500 hover:bg-gray-50 transition">
+                    Batal
                   </button>
-                </template>
+                  <button type="button"
+                          @click="createWalkInCustomer()"
+                          :disabled="!walkInNewName.trim() || walkInCreating"
+                          class="flex-1 py-2 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition disabled:opacity-50">
+                    <span x-show="!walkInCreating">Buat Customer</span>
+                    <span x-show="walkInCreating">Membuat...</span>
+                  </button>
+                </div>
               </div>
-              <p x-show="walkInSearch.length >= 2 && walkInFoundCustomers.length === 0 && !walkInSearching"
-                 class="text-xs text-gray-400 text-center py-1">Customer tidak ditemukan.</p>
-              <button type="button"
-                      @click="walkInCreateMode = true; walkInNewName = walkInSearch"
-                      class="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 transition font-medium">
-                <svg class="w-4 h-4"
-                     fill="none"
-                     stroke="currentColor"
-                     viewBox="0 0 24 24">
-                  <path stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M12 4v16m8-8H4" />
-                </svg>
-                Buat Customer Baru
-              </button>
-            </div>
 
-            <!-- Create new customer form -->
-            <div x-show="walkInCreateMode"
-                 style="display:none;"
-                 class="space-y-3">
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Nama *</label>
-                <input type="text"
-                       x-model="walkInNewName"
-                       placeholder="Nama customer"
-                       class="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 focus:outline-none">
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">No. HP (opsional)</label>
-                <input type="tel"
-                       x-model="walkInNewPhone"
-                       placeholder="08xxxxxxxxxx"
-                       class="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 focus:outline-none">
-              </div>
-              <div class="flex gap-2">
+              <!-- Proceed button shown when customer is selected -->
+              <div x-show="walkInSelected !== null"
+                   style="display:none;">
                 <button type="button"
-                        @click="walkInCreateMode = false"
-                        class="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-500 hover:bg-gray-50 transition">
-                  Batal
-                </button>
-                <button type="button"
-                        @click="createWalkInCustomer()"
-                        :disabled="!walkInNewName.trim() || walkInCreating"
-                        class="flex-1 py-2 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition disabled:opacity-50">
-                  <span x-show="!walkInCreating">Buat Customer</span>
-                  <span x-show="walkInCreating">Membuat...</span>
+                        @click="proceedToCheckout()"
+                        class="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-700 transition">
+                  Lanjut → Checkout
                 </button>
               </div>
-            </div>
-
-            <!-- Proceed button shown when customer is selected -->
-            <div x-show="walkInSelected !== null"
-                 style="display:none;">
-              <button type="button"
-                      @click="proceedWalkInCheckout()"
-                      class="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-700 transition">
-                Lanjut → Checkout
-              </button>
-            </div>
+            </div>{{-- /x-data="walkInCheckout()" --}}
           </div>
         </div>
 
@@ -806,6 +824,34 @@
             </div>
           </div>{{-- end waiter section --}}
 
+          <div x-show="hasMenuAvailabilityPreview()"
+               style="display: none;"
+               class="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+            <div>
+              <p class="text-sm font-semibold text-emerald-900">Possible Portion Menu</p>
+              <p class="mt-1 text-xs text-emerald-700">Stok bahan dihitung dari detail group Accurate dan inventory saat ini.</p>
+            </div>
+
+            <div class="space-y-2">
+              <template x-for="menu in menuAvailability.menu_items"
+                        :key="menu.product_id">
+                <div class="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2.5">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-gray-900"
+                         x-text="menu.name"></p>
+                      <p class="mt-1 text-xs text-gray-600"
+                         x-text="'Diminta ' + menu.requested_quantity + ' porsi • Possible ' + menu.possible_portions + ' porsi'"></p>
+                    </div>
+                    <span class="inline-flex rounded-full px-2 py-1 text-[11px] font-semibold"
+                          :class="menu.is_available ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'"
+                          x-text="menu.is_available ? 'Cukup' : 'Tidak cukup'"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Summary Card -->
           <div class="bg-gray-900 rounded-2xl p-4 space-y-2.5">
             <!-- Minimum Charge row -->
@@ -846,10 +892,22 @@
               <span x-text="'Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)'"></span>
               <span x-text="'-' + formatCurrency(discountAmount())"></span>
             </div>
+            <div x-show="checkoutForm.customer_type === 'walk-in' && posCharges.serviceChargePercentage > 0"
+                 style="display: none;"
+                 class="flex justify-between text-sm text-gray-300">
+              <span x-text="'Service Charge (' + posCharges.serviceChargePercentage + '%)'"></span>
+              <span x-text="formatCurrency(walkInServiceCharge())"></span>
+            </div>
+            <div x-show="checkoutForm.customer_type === 'walk-in' && posCharges.taxPercentage > 0"
+                 style="display: none;"
+                 class="flex justify-between text-sm text-gray-300">
+              <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
+              <span x-text="formatCurrency(walkInTax())"></span>
+            </div>
             <div class="border-t border-gray-700 pt-2.5 flex justify-between font-bold text-white">
               <span class="text-base">Total Tagihan Order</span>
               <span class="text-base"
-                    x-text="formatCurrency(finalTotal())"></span>
+                    x-text="formatCurrency(payableTotal())"></span>
             </div>
             <div class="flex items-center justify-between text-xs text-gray-400 pt-1">
               <span x-text="cart.length + ' item'"></span>
@@ -866,6 +924,7 @@
             </button>
             <button type="button"
                     @click="showConfirmModal = true"
+                    :disabled="!canProceedToCheckout()"
                     class="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 font-semibold text-sm transition flex items-center justify-center gap-2">
               <svg class="w-4 h-4"
                    fill="none"
@@ -971,15 +1030,21 @@
             <div class="space-y-2">
               <template x-for="item in cart"
                         :key="item.id">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-sm font-medium text-gray-800"
-                       x-text="item.name"></p>
-                    <p class="text-xs text-gray-400"
-                       x-text="item.quantity + ' x ' + formatCurrency(item.price)"></p>
+                <div class="space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <p class="text-sm font-medium text-gray-800"
+                         x-text="item.name"></p>
+                      <p class="text-xs text-gray-400"
+                         x-text="item.quantity + ' x ' + formatCurrency(item.price)"></p>
+                    </div>
+                    <span class="text-sm font-semibold text-gray-900"
+                          x-text="formatCurrency(item.price * item.quantity)"></span>
                   </div>
-                  <span class="text-sm font-semibold text-gray-900"
-                        x-text="formatCurrency(item.price * item.quantity)"></span>
+                  <p x-show="hasMenuAvailabilityIssue(item.id)"
+                     style="display: none;"
+                     class="text-[11px] font-medium text-red-600"
+                     x-text="getMenuAvailabilityMessage(item.id)"></p>
                 </div>
               </template>
             </div>
@@ -997,10 +1062,22 @@
                 <span x-text="'-' + formatCurrency(discountAmount())"></span>
               </div>
             </template>
+            <div x-show="checkoutForm.customer_type === 'walk-in' && posCharges.serviceChargePercentage > 0"
+                 style="display: none;"
+                 class="flex justify-between text-sm text-gray-300">
+              <span x-text="'Service Charge (' + posCharges.serviceChargePercentage + '%)'"></span>
+              <span x-text="formatCurrency(walkInServiceCharge())"></span>
+            </div>
+            <div x-show="checkoutForm.customer_type === 'walk-in' && posCharges.taxPercentage > 0"
+                 style="display: none;"
+                 class="flex justify-between text-sm text-gray-300">
+              <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
+              <span x-text="formatCurrency(walkInTax())"></span>
+            </div>
             <div class="border-t border-gray-700 pt-2 flex justify-between font-bold text-white">
               <span>Total Pembayaran</span>
               <span class="text-lg"
-                    x-text="formatCurrency(finalTotal())"></span>
+                    x-text="formatCurrency(payableTotal())"></span>
             </div>
             <p class="text-xs text-gray-400 text-right"
                x-text="cart.length + ' item'"></p>
@@ -1181,6 +1258,32 @@
               <span class="text-gray-500">Minimum Charge</span>
               <span class="font-semibold text-gray-800"
                     x-text="'Rp ' + new Intl.NumberFormat('id-ID').format(receiptData?.minimumCharge || 0)"></span>
+            </div>
+            <div x-show="receiptData?.customerType === 'walk-in'"
+                 class="flex justify-between">
+              <span class="text-gray-500">Subtotal</span>
+              <span class="font-semibold text-gray-800"
+                    x-text="formatCurrency(receiptData?.itemsTotal || 0)"></span>
+            </div>
+            <div x-show="receiptData?.customerType === 'walk-in' && (receiptData?.discountAmount || 0) > 0"
+                 class="flex justify-between">
+              <span class="text-gray-500">Diskon</span>
+              <span class="font-semibold text-orange-500"
+                    x-text="'-' + formatCurrency(receiptData?.discountAmount || 0)"></span>
+            </div>
+            <div x-show="receiptData?.customerType === 'walk-in' && (receiptData?.serviceCharge || 0) > 0"
+                 class="flex justify-between">
+              <span class="text-gray-500"
+                    x-text="'Service Charge (' + (receiptData?.serviceChargePercentage || 0) + '%)'"></span>
+              <span class="font-semibold text-gray-800"
+                    x-text="formatCurrency(receiptData?.serviceCharge || 0)"></span>
+            </div>
+            <div x-show="receiptData?.customerType === 'walk-in' && (receiptData?.tax || 0) > 0"
+                 class="flex justify-between">
+              <span class="text-gray-500"
+                    x-text="'PPN (' + (receiptData?.taxPercentage || 0) + '%)'"></span>
+              <span class="font-semibold text-gray-800"
+                    x-text="formatCurrency(receiptData?.tax || 0)"></span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500">Waktu</span>
@@ -1382,6 +1485,7 @@
         updateCart: "{{ route('admin.pos.update-cart', '__PRODUCT_ID__') }}",
         removeFromCart: "{{ route('admin.pos.remove-from-cart', '__PRODUCT_ID__') }}",
         clearCart: "{{ route('admin.pos.clear-cart') }}",
+        previewCheckoutAvailability: "{{ route('admin.pos.preview-checkout-availability') }}",
         checkout: "{{ route('admin.pos.checkout') }}",
         verifyAuthCode: "{{ route('admin.settings.daily-auth-code.verify') }}",
         walkInSearchCustomers: "{{ route('admin.pos.walk-in.search-customers') }}",
@@ -1398,6 +1502,125 @@
         barUrl: "{{ route('admin.bar.index') }}",
       };
       const posWaiters = @json($waiters);
+      const posCharges = {
+        taxPercentage: {{ (float) ($generalSettings->tax_percentage ?? 0) }},
+        serviceChargePercentage: {{ (float) ($generalSettings->service_charge_percentage ?? 0) }},
+      };
+    </script>
+
+    {{-- Walk-in checkout: registered as a separate Alpine component. --}}
+    {{-- Source of truth: resources/js/pos-walk-in.js --}}
+    <script>
+      document.addEventListener('alpine:init', () => {
+        Alpine.data('walkInCheckout', () => ({
+          walkInSearch: '',
+          walkInFoundCustomers: [],
+          walkInSearching: false,
+          walkInSelected: null,
+          walkInNewName: '',
+          walkInNewPhone: '',
+          walkInCreating: false,
+          walkInCreateMode: false,
+          walkInSelectedTable: null,
+
+          reset() {
+            this.walkInSearch = '';
+            this.walkInFoundCustomers = [];
+            this.walkInSearching = false;
+            this.walkInSelected = null;
+            this.walkInNewName = '';
+            this.walkInNewPhone = '';
+            this.walkInCreating = false;
+            this.walkInCreateMode = false;
+            this.walkInSelectedTable = null;
+          },
+
+          async searchWalkInCustomers() {
+            if (this.walkInSearch.length < 2) {
+              this.walkInFoundCustomers = [];
+              return;
+            }
+            this.walkInSearching = true;
+            try {
+              const res = await fetch(
+                posRoutes.walkInSearchCustomers + '?q=' + encodeURIComponent(this.walkInSearch), {
+                  headers: {
+                    Accept: 'application/json'
+                  }
+                },
+              );
+              const data = await res.json();
+              this.walkInFoundCustomers = data.customers ?? [];
+            } catch (e) {
+              this.walkInFoundCustomers = [];
+            } finally {
+              this.walkInSearching = false;
+            }
+          },
+
+          selectWalkInCustomer(c) {
+            this.walkInSelected = c;
+            this.walkInFoundCustomers = [];
+            this.walkInSearch = '';
+          },
+
+          async createWalkInCustomer() {
+            if (!this.walkInNewName.trim() || this.walkInCreating) {
+              return;
+            }
+            this.walkInCreating = true;
+            try {
+              const res = await fetch(posRoutes.walkInCreateCustomer, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                  Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                  name: this.walkInNewName,
+                  phone: this.walkInNewPhone
+                }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                this.walkInSelected = data.customer;
+                this.walkInCreateMode = false;
+                this.walkInNewName = '';
+                this.walkInNewPhone = '';
+              } else {
+                this.toast(data.message || 'Gagal membuat customer', 'error');
+              }
+            } catch (e) {
+              this.toast('Terjadi kesalahan. Coba lagi.', 'error');
+            } finally {
+              this.walkInCreating = false;
+            }
+          },
+
+          selectWalkInTable(t) {
+            this.walkInSelectedTable = t;
+          },
+
+          proceedToCheckout() {
+            if (!this.walkInSelected) {
+              return;
+            }
+            this.$dispatch('walk-in-proceed', {
+              id: this.walkInSelected.id,
+              name: this.walkInSelected.name,
+              phone: this.walkInSelected.phone || '',
+            });
+          },
+
+          toast(message, type = 'success') {
+            this.$dispatch('pos-toast', {
+              message,
+              type
+            });
+          },
+        }));
+      });
     </script>
 
     <script>
@@ -1431,6 +1654,7 @@
           gridCols: parseInt(localStorage.getItem('posGridCols') ?? '4'),
           kitchenUrl: posInitialData.kitchenUrl,
           barUrl: posInitialData.barUrl,
+          posCharges,
           bookingStep: 'type',
           checkoutForm: {
             customer_type: '',
@@ -1453,22 +1677,15 @@
           posWaiters: posWaiters,
           availableTables: posAvailableTables,
           cartNotes: {},
-
-          // Walk-in state
-          walkInSearch: '',
-          walkInFoundCustomers: [],
-          walkInSearching: false,
-          walkInSearchTimeout: null,
-          walkInSelected: null,
-          walkInNewName: '',
-          walkInNewPhone: '',
-          walkInCreating: false,
-          walkInCreateMode: false,
-          walkInSelectedTable: null,
+          menuAvailability: null,
 
           init() {
             this.cart = posInitialData.cart;
             this.cartTotal = posInitialData.cartTotal;
+
+            if (this.cart.length > 0) {
+              this.refreshMenuAvailability();
+            }
           },
 
           formatCurrency(amount) {
@@ -1532,6 +1749,7 @@
               if (data.success) {
                 this.cart = data.cart;
                 this.cartTotal = data.cartTotal;
+                await this.refreshMenuAvailability();
                 this.showToastMessage(data.message, 'success');
               } else {
                 this.showToastMessage(data.message || 'Gagal menambah produk', 'error');
@@ -1566,6 +1784,7 @@
               if (data.success) {
                 this.cart = data.cart;
                 this.cartTotal = data.cartTotal;
+                await this.refreshMenuAvailability();
               } else {
                 this.showToastMessage(data.message || 'Gagal mengupdate keranjang', 'error');
               }
@@ -1596,6 +1815,7 @@
               if (data.success) {
                 this.cart = data.cart;
                 this.cartTotal = data.cartTotal;
+                await this.refreshMenuAvailability();
                 this.showToastMessage(data.message, 'success');
               } else {
                 this.showToastMessage(data.message || 'Gagal menghapus item', 'error');
@@ -1626,6 +1846,7 @@
                 this.cart = [];
                 this.cartTotal = 0;
                 this.cartNotes = {};
+                this.menuAvailability = null;
                 this.showToastMessage(data.message, 'success');
               } else {
                 this.showToastMessage(data.message || 'Gagal mengosongkan keranjang', 'error');
@@ -1637,13 +1858,105 @@
             }
           },
 
-          openCustomerTypeModal() {
+          async openCustomerTypeModal() {
             if (this.cart.length === 0) {
               this.showToastMessage('Keranjang masih kosong!', 'error');
               return;
             }
+
+            const preview = await this.refreshMenuAvailability(true);
+            if (!preview) {
+              return;
+            }
+
             this.bookingStep = 'type';
             this.showCustomerTypeModal = true;
+          },
+
+          async previewMenuAvailability(showError = true) {
+            try {
+              const response = await fetch(posRoutes.previewCheckoutAvailability, {
+                headers: {
+                  Accept: 'application/json',
+                },
+              });
+
+              const data = await response.json();
+
+              if (!response.ok || !data.success) {
+                if (showError) {
+                  this.showToastMessage(data.message || 'Gagal mengecek stok bahan menu.', 'error');
+                }
+                return null;
+              }
+
+              return data;
+            } catch (error) {
+              if (showError) {
+                this.showToastMessage('Gagal mengecek stok bahan menu.', 'error');
+              }
+              return null;
+            }
+          },
+
+          async refreshMenuAvailability(showError = false) {
+            if (this.cart.length === 0) {
+              this.menuAvailability = null;
+              return null;
+            }
+
+            const preview = await this.previewMenuAvailability(showError);
+            if (!preview) {
+              return null;
+            }
+
+            this.menuAvailability = preview;
+
+            return preview;
+          },
+
+          hasMenuAvailabilityPreview() {
+            return Array.isArray(this.menuAvailability?.menu_items) && this.menuAvailability.menu_items.length > 0;
+          },
+
+          getMenuAvailabilityItem(productId) {
+            if (!this.hasMenuAvailabilityPreview()) {
+              return null;
+            }
+
+            const normalizedProductId = String(productId);
+
+            return this.menuAvailability.menu_items.find((menuItem) => String(menuItem.product_id) === normalizedProductId) || null;
+          },
+
+          hasMenuAvailabilityIssue(productId) {
+            const menuItem = this.getMenuAvailabilityItem(productId);
+
+            return menuItem ? menuItem.is_available === false : false;
+          },
+
+          getMenuAvailabilityLabel(productId) {
+            const menuItem = this.getMenuAvailabilityItem(productId);
+
+            if (!menuItem) {
+              return '';
+            }
+
+            return `Possible ${menuItem.possible_portions} porsi • Diminta ${menuItem.requested_quantity} porsi`;
+          },
+
+          getMenuAvailabilityMessage(productId) {
+            const menuItem = this.getMenuAvailabilityItem(productId);
+
+            if (!menuItem) {
+              return '';
+            }
+
+            return `Stok bahan ${menuItem.name} hanya cukup ${menuItem.possible_portions} porsi.`;
+          },
+
+          canProceedToCheckout() {
+            return this.menuAvailability?.can_checkout !== false;
           },
 
           selectCustomerType(type) {
@@ -1702,82 +2015,18 @@
             }
           },
 
-          async searchWalkInCustomers() {
-            if (this.walkInSearch.length < 2) {
-              this.walkInFoundCustomers = [];
-              return;
-            }
-            this.walkInSearching = true;
-            try {
-              const res = await fetch(posRoutes.walkInSearchCustomers + '?q=' + encodeURIComponent(this.walkInSearch), {
-                headers: {
-                  Accept: 'application/json'
-                },
-              });
-              const data = await res.json();
-              this.walkInFoundCustomers = data.customers ?? [];
-            } catch (e) {
-              this.walkInFoundCustomers = [];
-            } finally {
-              this.walkInSearching = false;
-            }
-          },
-
-          selectWalkInCustomer(c) {
-            this.walkInSelected = c;
-            this.walkInFoundCustomers = [];
-            this.walkInSearch = '';
-          },
-
-          async createWalkInCustomer() {
-            if (!this.walkInNewName.trim() || this.walkInCreating) {
-              return;
-            }
-            this.walkInCreating = true;
-            try {
-              const res = await fetch(posRoutes.walkInCreateCustomer, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                  Accept: 'application/json',
-                },
-                body: JSON.stringify({
-                  name: this.walkInNewName,
-                  phone: this.walkInNewPhone
-                }),
-              });
-              const data = await res.json();
-              if (data.success) {
-                this.walkInSelected = data.customer;
-                this.walkInCreateMode = false;
-                this.walkInNewName = '';
-                this.walkInNewPhone = '';
-              } else {
-                this.showToastMessage(data.message || 'Gagal membuat customer', 'error');
-              }
-            } catch (e) {
-              this.showToastMessage('Terjadi kesalahan. Coba lagi.', 'error');
-            } finally {
-              this.walkInCreating = false;
-            }
-          },
-
-          selectWalkInTable(t) {
-            this.walkInSelectedTable = t;
-          },
-
-          proceedWalkInCheckout() {
-            if (!this.walkInSelected) {
-              return;
-            }
+          /**
+           * Called when walkInCheckout component dispatches 'walk-in-proceed'.
+           * Populates checkoutForm and opens the shared checkout modal.
+           */
+          receiveWalkIn(d) {
             this.checkoutForm.customer_type = 'walk-in';
-            this.checkoutForm.walk_in_customer_id = this.walkInSelected.id;
+            this.checkoutForm.walk_in_customer_id = d.id;
             this.checkoutForm.table_id = null;
             this.checkoutForm.table_display = 'Walk-in';
-            this.checkoutForm.customerName = this.walkInSelected.name;
-            this.checkoutForm.customerInitial = this.walkInSelected.name[0].toUpperCase();
-            this.checkoutForm.customerPhone = this.walkInSelected.phone || '';
+            this.checkoutForm.customerName = d.name;
+            this.checkoutForm.customerInitial = d.name[0].toUpperCase();
+            this.checkoutForm.customerPhone = d.phone;
             this.checkoutForm.minimumCharge = 0;
             this.checkoutForm.ordersTotal = 0;
             this.checkoutForm.tierName = '';
@@ -1797,14 +2046,51 @@
             return this.cartTotal - this.discountAmount();
           },
 
+          walkInServiceCharge() {
+            if (this.checkoutForm.customer_type !== 'walk-in') {
+              return 0;
+            }
+
+            return Math.round(this.finalTotal() * (this.posCharges.serviceChargePercentage / 100));
+          },
+
+          walkInTax() {
+            if (this.checkoutForm.customer_type !== 'walk-in') {
+              return 0;
+            }
+
+            return Math.round((this.finalTotal() + this.walkInServiceCharge()) * (this.posCharges.taxPercentage / 100));
+          },
+
+          payableTotal() {
+            if (this.checkoutForm.customer_type === 'walk-in') {
+              return this.finalTotal() + this.walkInServiceCharge() + this.walkInTax();
+            }
+
+            return this.finalTotal();
+          },
+
           pointsEarned() {
-            return Math.floor(this.finalTotal() / 10000);
+            return Math.floor(this.payableTotal() / 10000);
           },
 
           async submitCheckout() {
             if (this.isProcessing) {
               return;
             }
+
+            const preview = await this.previewMenuAvailability();
+            if (!preview) {
+              return;
+            }
+
+            this.menuAvailability = preview;
+
+            if (!preview.can_checkout) {
+              this.showToastMessage(preview.message || 'Stok bahan menu tidak mencukupi untuk checkout.', 'error');
+              return;
+            }
+
             this.isProcessing = true;
             try {
               const response = await fetch(posRoutes.checkout, {
@@ -1826,6 +2112,12 @@
                   orderId: data.order_id,
                   orderNumber: data.order_number,
                   formattedTotal: data.formatted_total,
+                  itemsTotal: data.items_total ?? this.cartTotal,
+                  discountAmount: data.discount_amount ?? this.discountAmount(),
+                  serviceChargePercentage: data.service_charge_percentage ?? 0,
+                  serviceCharge: data.service_charge ?? 0,
+                  taxPercentage: data.tax_percentage ?? 0,
+                  tax: data.tax ?? 0,
                   customerName: this.checkoutForm.customerName,
                   customerInitial: this.checkoutForm.customerInitial,
                   customerType: this.checkoutForm.customer_type,
@@ -1846,6 +2138,7 @@
                 this.cart = [];
                 this.cartTotal = 0;
                 this.cartNotes = {};
+                this.menuAvailability = null;
                 this.showCheckoutModal = false;
                 this.showReceiptModal = true;
                 this.checkoutForm = {
@@ -1985,6 +2278,10 @@
               '<hr class="sep">' +
               '<table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Harga</th></tr></thead><tbody>' + rows + '</tbody></table>' +
               '<hr class="sep">' +
+              (d.customerType === 'walk-in' ? '<p style="text-align:right;margin:2px 0">Subtotal: ' + this.formatCurrency(d.itemsTotal || 0) + '</p>' : '') +
+              (d.customerType === 'walk-in' && (d.discountAmount || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Diskon: -' + this.formatCurrency(d.discountAmount || 0) + '</p>' : '') +
+              (d.customerType === 'walk-in' && (d.serviceCharge || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Service Charge (' + (d.serviceChargePercentage || 0) + '%): ' + this.formatCurrency(d.serviceCharge || 0) + '</p>' : '') +
+              (d.customerType === 'walk-in' && (d.tax || 0) > 0 ? '<p style="text-align:right;margin:2px 0">PPN (' + (d.taxPercentage || 0) + '%): ' + this.formatCurrency(d.tax || 0) + '</p>' : '') +
               '<p style="text-align:right;font-weight:bold">TOTAL: ' + d.formattedTotal + '</p>' +
               '<hr class="sep">' +
               '<p style="text-align:center;margin-top:8px">Terima kasih!</p>';

@@ -233,7 +233,7 @@
                           x-text="item.quantity + 'x'"></span>
                     <span class="text-sm font-medium text-gray-800 truncate"
                           :class="{ 'line-through text-gray-400': item.is_completed }"
-                          x-text="item.recipe_name"></span>
+                          x-text="item.item_name ?? item.recipe_name ?? 'Unknown'"></span>
                   </div>
                 </div>
               </template>
@@ -319,19 +319,21 @@
       return {
         orders: {!! json_encode(
             $orders->map(function ($order) {
+                    $sessionCustomer = $order->order?->tableSession?->customer;
+                    $customerName = $order->customer?->user?->name ?? ($sessionCustomer?->name ?? 'Walk-in');
+                    $customerPhone = $order->customer?->profile?->phone ?? ($sessionCustomer?->profile?->phone ?? null);
+        
                     return [
                         'id' => $order->id,
                         'order_number' => $order->order_number,
                         'status' => $order->status,
                         'progress' => $order->progress,
                         'created_at' => $order->created_at->format('d M Y H:i'),
-                        'customer' => $order->customer
-                            ? [
-                                'id' => $order->customer->id,
-                                'name' => $order->customer->user->name ?? $order->customer->name,
-                                'phone' => $order->customer->profile->phone ?? null,
-                            ]
-                            : null,
+                        'customer' => [
+                            'id' => $order->customer?->id,
+                            'name' => $customerName,
+                            'phone' => $customerPhone,
+                        ],
                         'table' => $order->table
                             ? [
                                 'id' => $order->table->id,
@@ -348,7 +350,7 @@
                                 return [
                                     'id' => $item->id,
                                     'recipe_id' => $item->bom_recipe_id,
-                                    'recipe_name' => $item->recipe?->inventoryItem?->name ?? 'Unknown',
+                                    'item_name' => $item->inventoryItem?->name ?? 'Unknown',
                                     'quantity' => $item->quantity,
                                     'is_completed' => $item->is_completed,
                                 ];

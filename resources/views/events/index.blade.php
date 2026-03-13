@@ -133,12 +133,12 @@
       </div>
     </div>
 
-    <!-- Past Events Section -->
+    <!-- Events Section -->
     <div class="mb-6">
-      <h2 class="text-lg font-bold text-gray-900 mb-4">📅 Past Events ({{ $events->where('end_date', '<', now())->count() }})</h2>
+      <h2 class="text-lg font-bold text-gray-900 mb-4">📅 Semua Event ({{ $events->count() }})</h2>
 
       <div class="grid grid-cols-3 gap-4">
-        @forelse($events->where('end_date', '<', now()) as $event)
+        @forelse($events as $event)
           <div class="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg transition">
             <!-- Header Badges -->
             <div class="flex items-center gap-2 mb-3">

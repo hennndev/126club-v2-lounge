@@ -8,11 +8,14 @@ use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\PosCategorySetting;
 use App\Models\TableReservation;
 use App\Models\TableSession;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class WaiterController extends Controller
@@ -29,8 +32,11 @@ class WaiterController extends Controller
 
     public function activeTables(): View
     {
+        $waiterId = (int) Auth::id();
+
         $sessions = TableSession::with(['table.area', 'customer.profile', 'billing'])
             ->withSum(['orders as total_spent' => fn ($q) => $q->whereNotIn('status', ['cancelled'])], 'total')
+            ->where('waiter_id', $waiterId)
             ->where('status', 'active')
             ->orderByDesc('checked_in_at')
             ->get();
@@ -43,6 +49,13 @@ class WaiterController extends Controller
 
     public function updatePax(Request $request, TableSession $session): JsonResponse
     {
+        if ((int) $session->waiter_id !== (int) Auth::id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'pax' => 'required|integer|min:1|max:9999',
         ]);
@@ -54,35 +67,61 @@ class WaiterController extends Controller
 
     public function pos(): View
     {
-        $products = InventoryItem::whereIn('category_type', ['food', 'bar', 'beverage'])
+        $waiterId = (int) Auth::id();
+
+        $posSettings = PosCategorySetting::allKeyed()->filter(fn ($setting) => $setting->show_in_pos);
+        $allowedTypes = $posSettings->keys()->values()->all();
+
+        $products = InventoryItem::whereIn('category_type', $allowedTypes ?: ['__none__'])
             ->where('is_active', true)
             ->get()
-            ->map(fn ($item) => [
-                'id' => 'item_'.$item->id,
-                'name' => $item->name,
-                'category' => $item->category_type,
-                'price' => (float) $item->price,
-                'type' => 'item',
-            ])
+            ->map(function ($item) use ($posSettings) {
+                $setting = $posSettings->get($item->category_type);
+
+                return [
+                    'id' => 'item_'.$item->id,
+                    'name' => $item->name,
+                    'category' => $item->category_type,
+                    'price' => (float) $item->price,
+                    'stock' => $setting?->is_menu ? null : (int) ($item->stock_quantity ?? 0),
+                    'is_menu' => (bool) $setting?->is_menu,
+                    'type' => 'item',
+                ];
+            })
             ->sortBy('name')
             ->values();
 
         $activeSessions = TableSession::with(['table.area', 'customer.profile'])
+            ->where('waiter_id', $waiterId)
+            ->whereNotNull('table_reservation_id')
             ->where('status', 'active')
             ->orderByDesc('checked_in_at')
             ->get();
 
-        $cart = session('pos_cart', []);
-        $selectedCounter = session('pos_selected_counter');
+        $rawCart = session(\App\Http\Controllers\Waiter\WaiterPosController::CART_KEY, []);
+        $cart = collect($rawCart)->mapWithKeys(fn ($item, $key) => [
+            $key => [
+                'id' => $item['id'],
+                'name' => $item['name'],
+                'price' => (float) $item['price'],
+                'qty' => (int) $item['quantity'],
+            ],
+        ])->all();
 
-        return view('waiter.pos', compact('products', 'activeSessions', 'cart', 'selectedCounter'));
+        $selectedSession = session(\App\Http\Controllers\Waiter\WaiterPosController::SESSION_KEY);
+
+        if ($selectedSession !== null && ! $activeSessions->contains('id', (int) $selectedSession)) {
+            $selectedSession = null;
+            session()->forget(\App\Http\Controllers\Waiter\WaiterPosController::SESSION_KEY);
+        }
+
+        return view('waiter.pos', compact('products', 'activeSessions', 'cart', 'selectedSession'));
     }
 
     public function notifications(): View
     {
-        $waiter = auth()->user();
+        $waiter = User::query()->findOrFail((int) Auth::id());
 
-        // Personal notifications for this waiter (assigned bookings)
         $assignedNotifications = $waiter->unreadNotifications()
             ->where('type', \App\Notifications\WaiterAssignedNotification::class)
             ->latest()
@@ -94,6 +133,7 @@ class WaiterController extends Controller
             ->get();
 
         $recentCheckIns = TableSession::with(['table.area', 'customer.profile'])
+            ->where('waiter_id', $waiter->id)
             ->where('status', 'active')
             ->whereDate('checked_in_at', today())
             ->orderByDesc('checked_in_at')
@@ -110,11 +150,11 @@ class WaiterController extends Controller
 
     public function transactions(Request $request): View
     {
-        $waiter = auth()->user();
+        $waiterId = (int) Auth::id();
         $tab = $request->get('tab', 'active');
 
         $query = TableSession::with(['table.area', 'customer.profile', 'billing'])
-            ->where('waiter_id', $waiter->id);
+            ->where('waiter_id', $waiterId);
 
         if ($tab === 'active') {
             $query->where('status', 'active');
@@ -124,19 +164,18 @@ class WaiterController extends Controller
 
         $sessions = $query->orderByDesc('checked_in_at')->get();
 
-        $activeCount = TableSession::where('waiter_id', $waiter->id)->where('status', 'active')->count();
-        $historyCount = TableSession::where('waiter_id', $waiter->id)->whereIn('status', ['completed', 'force_closed'])->count();
+        $activeCount = TableSession::where('waiter_id', $waiterId)->where('status', 'active')->count();
+        $historyCount = TableSession::where('waiter_id', $waiterId)->whereIn('status', ['completed', 'force_closed'])->count();
 
         return view('waiter.transactions', compact('sessions', 'tab', 'activeCount', 'historyCount'));
     }
 
     public function transactionChecker(Request $request): View
     {
-        $waiter = auth()->user();
+        $waiterId = (int) Auth::id();
         $tab = $request->get('tab', 'proses');
 
-        // Show orders for tables currently assigned to this waiter
-        $assignedTableIds = TableSession::where('waiter_id', $waiter->id)
+        $assignedTableIds = TableSession::where('waiter_id', $waiterId)
             ->where('status', 'active')
             ->pluck('table_id');
 
@@ -169,6 +208,15 @@ class WaiterController extends Controller
 
     public function transactionCheckerCheckItem(OrderItem $item): JsonResponse
     {
+        $session = $item->order?->tableSession;
+
+        if (! $session || (int) $session->waiter_id !== (int) Auth::id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak.',
+            ], 403);
+        }
+
         $item->update([
             'status' => 'served',
             'served_at' => now(),
@@ -190,6 +238,15 @@ class WaiterController extends Controller
 
     public function transactionCheckerCheckAll(Order $order): JsonResponse
     {
+        $session = $order->tableSession;
+
+        if (! $session || (int) $session->waiter_id !== (int) Auth::id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak.',
+            ], 403);
+        }
+
         $order->items()
             ->whereNotIn('status', ['cancelled', 'served'])
             ->update(['status' => 'served', 'served_at' => now()]);

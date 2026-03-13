@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\InventoryItem;
+use App\Models\PosCategorySetting;
 use App\Services\AccurateService;
 use Illuminate\Http\Request;
 
@@ -38,6 +39,10 @@ class InventoryController extends Controller
         $totalStockValue = InventoryItem::selectRaw('SUM(price * stock_quantity) as total')->value('total') ?? 0;
         $lowStockCount = InventoryItem::whereColumn('stock_quantity', '<=', 'threshold')->count();
         $categoryTypes = InventoryItem::distinct()->orderBy('category_type')->pluck('category_type');
+        $menuCategoryTypes = PosCategorySetting::query()
+            ->where('is_menu', true)
+            ->pluck('category_type')
+            ->all();
 
         return view('inventory.index', compact(
             'items',
@@ -45,6 +50,7 @@ class InventoryController extends Controller
             'totalStockValue',
             'lowStockCount',
             'categoryTypes',
+            'menuCategoryTypes',
         ));
     }
 
@@ -71,6 +77,22 @@ class InventoryController extends Controller
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Gagal menambahkan item: '.$e->getMessage()])
                 ->withInput();
+        }
+    }
+
+    public function toggleActive(InventoryItem $inventory)
+    {
+        try {
+            $inventory->update([
+                'is_active' => ! $inventory->is_active,
+            ]);
+
+            $status = $inventory->fresh()->is_active ? 'aktif' : 'nonaktif';
+
+            return redirect()->route('admin.inventory.index')
+                ->with('success', "Status item berhasil diubah menjadi {$status}.");
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Gagal mengubah status item: '.$e->getMessage()]);
         }
     }
 

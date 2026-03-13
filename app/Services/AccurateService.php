@@ -502,6 +502,18 @@ class AccurateService
         return $this->getDetail('item', $id);
     }
 
+    /**
+     * Returns the detailGroup components of an Accurate item (group/composite type).
+     * Each element contains: itemId, detailName, quantity, itemUnit, seq.
+     * Returns an empty array if the item has no group components or the request fails.
+     */
+    public function getItemGroupComponents(int $accurateId): array
+    {
+        $detail = $this->getDetailItem($accurateId);
+
+        return $detail['detailGroup'] ?? [];
+    }
+
     // ===ITEMS CATEGORY SCOPED===
     public function getItemCategories(Request $request)
     {

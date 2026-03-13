@@ -260,20 +260,49 @@
     <hr class="section-sep">
 
     {{-- ── Totals ── --}}
-    @if ($order->discount_amount > 0)
+    @php
+      $totals = $receiptTotals ?? [
+          'items_total' => (float) $order->items_total,
+          'discount_amount' => (float) $order->discount_amount,
+          'service_charge_percentage' => 0,
+          'service_charge' => 0,
+          'tax_percentage' => 0,
+          'tax' => 0,
+          'grand_total' => (float) $order->total,
+      ];
+    @endphp
+
+    @if (($totals['items_total'] ?? 0) > 0)
       <div class="total-row">
         <span>Subtotal</span>
-        <span>Rp {{ number_format($order->items_total, 0, ',', '.') }}</span>
+        <span>Rp {{ number_format($totals['items_total'] ?? 0, 0, ',', '.') }}</span>
       </div>
+    @endif
+
+    @if (($totals['discount_amount'] ?? 0) > 0)
       <div class="total-row discount">
         <span>Diskon</span>
-        <span>- Rp {{ number_format($order->discount_amount, 0, ',', '.') }}</span>
+        <span>- Rp {{ number_format($totals['discount_amount'] ?? 0, 0, ',', '.') }}</span>
+      </div>
+    @endif
+
+    @if (($totals['service_charge'] ?? 0) > 0)
+      <div class="total-row">
+        <span>Service Charge ({{ $totals['service_charge_percentage'] ?? 0 }}%)</span>
+        <span>Rp {{ number_format($totals['service_charge'] ?? 0, 0, ',', '.') }}</span>
+      </div>
+    @endif
+
+    @if (($totals['tax'] ?? 0) > 0)
+      <div class="total-row">
+        <span>PPN ({{ $totals['tax_percentage'] ?? 0 }}%)</span>
+        <span>Rp {{ number_format($totals['tax'] ?? 0, 0, ',', '.') }}</span>
       </div>
     @endif
 
     <div class="grand-total-row">
       <span>TOTAL</span>
-      <span>Rp {{ number_format($order->total, 0, ',', '.') }}</span>
+      <span>Rp {{ number_format($totals['grand_total'] ?? $order->total, 0, ',', '.') }}</span>
     </div>
 
     <hr class="section-sep">

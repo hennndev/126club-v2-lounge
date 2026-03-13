@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class TableReservationController extends Controller
 {
@@ -64,6 +65,7 @@ class TableReservationController extends Controller
                 $query->where('reservation_date', '<=', $request->date_to);
             }
         } elseif ($tab === 'history') {
+            $query->with('tableSession.orders.items');
             $query->whereIn('status', ['completed', 'cancelled', 'rejected', 'force_closed']);
 
             if ($request->filled('date_from')) {
@@ -91,7 +93,7 @@ class TableReservationController extends Controller
         $checkedInTablesCount = $tables->where('status', 'occupied')->count();
 
         // Earliest upcoming confirmed/checked-in booking per table (today or future)
-        $activeBookingsByTable = TableReservation::with(['customer.profile', 'customer.customerUser', 'tableSession.billing'])
+        $activeBookingsByTable = TableReservation::with(['customer.profile', 'customer.customerUser', 'tableSession.billing', 'tableSession.orders.items'])
             ->whereIn('status', ['confirmed', 'checked_in'])
             ->where('reservation_date', '>=', now()->toDateString())
             ->get()
@@ -400,7 +402,10 @@ class TableReservationController extends Controller
     public function closeBilling(Request $request, TableReservation $booking)
     {
         $validated = $request->validate([
-            'payment_method' => 'required|in:cash,kredit,debit',
+            'payment_mode' => 'required|in:normal,split',
+            'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit',
+            'split_cash_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
+            'split_debit_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
         ]);
 
         $session = $booking->load('tableSession.billing.tableSession.orders.items')->tableSession;
@@ -413,6 +418,13 @@ class TableReservationController extends Controller
 
         if (! $billing) {
             return response()->json(['success' => false, 'message' => 'Billing tidak ditemukan.'], 404);
+        }
+
+        if ($this->hasIncompleteTransactionChecker($session)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Billing tidak bisa ditutup karena masih ada item di Transaction Checker yang belum selesai.',
+            ], 422);
         }
 
         if ($billing->billing_status === 'paid') {
@@ -433,6 +445,26 @@ class TableReservationController extends Controller
                 $grandTotal = $afterDiscount + $serviceChargeAmount + $taxAmount;
                 $transactionCode = 'TRX-'.now()->timestamp.rand(100, 999);
 
+                $paymentMode = $validated['payment_mode'];
+                $paymentMethod = $paymentMode === 'split'
+                    ? null
+                    : $validated['payment_method'];
+
+                $splitCashAmount = null;
+                $splitDebitAmount = null;
+
+                if ($paymentMode === 'split') {
+                    $splitCashAmount = (float) $validated['split_cash_amount'];
+                    $splitDebitAmount = (float) $validated['split_debit_amount'];
+                    $splitTotal = round($splitCashAmount + $splitDebitAmount, 2);
+
+                    if (abs($splitTotal - $grandTotal) > 0.01) {
+                        throw ValidationException::withMessages([
+                            'split_total' => 'Total pembayaran split (cash + debit) harus sama dengan grand total.',
+                        ]);
+                    }
+                }
+
                 $billing->update([
                     'orders_total' => $ordersTotal,
                     'subtotal' => $subtotal,
@@ -444,7 +476,10 @@ class TableReservationController extends Controller
                     'paid_amount' => $grandTotal,
                     'billing_status' => 'paid',
                     'transaction_code' => $transactionCode,
-                    'payment_method' => $validated['payment_method'],
+                    'payment_method' => $paymentMethod,
+                    'payment_mode' => $paymentMode,
+                    'split_cash_amount' => $splitCashAmount,
+                    'split_debit_amount' => $splitDebitAmount,
                 ]);
 
                 $session->update([
@@ -497,10 +532,19 @@ class TableReservationController extends Controller
                     'service_charge_percentage' => (float) $billing->service_charge_percentage,
                     'discount_amount' => (float) $billing->discount_amount,
                     'grand_total' => (float) $billing->grand_total,
-                    'payment_method' => strtoupper($billing->payment_method),
+                    'payment_mode' => strtoupper($billing->payment_mode ?? 'NORMAL'),
+                    'payment_method' => strtoupper($billing->payment_method ?? ($billing->payment_mode === 'split' ? 'split' : '-')),
+                    'split_cash_amount' => (float) ($billing->split_cash_amount ?? 0),
+                    'split_debit_amount' => (float) ($billing->split_debit_amount ?? 0),
                 ],
                 'receipt_url' => route('admin.bookings.receipt', $booking->id),
             ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Data pembayaran tidak valid.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Gagal menutup billing: '.$e->getMessage()], 500);
         }
@@ -658,5 +702,18 @@ class TableReservationController extends Controller
         $customerName = $booking->customer->profile->name ?? $booking->customer->customerUser->name ?? $booking->customer->name ?? '-';
 
         return view('bookings.receipt', compact('booking', 'billing', 'allItems', 'customerName'));
+    }
+
+    protected function hasIncompleteTransactionChecker(TableSession $session): bool
+    {
+        $checkerItems = $session->orders
+            ->flatMap(fn ($order) => $order->items)
+            ->where('status', '!=', 'cancelled');
+
+        if ($checkerItems->isEmpty()) {
+            return false;
+        }
+
+        return $checkerItems->where('status', 'served')->count() < $checkerItems->count();
     }
 }

@@ -38,6 +38,25 @@ class TransactionHistoryController extends Controller
 
         $orders = $query->latest('ordered_at')->paginate(25)->withQueryString();
 
+        $orders->getCollection()->transform(function (Order $order) {
+            $hasKitchenItems = $order->items->contains(fn ($item) => $item->preparation_location === 'kitchen');
+            $hasBarItems = $order->items->contains(fn ($item) => $item->preparation_location === 'bar');
+
+            $order->setAttribute('print_types', [
+                'resmi' => true,
+                'kitchen' => $hasKitchenItems,
+                'bar' => $hasBarItems,
+            ]);
+
+            $order->setAttribute('print_counts', [
+                'resmi' => (int) ($order->receipt_print_count ?? 0),
+                'kitchen' => (int) ($order->kitchen_print_count ?? 0),
+                'bar' => (int) ($order->bar_print_count ?? 0),
+            ]);
+
+            return $order;
+        });
+
         $totalOrders = Order::whereNotIn('status', ['cancelled'])->count();
         $todayOrders = Order::whereNotIn('status', ['cancelled'])
             ->whereDate('ordered_at', today())
@@ -47,12 +66,17 @@ class TransactionHistoryController extends Controller
             ->sum('total');
         $totalRevenue = Order::whereNotIn('status', ['cancelled'])->sum('total');
 
-        $printerLocations = Printer::active()
-            ->get(['location'])
+        $activePrinters = Printer::active()->get(['location']);
+
+        $printerLocations = $activePrinters
             ->pluck('location')
+            ->filter()
+            ->map(fn ($location) => strtolower(trim((string) $location)))
             ->unique()
             ->values()
             ->toArray();
+
+        $hasAnyActivePrinter = $activePrinters->isNotEmpty();
 
         return view('transaction-history.index', compact(
             'orders',
@@ -60,16 +84,57 @@ class TransactionHistoryController extends Controller
             'todayOrders',
             'todayRevenue',
             'totalRevenue',
-            'printerLocations'
+            'printerLocations',
+            'hasAnyActivePrinter',
         ));
     }
 
     public function print(Request $request, Order $order): JsonResponse
     {
         $type = $request->input('type', 'resmi');
+        $isReprint = $request->boolean('is_reprint');
 
         try {
-            $order->load(['items', 'tableSession.table', 'tableSession.customer']);
+            $order->load(['items', 'tableSession.table', 'tableSession.customer', 'kitchenOrder.items.recipe.inventoryItem', 'kitchenOrder.table', 'barOrder.items.recipe.inventoryItem', 'barOrder.items.inventoryItem', 'barOrder.table']);
+
+            if (! in_array($type, ['resmi', 'kitchen', 'bar'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Jenis cetak tidak valid.',
+                ], 422);
+            }
+
+            $hasKitchenItems = $order->items->contains(fn ($item) => $item->preparation_location === 'kitchen');
+            $hasBarItems = $order->items->contains(fn ($item) => $item->preparation_location === 'bar');
+
+            if ($type === 'kitchen' && ! $hasKitchenItems) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order ini tidak memiliki item kitchen.',
+                ], 422);
+            }
+
+            if ($type === 'bar' && ! $hasBarItems) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order ini tidak memiliki item bar.',
+                ], 422);
+            }
+
+            $counterColumn = match ($type) {
+                'kitchen' => 'kitchen_print_count',
+                'bar' => 'bar_print_count',
+                default => 'receipt_print_count',
+            };
+
+            $currentCount = (int) ($order->{$counterColumn} ?? 0);
+
+            if ($currentCount > 0 && ! $isReprint) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dokumen ini sudah pernah dicetak. Silakan otorisasi kode harian untuk cetak ulang.',
+                ], 422);
+            }
 
             $location = match ($type) {
                 'kitchen' => 'kitchen',
@@ -78,6 +143,10 @@ class TransactionHistoryController extends Controller
             };
 
             $printer = Printer::getByLocation($location);
+
+            if (! $printer) {
+                $printer = Printer::getDefault();
+            }
 
             if (! $printer) {
                 $locationLabel = match ($location) {
@@ -92,12 +161,27 @@ class TransactionHistoryController extends Controller
                 ], 400);
             }
 
-            $this->printerService->printReceipt($order, $printer);
+            if ($type === 'kitchen') {
+                if ($order->kitchenOrder) {
+                    $this->printerService->printKitchenTicket($order->kitchenOrder, $printer);
+                } else {
+                    $this->printerService->printReceipt($order, $printer);
+                }
+            } elseif ($type === 'bar') {
+                if ($order->barOrder) {
+                    $this->printerService->printBarTicket($order->barOrder, $printer);
+                } else {
+                    $this->printerService->printReceipt($order, $printer);
+                }
+            } else {
+                $this->printerService->printReceipt($order, $printer);
+            }
+
+            $order->increment($counterColumn);
 
             $typeLabel = match ($type) {
                 'kitchen' => 'Kitchen',
                 'bar' => 'Bar',
-                'checker' => 'Checker Meja',
                 default => 'Struk Resmi',
             };
 

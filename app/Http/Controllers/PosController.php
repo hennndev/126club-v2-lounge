@@ -7,6 +7,7 @@ use App\Models\BarOrder;
 use App\Models\BarOrderItem;
 use App\Models\Billing;
 use App\Models\CustomerUser;
+use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\KitchenOrderItem;
@@ -24,6 +25,8 @@ use App\Services\AccurateService;
 use App\Services\PrinterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -38,12 +41,14 @@ class PosController extends Controller
 
     public function index(Request $request)
     {
+        $generalSettings = GeneralSetting::instance();
         $posSettings = PosCategorySetting::allKeyed()->filter(fn ($s) => $s->show_in_pos);
 
         $allTypes = $posSettings->keys()->values()->all();
 
         // Get inventory items for configured category types
-        $inventoryQuery = InventoryItem::whereIn('category_type', $allTypes ?: ['__none__']);
+        $inventoryQuery = InventoryItem::whereIn('category_type', $allTypes ?: ['__none__'])
+            ->where('is_active', true);
 
         // Search functionality
         if ($request->filled('search')) {
@@ -51,14 +56,17 @@ class PosController extends Controller
         }
 
         // Map inventory items to product format
-        $products = $inventoryQuery->get()->map(function ($item) {
+        $products = $inventoryQuery->get()->map(function ($item) use ($posSettings) {
+            $setting = $posSettings->get($item->category_type);
+
             return [
                 'id' => 'item_'.$item->id,
                 'item_id' => $item->id,
                 'name' => $item->name,
                 'category' => $item->category_type,
                 'price' => $item->price ?? 0,
-                'stock' => $item->stock_quantity ?? 0,
+                'stock' => $setting?->is_menu ? null : ($item->stock_quantity ?? 0),
+                'is_menu' => (bool) $setting?->is_menu,
                 'type' => 'item',
             ];
         })->values();
@@ -116,7 +124,7 @@ class PosController extends Controller
                 'minimum_charge' => (float) ($t->minimum_charge ?? 0),
             ]);
 
-        return view('pos.index', compact('products', 'cartItems', 'cartTotal', 'tableSessions', 'tiers', 'waiters', 'printerLocations', 'currentCounter', 'posSettings', 'availableTables'));
+        return view('pos.index', compact('products', 'cartItems', 'cartTotal', 'tableSessions', 'tiers', 'waiters', 'printerLocations', 'currentCounter', 'posSettings', 'availableTables', 'generalSettings'));
     }
 
     /**
@@ -294,6 +302,15 @@ class PosController extends Controller
 
         $cart = session()->get('pos_cart', []);
 
+        $nextQuantity = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
+
+        if (! $setting->is_menu && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQuantity) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Stok tidak mencukupi untuk item ini.',
+            ], 422);
+        }
+
         if (isset($cart[$productId])) {
             $cart[$productId]['quantity']++;
         } else {
@@ -318,6 +335,25 @@ class PosController extends Controller
 
         if (isset($cart[$productId])) {
             if ($action === 'increase') {
+                $itemId = str_replace('item_', '', $productId);
+                $inventoryItem = InventoryItem::find($itemId);
+                $setting = PosCategorySetting::allKeyed()->get($inventoryItem?->category_type);
+                $nextQuantity = (int) $cart[$productId]['quantity'] + 1;
+
+                if (! $inventoryItem || ! $setting || ! $setting->show_in_pos) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Product not found',
+                    ], 404);
+                }
+
+                if (! $setting->is_menu && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQuantity) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Stok tidak mencukupi untuk item ini.',
+                    ], 422);
+                }
+
                 $cart[$productId]['quantity']++;
             } elseif ($action === 'decrease') {
                 $cart[$productId]['quantity']--;
@@ -352,6 +388,26 @@ class PosController extends Controller
         return $this->cartResponse('Cart cleared', []);
     }
 
+    public function previewCheckoutAvailability(): JsonResponse
+    {
+        $cart = session()->get('pos_cart', []);
+
+        if (empty($cart)) {
+            return response()->json([
+                'success' => false,
+                'can_checkout' => false,
+                'message' => 'Keranjang kosong!',
+                'menu_items' => [],
+                'stock_issues' => [],
+            ], 400);
+        }
+
+        return response()->json([
+            'success' => true,
+            ...$this->resolveCartAvailability($cart),
+        ]);
+    }
+
     public function checkout(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -370,6 +426,17 @@ class PosController extends Controller
                 'success' => false,
                 'message' => 'Keranjang kosong!',
             ], 400);
+        }
+
+        $availability = $this->resolveCartAvailability($cart);
+
+        if (! $availability['can_checkout']) {
+            return response()->json([
+                'success' => false,
+                'message' => $availability['message'],
+                'menu_items' => $availability['menu_items'],
+                'stock_issues' => $availability['stock_issues'],
+            ], 422);
         }
 
         DB::beginTransaction();
@@ -402,7 +469,7 @@ class PosController extends Controller
                 // Create Order
                 $order = Order::create([
                     'table_session_id' => $tableSession->id,
-                    'created_by' => auth()->id(),
+                    'created_by' => Auth::id(),
                     'order_number' => $orderNumber,
                     'status' => 'pending',
                     'items_total' => 0,
@@ -523,7 +590,7 @@ class PosController extends Controller
                 $order = Order::create([
                     'table_session_id' => null,
                     'customer_user_id' => $customerUser?->id,
-                    'created_by' => auth()->id(),
+                    'created_by' => Auth::id(),
                     'order_number' => $orderNumber,
                     'status' => 'pending',
                     'items_total' => 0,
@@ -568,13 +635,12 @@ class PosController extends Controller
                     $this->decrementInventoryStock($inventoryItem, $quantity);
                 }
 
-                $discountAmount = (int) round($itemsTotal * $discountPercentage / 100);
-                $finalTotal = $itemsTotal - $discountAmount;
+                $totals = $this->calculateWalkInTotals($itemsTotal, $discountPercentage);
 
                 $order->update([
                     'items_total' => $itemsTotal,
-                    'discount_amount' => $discountAmount,
-                    'total' => $finalTotal,
+                    'discount_amount' => $totals['discount_amount'],
+                    'total' => $totals['grand_total'],
                 ]);
 
                 // Route to kitchen/bar checkers (no table session)
@@ -585,7 +651,7 @@ class PosController extends Controller
                 session()->forget('pos_cart');
 
                 // Push to Accurate: Sales Order + Sales Invoice (non-blocking)
-                $this->pushOrderToAccurate($order, $customerUser, $finalTotal);
+                $this->pushOrderToAccurate($order, $customerUser, $totals['grand_total']);
 
                 // Always auto-print receipt for walk-in
                 $this->printOrderReceipt($order);
@@ -595,10 +661,23 @@ class PosController extends Controller
                     'message' => "Order #{$orderNumber} (Walk-in) berhasil dibuat!",
                     'order_number' => $orderNumber,
                     'order_id' => $order->id,
-                    'total' => $finalTotal,
-                    'formatted_total' => 'Rp '.number_format($finalTotal, 0, ',', '.'),
+                    'items_total' => $itemsTotal,
+                    'discount_amount' => $totals['discount_amount'],
+                    'service_charge_percentage' => $totals['service_charge_percentage'],
+                    'service_charge' => $totals['service_charge'],
+                    'tax_percentage' => $totals['tax_percentage'],
+                    'tax' => $totals['tax'],
+                    'total' => $totals['grand_total'],
+                    'formatted_total' => 'Rp '.number_format($totals['grand_total'], 0, ',', '.'),
                 ]);
             }
+
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Jenis customer tidak valid.',
+            ], 422);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -621,7 +700,31 @@ class PosController extends Controller
             ?? $order->customer?->profile?->name
             ?? 'Walk-in';
 
-        return view('pos.receipt', compact('order', 'customerName'));
+        $receiptTotals = $order->table_session_id === null
+            ? $this->calculateWalkInTotals((float) $order->items_total, 0, (float) $order->discount_amount)
+            : null;
+
+        return view('pos.receipt', compact('order', 'customerName', 'receiptTotals'));
+    }
+
+    protected function calculateWalkInTotals(float|int $itemsTotal, int $discountPercentage = 0, ?float $discountAmountOverride = null): array
+    {
+        $settings = GeneralSetting::instance();
+        $discountAmount = $discountAmountOverride ?? (float) round($itemsTotal * $discountPercentage / 100);
+        $subtotalAfterDiscount = (float) $itemsTotal - (float) $discountAmount;
+        $serviceChargeAmount = round($subtotalAfterDiscount * ((float) $settings->service_charge_percentage / 100), 2);
+        $taxAmount = round(($subtotalAfterDiscount + $serviceChargeAmount) * ((float) $settings->tax_percentage / 100), 2);
+        $grandTotal = $subtotalAfterDiscount + $serviceChargeAmount + $taxAmount;
+
+        return [
+            'discount_amount' => (float) $discountAmount,
+            'subtotal_after_discount' => $subtotalAfterDiscount,
+            'service_charge_percentage' => (float) $settings->service_charge_percentage,
+            'service_charge' => $serviceChargeAmount,
+            'tax_percentage' => (float) $settings->tax_percentage,
+            'tax' => $taxAmount,
+            'grand_total' => $grandTotal,
+        ];
     }
 
     /**
@@ -882,18 +985,267 @@ class PosController extends Controller
         return Printer::getDefault();
     }
 
+    /**
+     * Decrement stock for an inventory item, respecting Accurate item group components.
+     *
+     * If the item has an `accurate_id` and Accurate returns group components (ingredients),
+     * each ingredient's stock is decremented by (component_quantity × sold_quantity).
+     * Falls back to decrementing the item's own stock when no components are found.
+     */
     protected function decrementInventoryStock(InventoryItem $inventoryItem, int $quantity): void
     {
-        $lockedItem = InventoryItem::query()
-            ->whereKey($inventoryItem->id)
-            ->lockForUpdate()
-            ->first();
+        $setting = PosCategorySetting::allKeyed()->get($inventoryItem->category_type);
+        $isMenu = (bool) $setting?->is_menu;
 
-        if (! $lockedItem || $quantity <= 0) {
+        if (! $inventoryItem->accurate_id) {
+            if (! $isMenu) {
+                $this->decrementSingleItemStock($inventoryItem->id, $quantity);
+            }
+
             return;
         }
 
-        $lockedItem->decrement('stock_quantity', $quantity);
+        $components = $this->getItemGroupComponents($inventoryItem);
+
+        if (empty($components)) {
+            if (! $isMenu) {
+                $this->decrementSingleItemStock($inventoryItem->id, $quantity);
+            }
+
+            return;
+        }
+
+        foreach ($components as $component) {
+            $componentAccurateId = $component['itemId'] ?? null;
+            $componentQty = (float) ($component['quantity'] ?? 0);
+
+            if (! $componentAccurateId || $componentQty <= 0) {
+                continue;
+            }
+
+            $ingredient = InventoryItem::where('accurate_id', $componentAccurateId)->first();
+
+            if (! $ingredient) {
+                Log::warning('POS Stock Decrement: ingredient not found in inventory', [
+                    'parent_item' => $inventoryItem->code,
+                    'component_accurate_id' => $componentAccurateId,
+                ]);
+
+                continue;
+            }
+
+            $this->decrementSingleItemStock($ingredient->id, (int) round($componentQty * $quantity));
+        }
+    }
+
+    protected function decrementSingleItemStock(int $itemId, int $quantity): void
+    {
+        if ($quantity <= 0) {
+            return;
+        }
+
+        InventoryItem::query()
+            ->whereKey($itemId)
+            ->lockForUpdate()
+            ->first()
+            ?->decrement('stock_quantity', $quantity);
+    }
+
+    protected function resolveCartAvailability(array $cart): array
+    {
+        $posSettings = PosCategorySetting::allKeyed();
+        $menuItems = [];
+        $stockIssues = [];
+        $ingredientRequirements = [];
+
+        foreach ($cart as $productId => $cartItem) {
+            $itemId = (int) str_replace('item_', '', (string) $productId);
+            $inventoryItem = InventoryItem::find($itemId);
+            $requestedQuantity = (int) ($cartItem['quantity'] ?? 0);
+
+            if (! $inventoryItem || $requestedQuantity <= 0) {
+                continue;
+            }
+
+            $setting = $posSettings->get($inventoryItem->category_type);
+
+            if (! $setting?->is_menu) {
+                $availableStock = (float) ($inventoryItem->stock_quantity ?? 0);
+
+                if ($availableStock < $requestedQuantity) {
+                    $stockIssues[] = [
+                        'type' => 'stock',
+                        'product_id' => $productId,
+                        'name' => $inventoryItem->name,
+                        'available_stock' => $availableStock,
+                        'requested_quantity' => $requestedQuantity,
+                        'message' => "Stok {$inventoryItem->name} hanya tersisa {$this->formatStockNumber($availableStock)}.",
+                    ];
+                }
+
+                continue;
+            }
+
+            if (! $inventoryItem->accurate_id) {
+                $menuItems[] = [
+                    'product_id' => $productId,
+                    'name' => $inventoryItem->name,
+                    'requested_quantity' => $requestedQuantity,
+                    'possible_portions' => 0,
+                    'is_available' => false,
+                    'ingredients' => [],
+                    'message' => 'Menu belum memiliki Accurate ID.',
+                ];
+
+                $stockIssues[] = [
+                    'type' => 'missing_accurate_id',
+                    'product_id' => $productId,
+                    'name' => $inventoryItem->name,
+                    'message' => "Menu {$inventoryItem->name} belum memiliki Accurate ID sehingga stok bahan belum bisa divalidasi.",
+                ];
+
+                continue;
+            }
+
+            $components = $this->getItemGroupComponents($inventoryItem);
+
+            if ($components === []) {
+                $menuItems[] = [
+                    'product_id' => $productId,
+                    'name' => $inventoryItem->name,
+                    'requested_quantity' => $requestedQuantity,
+                    'possible_portions' => 0,
+                    'is_available' => false,
+                    'ingredients' => [],
+                    'message' => 'Detail group Accurate tidak ditemukan.',
+                ];
+
+                $stockIssues[] = [
+                    'type' => 'missing_detail_group',
+                    'product_id' => $productId,
+                    'name' => $inventoryItem->name,
+                    'message' => "Menu {$inventoryItem->name} belum memiliki detail group Accurate sehingga possible portion tidak bisa dihitung.",
+                ];
+
+                continue;
+            }
+
+            $linePossiblePortions = null;
+            $lineIngredients = [];
+
+            foreach ($components as $component) {
+                $componentAccurateId = (int) ($component['itemId'] ?? 0);
+                $componentQuantity = (float) ($component['quantity'] ?? 0);
+
+                if ($componentAccurateId <= 0 || $componentQuantity <= 0) {
+                    continue;
+                }
+
+                $ingredient = InventoryItem::query()
+                    ->where('accurate_id', $componentAccurateId)
+                    ->first();
+
+                $availableStock = max((float) ($ingredient?->stock_quantity ?? 0), 0);
+                $possibleByIngredient = (int) floor($availableStock / $componentQuantity);
+                $linePossiblePortions = $linePossiblePortions === null
+                    ? $possibleByIngredient
+                    : min($linePossiblePortions, $possibleByIngredient);
+
+                $requiredTotal = $componentQuantity * $requestedQuantity;
+
+                $lineIngredients[] = [
+                    'ingredient_name' => $ingredient?->name ?? ($component['detailName'] ?? 'Bahan tidak ditemukan'),
+                    'ingredient_code' => $ingredient?->code,
+                    'required_per_portion' => $componentQuantity,
+                    'requested_total' => $requiredTotal,
+                    'available_stock' => $availableStock,
+                    'possible_portions' => $possibleByIngredient,
+                ];
+
+                if (! isset($ingredientRequirements[$componentAccurateId])) {
+                    $ingredientRequirements[$componentAccurateId] = [
+                        'ingredient_name' => $ingredient?->name ?? ($component['detailName'] ?? 'Bahan tidak ditemukan'),
+                        'ingredient_code' => $ingredient?->code,
+                        'available_stock' => $availableStock,
+                        'required_total' => 0,
+                        'menus' => [],
+                    ];
+                }
+
+                $ingredientRequirements[$componentAccurateId]['required_total'] += $requiredTotal;
+                $ingredientRequirements[$componentAccurateId]['menus'][$inventoryItem->name] = true;
+            }
+
+            $linePossiblePortions ??= 0;
+
+            $menuItems[] = [
+                'product_id' => $productId,
+                'name' => $inventoryItem->name,
+                'requested_quantity' => $requestedQuantity,
+                'possible_portions' => $linePossiblePortions,
+                'is_available' => $linePossiblePortions >= $requestedQuantity,
+                'ingredients' => $lineIngredients,
+                'message' => $linePossiblePortions >= $requestedQuantity
+                    ? null
+                    : "Stok bahan {$inventoryItem->name} hanya cukup {$linePossiblePortions} porsi.",
+            ];
+
+            if ($linePossiblePortions < $requestedQuantity) {
+                $stockIssues[] = [
+                    'type' => 'menu_portion',
+                    'product_id' => $productId,
+                    'name' => $inventoryItem->name,
+                    'requested_quantity' => $requestedQuantity,
+                    'possible_portions' => $linePossiblePortions,
+                    'message' => "Stok bahan {$inventoryItem->name} hanya cukup {$linePossiblePortions} porsi.",
+                ];
+            }
+        }
+
+        foreach ($ingredientRequirements as $ingredientAccurateId => $ingredientRequirement) {
+            if ($ingredientRequirement['required_total'] <= $ingredientRequirement['available_stock']) {
+                continue;
+            }
+
+            $stockIssues[] = [
+                'type' => 'ingredient_shortage',
+                'ingredient_accurate_id' => $ingredientAccurateId,
+                'ingredient_name' => $ingredientRequirement['ingredient_name'],
+                'available_stock' => $ingredientRequirement['available_stock'],
+                'required_total' => $ingredientRequirement['required_total'],
+                'menus' => array_keys($ingredientRequirement['menus']),
+                'message' => "Stok bahan {$ingredientRequirement['ingredient_name']} tidak cukup. Butuh {$this->formatStockNumber($ingredientRequirement['required_total'])}, tersedia {$this->formatStockNumber($ingredientRequirement['available_stock'])}.",
+            ];
+        }
+
+        return [
+            'can_checkout' => $stockIssues === [],
+            'message' => $stockIssues[0]['message'] ?? 'Stok menu siap untuk checkout.',
+            'menu_items' => $menuItems,
+            'stock_issues' => $stockIssues,
+        ];
+    }
+
+    protected function getItemGroupComponents(InventoryItem $inventoryItem): array
+    {
+        if (! $inventoryItem->accurate_id) {
+            return [];
+        }
+
+        $cacheKey = "accurate_item_group_{$inventoryItem->accurate_id}";
+
+        return Cache::remember(
+            $cacheKey,
+            now()->addHour(),
+            fn () => $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id)
+        );
+    }
+
+    protected function formatStockNumber(float|int $value): string
+    {
+        $formatted = number_format((float) $value, 3, '.', '');
+
+        return rtrim(rtrim($formatted, '0'), '.');
     }
 
     /**
@@ -930,17 +1282,40 @@ class PosController extends Controller
                 ];
             })->values()->toArray();
 
-            // 1. Save Sales Order
-            $soPayload = [
+            // 1. Save Sales Order — retry with suffix on duplicate number conflict.
+            $soBasePayload = [
                 'customerNo' => $customerNo,
                 'transDate' => $transDate,
-                'number' => $order->order_number,
                 'memo' => 'Walk-in POS — '.$order->order_number,
                 'detailItem' => $detailItem,
             ];
 
-            $soResult = $this->accurateService->saveSalesOrder($soPayload);
-            $soNumber = $soResult['r']['number'] ?? $soResult['d']['number'] ?? null;
+            $soNumber = null;
+            $maxAttempts = 3;
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                $soNumber_attempt = $attempt === 1
+                    ? $order->order_number
+                    : $order->order_number.'-'.$attempt;
+                try {
+                    $soResult = $this->accurateService->saveSalesOrder(
+                        array_merge($soBasePayload, ['number' => $soNumber_attempt])
+                    );
+                    $soNumber = $soResult['r']['number'] ?? $soResult['d']['number'] ?? null;
+                    if ($soNumber) {
+                        break;
+                    }
+                } catch (\Exception $e) {
+                    $isDuplicate = str_contains($e->getMessage(), 'Sudah ada data');
+                    if (! $isDuplicate || $attempt === $maxAttempts) {
+                        throw $e;
+                    }
+                    Log::info('Accurate POS Sync: duplicate SO number, retrying', [
+                        'order_id' => $order->id,
+                        'attempt' => $attempt,
+                        'tried_number' => $soNumber_attempt,
+                    ]);
+                }
+            }
 
             // 2. Save Sales Invoice
             $invPayload = [

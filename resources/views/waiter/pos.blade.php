@@ -11,8 +11,8 @@
         </div>
         <!-- Cart badge -->
         <button @click="showCart = true"
-                class="relative w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-          <svg class="w-5 h-5 text-slate-700"
+                class="relative w-10 h-10 rounded-full bg-teal-500 text-white border border-teal-500 flex items-center justify-center shadow-sm">
+          <svg class="w-5 h-5"
                fill="none"
                stroke="currentColor"
                viewBox="0 0 24 24">
@@ -29,11 +29,6 @@
 
       <!-- Session Selector -->
       <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        <button @click="selectSession(null)"
-                :class="selectedSession === null ? 'bg-teal-500 text-white' : 'bg-white text-slate-600 border border-slate-200'"
-                class="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap">
-          Tanpa Meja
-        </button>
         @foreach ($activeSessions as $session)
           <button @click="selectSession('{{ $session->id }}')"
                   :class="selectedSession === '{{ $session->id }}' ? 'bg-teal-500 text-white' : 'bg-white text-slate-600 border border-slate-200'"
@@ -44,6 +39,9 @@
             @endif
           </button>
         @endforeach
+        @if ($activeSessions->isEmpty())
+          <span class="text-xs text-slate-500 py-1.5">Belum ada booking aktif yang di-assign ke Anda.</span>
+        @endif
       </div>
     </div>
 
@@ -144,7 +142,7 @@
     <div x-show="showCart"
          x-transition.opacity
          style="display: none;"
-         class="fixed inset-0 bg-black bg-opacity-60 z-40"
+         class="fixed inset-0 bg-black bg-opacity-60 z-[70]"
          @click="showCart = false">
     </div>
     <div x-show="showCart"
@@ -155,7 +153,7 @@
          x-transition:leave-start="transform translate-y-0"
          x-transition:leave-end="transform translate-y-full"
          style="display: none;"
-         class="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 max-h-[80vh] flex flex-col shadow-2xl border-t border-slate-200"
+         class="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-[80] max-h-[80vh] flex flex-col shadow-2xl border-t border-slate-200"
          @click.stop>
 
       <div class="flex items-center justify-between px-5 pt-5 pb-3">
@@ -198,7 +196,7 @@
                 <span class="text-sm font-semibold w-6 text-center"
                       x-text="item.qty"></span>
                 <button @click="addToCartById(pid)"
-                        class="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-sm font-bold">
+                        class="w-7 h-7 rounded-full bg-teal-600 text-white flex items-center justify-center text-sm font-bold">
                   +
                 </button>
               </div>
@@ -216,9 +214,9 @@
         </div>
         <div x-show="selectedSession === null"
              class="mb-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-xs">
-          Pilih meja terlebih dahulu sebelum checkout.
+          Pilih meja booking terlebih dahulu sebelum checkout.
         </div>
-        <button @click="checkout()"
+        <button @click="openConfirmOrder()"
                 :disabled="checkingOut || selectedSession === null || Object.keys(cart).length === 0"
                 class="w-full bg-teal-500 text-white py-4 rounded-full font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2">
           <svg x-show="checkingOut"
@@ -235,7 +233,86 @@
                   fill="currentColor"
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
           </svg>
-          <span x-text="checkingOut ? 'Memproses...' : 'Checkout'"></span>
+          <span x-text="checkingOut ? 'Memproses...' : 'Lanjutkan Konfirmasi'"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Confirm Order Modal -->
+    <div x-show="showConfirmOrder"
+         x-transition.opacity
+         style="display: none;"
+         class="fixed inset-0 bg-black/60 z-[90]"
+         @click="showConfirmOrder = false">
+    </div>
+    <div x-show="showConfirmOrder"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 scale-100"
+         x-transition:leave-end="opacity-0 scale-95"
+         style="display: none;"
+         class="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-200"
+         @click.stop>
+      <div class="px-5 pt-5 pb-3 border-b border-slate-100">
+        <h3 class="text-base font-bold text-slate-900">Konfirmasi Order</h3>
+        <p class="text-xs text-slate-600 mt-1">Periksa ringkasan sebelum kirim ke kitchen/bar.</p>
+      </div>
+
+      <div class="px-5 py-4 space-y-3">
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-slate-600">Meja</span>
+          <span class="font-semibold text-slate-900"
+                x-text="selectedSessionLabel()"></span>
+        </div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-slate-600">Total Item</span>
+          <span class="font-semibold text-slate-900"
+                x-text="cartCount"></span>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-100 p-3 space-y-2">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-slate-600">Subtotal</span>
+            <span class="font-semibold text-slate-900"
+                  x-text="formatCurrency(cartTotal)"></span>
+          </div>
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-slate-600">Diskon</span>
+            <span class="font-semibold text-slate-900">Rp 0</span>
+          </div>
+          <div class="pt-2 border-t border-slate-200 flex items-center justify-between">
+            <span class="font-bold text-slate-900">Total</span>
+            <span class="font-bold text-teal-600"
+                  x-text="formatCurrency(cartTotal)"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 pb-5 pt-1 grid grid-cols-2 gap-2">
+        <button @click="showConfirmOrder = false"
+                :disabled="checkingOut"
+                class="py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm disabled:opacity-40">
+          Batal
+        </button>
+        <button @click="checkout()"
+                :disabled="checkingOut"
+                class="py-3 rounded-xl bg-teal-500 text-white font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2">
+          <svg x-show="checkingOut"
+               class="animate-spin w-4 h-4"
+               fill="none"
+               viewBox="0 0 24 24">
+            <circle class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"></circle>
+            <path class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          <span x-text="checkingOut ? 'Memproses...' : 'Konfirmasi' "></span>
         </button>
       </div>
     </div>
@@ -244,7 +321,7 @@
     <div x-show="toastMsg"
          x-transition
          style="display: none;"
-         class="fixed top-5 left-5 right-5 z-50 flex items-center gap-3 px-4 py-4 rounded-2xl shadow-xl"
+         class="fixed top-5 left-5 right-5 z-50 flex items-center gap-3 px-4 py-4 rounded-2xl shadow-xl text-white"
          :class="toastSuccess ? 'bg-green-700' : 'bg-red-700'">
       <svg class="w-5 h-5 flex-shrink-0"
            fill="none"
@@ -267,6 +344,18 @@
 
   </div>
 
+  @php
+    $waiterSessionsPayload = $activeSessions
+        ->map(function ($session) {
+            return [
+                'id' => (string) $session->id,
+                'table' => (string) ($session->table?->table_number ?? '?'),
+                'customer' => $session->customer?->name,
+            ];
+        })
+        ->values();
+  @endphp
+
   @push('scripts')
     <script>
       function waiterPos() {
@@ -274,9 +363,11 @@
           products: @json($products),
           search: '',
           categoryFilter: '',
-          cart: @json(collect($cart ?? [])->mapWithKeys(fn($item, $key) => [$key => $item])),
-          selectedSession: @json($selectedCounter),
+          cart: @json($cart ?? []),
+          sessions: @json($waiterSessionsPayload),
+          selectedSession: @json($selectedSession ?? null),
           showCart: false,
+          showConfirmOrder: false,
           addingToCart: null,
           checkingOut: false,
           toastMsg: '',
@@ -305,17 +396,41 @@
             return this.cart[productId]?.qty ?? 0;
           },
 
+          formatCurrency(value) {
+            return 'Rp ' + Number(value || 0).toLocaleString('id-ID');
+          },
+
+          selectedSessionLabel() {
+            const selectedId = String(this.selectedSession ?? '');
+            const selected = this.sessions.find(session => session.id === selectedId);
+            if (!selected) {
+              return '-';
+            }
+
+            return selected.customer ?
+              `Meja ${selected.table} · ${selected.customer}` :
+              `Meja ${selected.table}`;
+          },
+
+          openConfirmOrder() {
+            if (this.checkingOut || this.selectedSession === null || Object.keys(this.cart).length === 0) {
+              return;
+            }
+
+            this.showConfirmOrder = true;
+          },
+
           async selectSession(sessionId) {
             this.selectedSession = sessionId;
             try {
-              await fetch('{{ route('admin.pos.select-counter') }}', {
+              await fetch('{{ route('waiter.pos.select-session') }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                 },
                 body: JSON.stringify({
-                  counter_id: sessionId
+                  session_id: sessionId
                 }),
               });
             } catch (_) {}
@@ -324,7 +439,7 @@
           async addToCart(product) {
             this.addingToCart = product.id;
             try {
-              const res = await fetch(`{{ url('/admin/pos') }}/${product.id}/add-to-cart`, {
+              const res = await fetch(`{{ url('/waiter/pos') }}/${product.id}/add-to-cart`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -342,6 +457,8 @@
                     qty: 1
                   };
                 }
+              } else {
+                this.flash(data.message || 'Gagal menambahkan item ke keranjang.', false);
               }
             } catch (_) {
               // Optimistic UI fallback
@@ -369,7 +486,7 @@
           async updateQty(productId, newQty) {
             if (newQty <= 0) {
               try {
-                const res = await fetch(`{{ url('/admin/pos') }}/${productId}/remove-from-cart`, {
+                const res = await fetch(`{{ url('/waiter/pos') }}/${productId}/remove-from-cart`, {
                   method: 'DELETE',
                   headers: {
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
@@ -385,7 +502,7 @@
               return;
             }
             try {
-              const res = await fetch(`{{ url('/admin/pos') }}/${productId}/update-cart`, {
+              const res = await fetch(`{{ url('/waiter/pos') }}/${productId}/update-cart`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -398,6 +515,8 @@
               const data = await res.json();
               if (data.success) {
                 this.cart = data.cart ?? this.cart;
+              } else {
+                this.flash(data.message || 'Gagal memperbarui keranjang.', false);
               }
             } catch (_) {
               if (this.cart[productId]) {
@@ -412,20 +531,21 @@
             }
             this.checkingOut = true;
             try {
-              const res = await fetch('{{ route('admin.pos.checkout') }}', {
+              const res = await fetch('{{ route('waiter.pos.checkout') }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                 },
                 body: JSON.stringify({
-                  counter_id: this.selectedSession
+                  session_id: this.selectedSession
                 }),
               });
               const data = await res.json();
               if (data.success) {
                 this.cart = {};
                 this.showCart = false;
+                this.showConfirmOrder = false;
                 this.flash('Pesanan berhasil dikirim ke dapur/bar!', true);
               } else {
                 this.flash(data.message || 'Checkout gagal.', false);

@@ -3,10 +3,16 @@
 use App\Http\Controllers\TableController;
 use App\Http\Controllers\TableReservationController;
 use App\Http\Controllers\Waiter\WaiterController;
+use App\Http\Controllers\Waiter\WaiterPosController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [WaiterController::class, 'index'])->name('index');
 Route::get('/pos', [WaiterController::class, 'pos'])->name('pos');
+Route::post('/pos/select-session', [WaiterPosController::class, 'selectSession'])->name('pos.select-session');
+Route::post('/pos/{productId}/add-to-cart', [WaiterPosController::class, 'addToCart'])->name('pos.add-to-cart');
+Route::post('/pos/{productId}/update-cart', [WaiterPosController::class, 'updateCart'])->name('pos.update-cart');
+Route::delete('/pos/{productId}/remove-from-cart', [WaiterPosController::class, 'removeFromCart'])->name('pos.remove-from-cart');
+Route::post('/pos/checkout', [WaiterPosController::class, 'checkout'])->name('pos.checkout');
 Route::get('/active-tables', [WaiterController::class, 'activeTables'])->name('active-tables');
 Route::patch('/active-tables/{session}/pax', [WaiterController::class, 'updatePax'])->name('active-tables.updatePax');
 Route::get('/transactions', [WaiterController::class, 'transactions'])->name('transactions');

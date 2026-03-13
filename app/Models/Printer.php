@@ -44,7 +44,7 @@ class Printer extends Model
 
     public function scopeByLocation($query, string $location)
     {
-        return $query->where('location', $location);
+        return $query->whereRaw('TRIM(LOWER(location)) = ?', [strtolower(trim($location))]);
     }
 
     public static function getDefault(): ?self
