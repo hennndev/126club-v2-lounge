@@ -158,6 +158,7 @@
       @if ($isCheckedIn && $tableBooking)
         @php
           $billing = $tableBooking->tableSession?->billing;
+          $sessionChargePreview = $tableBooking->tableSession ? $activeSessionChargePreviews[$tableBooking->tableSession->id] ?? null : null;
           $checkerItems = $tableBooking->tableSession?->orders?->flatMap->items?->where('status', '!=', 'cancelled') ?? collect();
           $checkerTotalItems = $checkerItems->count();
           $checkerCheckedItems = $checkerItems->where('status', 'served')->count();
@@ -170,9 +171,13 @@
             <button type="button"
                     data-booking-id="{{ $tableBooking->id }}"
                     data-minimum-charge="{{ (float) $billing->minimum_charge }}"
-                    data-orders-total="{{ (float) $billing->orders_total }}"
-                    data-discount-amount="{{ (float) $billing->discount_amount }}"
-                    data-grand-total="{{ (float) (max($billing->minimum_charge, $billing->orders_total) - $billing->discount_amount) }}"
+                    data-orders-total="{{ (float) ($sessionChargePreview['orders_total'] ?? 0) }}"
+                    data-discount-amount="{{ (float) ($sessionChargePreview['discount_amount'] ?? 0) }}"
+                    data-service-charge="{{ (float) ($sessionChargePreview['service_charge'] ?? 0) }}"
+                    data-tax="{{ (float) ($sessionChargePreview['tax'] ?? 0) }}"
+                    data-service-charge-percentage="{{ (float) ($sessionChargePreview['service_charge_percentage'] ?? 0) }}"
+                    data-tax-percentage="{{ (float) ($sessionChargePreview['tax_percentage'] ?? 0) }}"
+                    data-grand-total="{{ (float) ($sessionChargePreview['grand_total'] ?? max($billing->minimum_charge, $billing->orders_total) - $billing->discount_amount) }}"
                     data-checker-checked="{{ $checkerCheckedItems }}"
                     data-checker-total="{{ $checkerTotalItems }}"
                     onclick="event.stopPropagation(); openCloseBillingModal(this)"

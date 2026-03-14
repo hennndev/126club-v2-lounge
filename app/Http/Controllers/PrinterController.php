@@ -130,6 +130,35 @@ class PrinterController extends Controller
     }
 
     /**
+     * Ping / connectivity check for a network printer (no actual print).
+     */
+    public function ping(Printer $printer): JsonResponse
+    {
+        if ($printer->connection_type !== 'network') {
+            return response()->json([
+                'success' => true,
+                'message' => "Printer '{$printer->name}' tipe {$printer->connection_type} — tidak perlu ping jaringan.",
+            ]);
+        }
+
+        $socket = @fsockopen($printer->ip, (int) $printer->port, $errno, $errstr, 3);
+
+        if ($socket === false) {
+            return response()->json([
+                'success' => false,
+                'message' => "Printer '{$printer->name}' ({$printer->ip}:{$printer->port}) tidak dapat dijangkau. Pastikan printer menyala dan terhubung ke jaringan. (Error: {$errstr})",
+            ], 200);
+        }
+
+        fclose($socket);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Printer '{$printer->name}' ({$printer->ip}:{$printer->port}) online dan siap digunakan.",
+        ]);
+    }
+
+    /**
      * Test print for specific printer.
      */
     public function testPrint(Printer $printer): JsonResponse
@@ -139,12 +168,16 @@ class PrinterController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Test print successful. Check your printer.',
+                'message' => 'Test print berhasil. Cek printer Anda.',
             ]);
         } catch (\Exception $e) {
+            $context = $printer->connection_type === 'network'
+                ? " (IP: {$printer->ip}, Port: {$printer->port})"
+                : '';
+
             return response()->json([
                 'success' => false,
-                'message' => 'Test print failed: '.$e->getMessage(),
+                'message' => 'Test print gagal'.$context.': '.$e->getMessage(),
             ], 500);
         }
     }

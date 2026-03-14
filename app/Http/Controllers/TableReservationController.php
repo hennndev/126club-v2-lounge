@@ -11,6 +11,7 @@ use App\Models\TableSession;
 use App\Models\User;
 use App\Services\AccurateService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -107,11 +108,23 @@ class TableReservationController extends Controller
             'reservation.customer.customerUser',
             'billing',
             'waiter.profile',
-            'orders.items',
+            'orders.items.inventoryItem',
         ])
             ->where('status', 'active')
             ->orderBy('checked_in_at')
             ->get();
+
+        $activeSessionChargePreviews = $activeSessions->mapWithKeys(function (TableSession $session) {
+            $billing = $session->billing;
+
+            return [
+                $session->id => $this->calculateSessionBillingTotals(
+                    $session,
+                    (float) ($billing?->discount_amount ?? 0),
+                    (float) ($billing?->minimum_charge ?? 0),
+                ),
+            ];
+        });
 
         $todayPendingBookings = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser'])
             ->where('status', 'pending')
@@ -192,6 +205,7 @@ class TableReservationController extends Controller
             'availableTablesCount',
             'bookedTablesCount',
             'checkedInTablesCount',
+            'activeSessionChargePreviews',
             'historyTotalCount',
             'historyCompletedCount',
             'historyForceClosedCount',
@@ -433,16 +447,14 @@ class TableReservationController extends Controller
 
         try {
             DB::transaction(function () use ($booking, $session, $billing, $validated) {
-                // Recalculate final totals
-                $ordersTotal = $session->orders()->sum('total');
-                // Minimum charge = minimum spend, not additive fee.
-                $subtotal = max((float) $billing->minimum_charge, (float) $ordersTotal);
-                $afterDiscount = $subtotal - (float) $billing->discount_amount;
+                $session->loadMissing('orders.items.inventoryItem');
 
-                $settings = GeneralSetting::instance();
-                $serviceChargeAmount = round($afterDiscount * $settings->service_charge_percentage / 100, 2);
-                $taxAmount = round(($afterDiscount + $serviceChargeAmount) * $settings->tax_percentage / 100, 2);
-                $grandTotal = $afterDiscount + $serviceChargeAmount + $taxAmount;
+                $totals = $this->calculateSessionBillingTotals(
+                    $session,
+                    (float) $billing->discount_amount,
+                    (float) $billing->minimum_charge,
+                );
+
                 $transactionCode = 'TRX-'.now()->timestamp.rand(100, 999);
 
                 $paymentMode = $validated['payment_mode'];
@@ -458,7 +470,7 @@ class TableReservationController extends Controller
                     $splitDebitAmount = (float) $validated['split_debit_amount'];
                     $splitTotal = round($splitCashAmount + $splitDebitAmount, 2);
 
-                    if (abs($splitTotal - $grandTotal) > 0.01) {
+                    if (abs($splitTotal - (float) $totals['grand_total']) > 0.01) {
                         throw ValidationException::withMessages([
                             'split_total' => 'Total pembayaran split (cash + debit) harus sama dengan grand total.',
                         ]);
@@ -466,14 +478,14 @@ class TableReservationController extends Controller
                 }
 
                 $billing->update([
-                    'orders_total' => $ordersTotal,
-                    'subtotal' => $subtotal,
-                    'tax_percentage' => $settings->tax_percentage,
-                    'tax' => $taxAmount,
-                    'service_charge_percentage' => $settings->service_charge_percentage,
-                    'service_charge' => $serviceChargeAmount,
-                    'grand_total' => $grandTotal,
-                    'paid_amount' => $grandTotal,
+                    'orders_total' => (float) $totals['orders_total'],
+                    'subtotal' => (float) $totals['subtotal'],
+                    'tax_percentage' => (float) $totals['tax_percentage'],
+                    'tax' => (float) $totals['tax'],
+                    'service_charge_percentage' => (float) $totals['service_charge_percentage'],
+                    'service_charge' => (float) $totals['service_charge'],
+                    'grand_total' => (float) $totals['grand_total'],
+                    'paid_amount' => (float) $totals['grand_total'],
                     'billing_status' => 'paid',
                     'transaction_code' => $transactionCode,
                     'payment_method' => $paymentMethod,
@@ -548,6 +560,97 @@ class TableReservationController extends Controller
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Gagal menutup billing: '.$e->getMessage()], 500);
         }
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    protected function calculateSessionBillingTotals(TableSession $session, float $discountAmount, float $minimumCharge): array
+    {
+        $settings = GeneralSetting::instance();
+        $orders = $session->orders
+            ->where('status', '!=', 'cancelled')
+            ->values();
+
+        $ordersTotal = (float) $orders->sum(fn ($order) => (float) ($order->total ?? 0));
+        $subtotal = max($minimumCharge, $ordersTotal);
+        $discountAmount = min(max($discountAmount, 0), $subtotal);
+        $subtotalAfterDiscount = max($subtotal - $discountAmount, 0);
+
+        $bases = $this->resolveSessionChargeableBases($orders);
+        $discountRatio = $ordersTotal > 0 ? min(max($discountAmount / $ordersTotal, 0), 1) : 0;
+
+        $serviceChargeBaseAfterDiscount = max($bases['service_charge_base'] * (1 - $discountRatio), 0);
+        $taxBaseAfterDiscount = max($bases['tax_base'] * (1 - $discountRatio), 0);
+        $taxAndServiceBaseAfterDiscount = max($bases['tax_and_service_base'] * (1 - $discountRatio), 0);
+
+        $serviceCharge = round($serviceChargeBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
+        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
+        $tax = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+
+        return [
+            'orders_total' => $ordersTotal,
+            'minimum_charge' => $minimumCharge,
+            'subtotal' => $subtotal,
+            'discount_amount' => $discountAmount,
+            'subtotal_after_discount' => $subtotalAfterDiscount,
+            'service_charge_percentage' => (float) $settings->service_charge_percentage,
+            'service_charge' => $serviceCharge,
+            'tax_percentage' => (float) $settings->tax_percentage,
+            'tax' => $tax,
+            'grand_total' => $subtotalAfterDiscount + $serviceCharge + $tax,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $orders
+     * @return array<string, float>
+     */
+    protected function resolveSessionChargeableBases(Collection $orders): array
+    {
+        $serviceChargeBase = 0;
+        $taxBase = 0;
+        $taxAndServiceBase = 0;
+
+        foreach ($orders as $order) {
+            $orderItems = $order->items->where('status', '!=', 'cancelled')->values();
+            $orderNetTotal = (float) ($order->total ?? 0);
+
+            if ($orderItems->isEmpty()) {
+                $serviceChargeBase += max($orderNetTotal, 0);
+                $taxBase += max($orderNetTotal, 0);
+                $taxAndServiceBase += max($orderNetTotal, 0);
+
+                continue;
+            }
+
+            $itemsSubtotal = (float) $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0));
+            $ratio = $itemsSubtotal > 0 ? max($orderNetTotal, 0) / $itemsSubtotal : 0;
+
+            foreach ($orderItems as $orderItem) {
+                $itemNetSubtotal = (float) ($orderItem->subtotal ?? 0) * $ratio;
+                $includeTax = (bool) ($orderItem->inventoryItem?->include_tax ?? true);
+                $includeServiceCharge = (bool) ($orderItem->inventoryItem?->include_service_charge ?? true);
+
+                if ($includeServiceCharge) {
+                    $serviceChargeBase += $itemNetSubtotal;
+                }
+
+                if ($includeTax) {
+                    $taxBase += $itemNetSubtotal;
+                }
+
+                if ($includeTax && $includeServiceCharge) {
+                    $taxAndServiceBase += $itemNetSubtotal;
+                }
+            }
+        }
+
+        return [
+            'service_charge_base' => $serviceChargeBase,
+            'tax_base' => $taxBase,
+            'tax_and_service_base' => $taxAndServiceBase,
+        ];
     }
 
     /**
@@ -682,7 +785,7 @@ class TableReservationController extends Controller
             'customer.profile',
             'customer.customerUser',
             'tableSession.billing',
-            'tableSession.orders.items',
+            'tableSession.orders.items.inventoryItem',
         ]);
 
         $session = $booking->tableSession;

@@ -7,6 +7,7 @@ use App\Models\GeneralSetting;
 use App\Models\KitchenOrder;
 use App\Models\Order;
 use App\Models\Printer;
+use Illuminate\Support\Facades\Log;
 use Mike42\Escpos\EscposImage;
 use Mike42\Escpos\PrintConnectors\FilePrintConnector;
 use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
@@ -16,10 +17,38 @@ use Mike42\Escpos\Printer as EscposPrinter;
 class PrinterService
 {
     /**
+     * Check if a network printer is reachable before attempting to connect.
+     *
+     * @throws \RuntimeException
+     */
+    protected function checkNetworkReachable(string $ip, int $port, int $timeoutSeconds = 3): void
+    {
+        $socket = @fsockopen($ip, $port, $errno, $errstr, $timeoutSeconds);
+
+        if ($socket === false) {
+            throw new \RuntimeException(
+                "Printer {$ip}:{$port} tidak dapat dijangkau. ".
+                "Pastikan printer menyala, terhubung ke jaringan, dan port {$port} terbuka. ".
+                "(Error: {$errstr})"
+            );
+        }
+
+        fclose($socket);
+    }
+
+    /**
      * Create the appropriate print connector based on printer model.
      */
     protected function createConnector(Printer $printer): NetworkPrintConnector|FilePrintConnector|WindowsPrintConnector
     {
+        if ($printer->connection_type === 'network') {
+            $this->checkNetworkReachable(
+                $printer->ip,
+                (int) $printer->port,
+                min((int) $printer->timeout, 5)
+            );
+        }
+
         return match ($printer->connection_type) {
             'network' => new NetworkPrintConnector(
                 $printer->ip,
@@ -53,6 +82,11 @@ class PrinterService
             $content."\n",
             FILE_APPEND
         );
+
+        Log::info('Printer simulation log', [
+            'title' => $title,
+            'lines' => $lines,
+        ]);
     }
 
     /**
@@ -60,32 +94,34 @@ class PrinterService
      */
     public function printReceipt(Order $order, Printer $printer): bool
     {
-        $walkInTotals = $this->calculateWalkInReceiptTotals($order);
+        $receiptTotals = $this->calculateReceiptTotals($order);
+        Log::info('data', ['data' => $receiptTotals]);
 
         if ($printer->connection_type === 'log') {
             $lines = [
                 "Order  : {$order->order_number}",
                 'Date   : '.$order->ordered_at->format('d/m/Y H:i'),
                 'Table  : '.($order->tableSession?->table?->table_number ?? 'N/A'),
+                "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
                 '',
             ];
             foreach ($order->items as $item) {
                 $lines[] = "  {$item->quantity}x {$item->item_name}  Rp ".number_format($item->subtotal, 0, ',', '.');
             }
             $lines[] = '';
-            if ($walkInTotals !== null) {
-                $lines[] = 'Subtotal: Rp '.number_format($walkInTotals['items_total'], 0, ',', '.');
+            if ($receiptTotals !== null) {
+                $lines[] = 'Subtotal: Rp '.number_format($receiptTotals['items_total'], 0, ',', '.');
 
-                if ($walkInTotals['discount_amount'] > 0) {
-                    $lines[] = 'Diskon  : Rp '.number_format($walkInTotals['discount_amount'], 0, ',', '.');
+                if ($receiptTotals['discount_amount'] > 0) {
+                    $lines[] = 'Diskon  : Rp '.number_format($receiptTotals['discount_amount'], 0, ',', '.');
                 }
 
-                if ($walkInTotals['service_charge'] > 0) {
-                    $lines[] = 'Service : Rp '.number_format($walkInTotals['service_charge'], 0, ',', '.');
+                if ($receiptTotals['service_charge'] > 0) {
+                    $lines[] = 'Service : Rp '.number_format($receiptTotals['service_charge'], 0, ',', '.');
                 }
 
-                if ($walkInTotals['tax'] > 0) {
-                    $lines[] = 'PPN     : Rp '.number_format($walkInTotals['tax'], 0, ',', '.');
+                if ($receiptTotals['tax'] > 0) {
+                    $lines[] = 'PPN     : Rp '.number_format($receiptTotals['tax'], 0, ',', '.');
                 }
             }
             $lines[] = 'TOTAL  : Rp '.number_format($order->total, 0, ',', '.');
@@ -96,6 +132,8 @@ class PrinterService
 
         $connector = $this->createConnector($printer);
         $escpos = new EscposPrinter($connector);
+
+        Log::info('connector', ['connector' => $connector]);
 
         try {
             // Logo (if configured)
@@ -126,19 +164,19 @@ class PrinterService
             $escpos->text(str_repeat('-', $printer->width)."\n");
 
             // Totals
-            if ($walkInTotals !== null) {
-                $escpos->text($this->padLine('Subtotal', '', '', 'Rp '.number_format($walkInTotals['items_total'], 0, ',', '.'), $printer->width));
+            if ($receiptTotals !== null) {
+                $escpos->text($this->padLine('Subtotal', '', '', 'Rp '.number_format($receiptTotals['items_total'], 0, ',', '.'), $printer->width));
 
-                if ($walkInTotals['discount_amount'] > 0) {
-                    $escpos->text($this->padLine('Diskon', '', '', 'Rp '.number_format($walkInTotals['discount_amount'], 0, ',', '.'), $printer->width));
+                if ($receiptTotals['discount_amount'] > 0) {
+                    $escpos->text($this->padLine('Diskon', '', '', 'Rp '.number_format($receiptTotals['discount_amount'], 0, ',', '.'), $printer->width));
                 }
 
-                if ($walkInTotals['service_charge'] > 0) {
-                    $escpos->text($this->padLine('Service', '', '', 'Rp '.number_format($walkInTotals['service_charge'], 0, ',', '.'), $printer->width));
+                if ($receiptTotals['service_charge'] > 0) {
+                    $escpos->text($this->padLine('Service', '', '', 'Rp '.number_format($receiptTotals['service_charge'], 0, ',', '.'), $printer->width));
                 }
 
-                if ($walkInTotals['tax'] > 0) {
-                    $escpos->text($this->padLine('PPN', '', '', 'Rp '.number_format($walkInTotals['tax'], 0, ',', '.'), $printer->width));
+                if ($receiptTotals['tax'] > 0) {
+                    $escpos->text($this->padLine('PPN', '', '', 'Rp '.number_format($receiptTotals['tax'], 0, ',', '.'), $printer->width));
                 }
 
                 $escpos->text(str_repeat('-', $printer->width)."\n");
@@ -301,18 +339,43 @@ class PrinterService
     /**
      * @return array<string, float>|null
      */
-    protected function calculateWalkInReceiptTotals(Order $order): ?array
+    protected function calculateReceiptTotals(Order $order): ?array
     {
-        if ($order->table_session_id !== null) {
-            return null;
-        }
-
         $generalSettings = GeneralSetting::instance();
         $itemsTotal = (float) $order->items_total;
         $discountAmount = (float) $order->discount_amount;
         $subtotalAfterDiscount = max($itemsTotal - $discountAmount, 0);
-        $serviceCharge = round($subtotalAfterDiscount * (((float) $generalSettings->service_charge_percentage) / 100));
-        $tax = round(($subtotalAfterDiscount + $serviceCharge) * (((float) $generalSettings->tax_percentage) / 100));
+        $discountRatio = $itemsTotal > 0 ? min(max($discountAmount / $itemsTotal, 0), 1) : 0;
+
+        $serviceChargeBase = 0;
+        $taxBase = 0;
+        $taxAndServiceBase = 0;
+
+        foreach ($order->items as $item) {
+            $subtotal = (float) ($item->subtotal ?? ((float) $item->price * (int) $item->quantity));
+            $includeTax = (bool) ($item->inventoryItem?->include_tax ?? true);
+            $includeServiceCharge = (bool) ($item->inventoryItem?->include_service_charge ?? true);
+
+            if ($includeServiceCharge) {
+                $serviceChargeBase += $subtotal;
+            }
+
+            if ($includeTax) {
+                $taxBase += $subtotal;
+            }
+
+            if ($includeTax && $includeServiceCharge) {
+                $taxAndServiceBase += $subtotal;
+            }
+        }
+
+        $serviceChargeBaseAfterDiscount = max($serviceChargeBase * (1 - $discountRatio), 0);
+        $taxBaseAfterDiscount = max($taxBase * (1 - $discountRatio), 0);
+        $taxAndServiceBaseAfterDiscount = max($taxAndServiceBase * (1 - $discountRatio), 0);
+
+        $serviceCharge = round($serviceChargeBaseAfterDiscount * (((float) $generalSettings->service_charge_percentage) / 100));
+        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * (((float) $generalSettings->service_charge_percentage) / 100));
+        $tax = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * (((float) $generalSettings->tax_percentage) / 100));
 
         return [
             'items_total' => $itemsTotal,
@@ -332,6 +395,7 @@ class PrinterService
                 "Order : #{$kitchenOrder->order_number}",
                 'Table : '.($kitchenOrder->table?->table_number ?? 'N/A'),
                 'Time  : '.now()->format('H:i'),
+                "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
                 '',
             ];
             foreach ($kitchenOrder->items as $item) {
@@ -400,6 +464,7 @@ class PrinterService
                 "Order : #{$barOrder->order_number}",
                 'Table : '.($barOrder->table?->table_number ?? 'N/A'),
                 'Time  : '.now()->format('H:i'),
+                "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
                 '',
             ];
             foreach ($barOrder->items as $item) {

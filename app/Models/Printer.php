@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Printer extends Model
 {
@@ -56,6 +57,11 @@ class Printer extends Model
     public static function getByLocation(string $location): ?self
     {
         return static::active()->byLocation($location)->first();
+    }
+
+    public function inventoryItems(): BelongsToMany
+    {
+        return $this->belongsToMany(InventoryItem::class)->withTimestamps();
     }
 
     public function isNetwork(): bool

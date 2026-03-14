@@ -45,13 +45,15 @@
             $duration = $checkedInAt ? $checkedInAt->diffForHumans(now(), \Carbon\CarbonInterface::DIFF_ABSOLUTE) : '—';
 
             $billing = $session->billing;
-            $ordersTotal = (float) ($session->total_spent ?? 0);
+            $chargePreview = $sessionChargePreviews[$session->id] ?? null;
+            $ordersTotal = (float) ($chargePreview['orders_total'] ?? ($session->total_spent ?? 0));
             $minimumCharge = (float) ($billing?->minimum_charge ?? 0);
-            $discountAmount = (float) ($billing?->discount_amount ?? 0);
-            $afterDiscount = max($ordersTotal - $discountAmount, 0);
-            $serviceChargeAmount = round(($afterDiscount * $generalSettings->service_charge_percentage) / 100, 0);
-            $taxAmount = round((($afterDiscount + $serviceChargeAmount) * $generalSettings->tax_percentage) / 100, 0);
-            $estimatedTotal = $afterDiscount + $serviceChargeAmount + $taxAmount;
+            $discountAmount = (float) ($chargePreview['discount_amount'] ?? ($billing?->discount_amount ?? 0));
+            $serviceChargeAmount = (float) ($chargePreview['service_charge'] ?? 0);
+            $taxAmount = (float) ($chargePreview['tax'] ?? 0);
+            $serviceChargePercentage = (float) ($chargePreview['service_charge_percentage'] ?? 0);
+            $taxPercentage = (float) ($chargePreview['tax_percentage'] ?? 0);
+            $estimatedTotal = (float) ($chargePreview['grand_total'] ?? $ordersTotal - $discountAmount);
             $belowMinCharge = $minimumCharge > 0 && $ordersTotal < $minimumCharge;
             $gap = $belowMinCharge ? $minimumCharge - $ordersTotal : 0;
           @endphp
@@ -189,17 +191,17 @@
               @endif
 
               {{-- Service charge --}}
-              @if ($generalSettings->service_charge_percentage > 0)
+              @if ($serviceChargeAmount > 0)
                 <div class="flex items-center justify-between text-sm">
-                  <span class="text-slate-500">Service Charge ({{ $generalSettings->service_charge_percentage }}%)</span>
+                  <span class="text-slate-500">Service Charge ({{ $serviceChargePercentage }}%)</span>
                   <span class="text-slate-700">Rp {{ number_format($serviceChargeAmount, 0, ',', '.') }}</span>
                 </div>
               @endif
 
               {{-- Tax --}}
-              @if ($generalSettings->tax_percentage > 0)
+              @if ($taxAmount > 0)
                 <div class="flex items-center justify-between text-sm">
-                  <span class="text-slate-500">PPN ({{ $generalSettings->tax_percentage }}%)</span>
+                  <span class="text-slate-500">PPN ({{ $taxPercentage }}%)</span>
                   <span class="text-slate-700">Rp {{ number_format($taxAmount, 0, ',', '.') }}</span>
                 </div>
               @endif

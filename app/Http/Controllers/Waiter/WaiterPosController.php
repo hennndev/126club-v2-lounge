@@ -18,8 +18,11 @@ use App\Services\AccurateService;
 use App\Services\PrinterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class WaiterPosController extends Controller
 {
@@ -46,21 +49,17 @@ class WaiterPosController extends Controller
 
         $cart = session()->get(self::CART_KEY, []);
         $nextQty = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
+        $isItemGroup = (bool) ($setting->is_item_group ?? false);
+        $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
-        if (! $setting->is_menu) {
-            if ((int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
-                return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
-            }
-        } else {
-            $possiblePortions = $this->resolvePossiblePortions($inventoryItem);
+        if ($detailGroupComponents !== []) {
+            $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
 
-            if ($possiblePortions < $nextQty) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "Stok bahan {$inventoryItem->name} hanya cukup {$possiblePortions} porsi.",
-                    'possible_portions' => $possiblePortions,
-                ], 422);
+            if ($nextQty > $possiblePortions) {
+                return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
             }
+        } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
+            return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
         }
 
         if (isset($cart[$productId])) {
@@ -89,6 +88,27 @@ class WaiterPosController extends Controller
         if ($validated['quantity'] <= 0) {
             unset($cart[$productId]);
         } elseif (isset($cart[$productId])) {
+            $itemId = (int) str_replace('item_', '', $productId);
+            $inventoryItem = InventoryItem::find($itemId);
+            $setting = PosCategorySetting::allKeyed()->get($inventoryItem?->category_type);
+
+            if (! $inventoryItem || ! $setting || ! $setting->show_in_pos) {
+                return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.'], 404);
+            }
+
+            $isItemGroup = (bool) ($setting->is_item_group ?? false);
+            $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
+
+            if ($detailGroupComponents !== []) {
+                $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
+
+                if ($validated['quantity'] > $possiblePortions) {
+                    return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
+                }
+            } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $validated['quantity']) {
+                return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
+            }
+
             $cart[$productId]['quantity'] = $validated['quantity'];
         }
 
@@ -326,12 +346,13 @@ class WaiterPosController extends Controller
     protected function printKitchenTicket(KitchenOrder $kitchenOrder): void
     {
         try {
-            $printer = Printer::byLocation('kitchen')->first();
-
-            if ($printer) {
-                $kitchenOrder->load(['items.inventoryItem', 'table']);
-                $this->printerService->printKitchenTicket($kitchenOrder, $printer);
-            }
+            $kitchenOrder->load(['items.inventoryItem.printers', 'table']);
+            $this->printItemsToAssignedPrinters(
+                $kitchenOrder,
+                $kitchenOrder->items,
+                Printer::active()->byLocation('kitchen')->first(),
+                fn (KitchenOrder $order, Printer $printer): bool => $this->printerService->printKitchenTicket($order, $printer)
+            );
         } catch (\Exception $e) {
             // Silent fail — don't block checkout
         }
@@ -340,14 +361,68 @@ class WaiterPosController extends Controller
     protected function printBarTicket(BarOrder $barOrder): void
     {
         try {
-            $printer = Printer::byLocation('bar')->first();
-
-            if ($printer) {
-                $barOrder->load(['items.inventoryItem', 'table']);
-                $this->printerService->printBarTicket($barOrder, $printer);
-            }
+            $barOrder->load(['items.inventoryItem.printers', 'table']);
+            $this->printItemsToAssignedPrinters(
+                $barOrder,
+                $barOrder->items,
+                Printer::active()->byLocation('bar')->first(),
+                fn (BarOrder $order, Printer $printer): bool => $this->printerService->printBarTicket($order, $printer)
+            );
         } catch (\Exception $e) {
             // Silent fail — don't block checkout
+        }
+    }
+
+    protected function printItemsToAssignedPrinters(object $order, Collection $items, ?Printer $fallbackPrinter, callable $callback): void
+    {
+        $groupedByPrinter = [];
+        $fallbackItems = collect();
+
+        foreach ($items as $item) {
+            $targetPrinters = $item->inventoryItem?->printers?->filter(fn (Printer $printer): bool => $printer->is_active) ?? collect();
+
+            if ($targetPrinters->isEmpty()) {
+                $fallbackItems->push($item);
+
+                continue;
+            }
+
+            foreach ($targetPrinters as $printer) {
+                $groupedByPrinter[$printer->id]['printer'] = $printer;
+                $groupedByPrinter[$printer->id]['items'][$item->id] = $item;
+            }
+        }
+
+        foreach ($groupedByPrinter as $group) {
+            try {
+                $orderForPrinter = clone $order;
+                $orderForPrinter->setRelation('items', collect($group['items'])->values());
+                $callback($orderForPrinter, $group['printer']);
+            } catch (\Exception $e) {
+                Log::warning('Assigned printer failed during waiter checkout print fan-out', [
+                    'printer_id' => $group['printer']->id ?? null,
+                    'printer_name' => $group['printer']->name ?? null,
+                    'connection_type' => $group['printer']->connection_type ?? null,
+                    'order_number' => $order->order_number ?? null,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($fallbackItems->isNotEmpty() && $fallbackPrinter) {
+            try {
+                $fallbackOrder = clone $order;
+                $fallbackOrder->setRelation('items', $fallbackItems->values());
+                $callback($fallbackOrder, $fallbackPrinter);
+            } catch (\Exception $e) {
+                Log::warning('Fallback printer failed during waiter checkout print fan-out', [
+                    'printer_id' => $fallbackPrinter->id,
+                    'printer_name' => $fallbackPrinter->name,
+                    'connection_type' => $fallbackPrinter->connection_type,
+                    'order_number' => $order->order_number ?? null,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -380,8 +455,27 @@ class WaiterPosController extends Controller
             }
 
             $setting = $posSettings->get($inventoryItem->category_type);
+            $isItemGroup = (bool) ($setting?->is_item_group ?? false);
+            $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
-            if (! $setting?->is_menu) {
+            if ($detailGroupComponents !== []) {
+                $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
+
+                if ($possiblePortions < $requestedQuantity) {
+                    $stockIssues[] = [
+                        'type' => 'detail_group_shortage',
+                        'product_id' => $productId,
+                        'name' => $inventoryItem->name,
+                        'possible_portions' => $possiblePortions,
+                        'requested_quantity' => $requestedQuantity,
+                        'message' => "Stok bahan {$inventoryItem->name} hanya cukup {$possiblePortions} porsi.",
+                    ];
+                }
+
+                continue;
+            }
+
+            if (! $isItemGroup) {
                 $availableStock = (float) ($inventoryItem->stock_quantity ?? 0);
 
                 if ($availableStock < $requestedQuantity) {
@@ -398,18 +492,7 @@ class WaiterPosController extends Controller
                 continue;
             }
 
-            $possiblePortions = $this->resolvePossiblePortions($inventoryItem);
-
-            if ($possiblePortions < $requestedQuantity) {
-                $stockIssues[] = [
-                    'type' => 'menu_portion',
-                    'product_id' => $productId,
-                    'name' => $inventoryItem->name,
-                    'requested_quantity' => $requestedQuantity,
-                    'possible_portions' => $possiblePortions,
-                    'message' => "Stok bahan {$inventoryItem->name} hanya cukup {$possiblePortions} porsi.",
-                ];
-            }
+            continue;
         }
 
         return [
@@ -419,17 +502,43 @@ class WaiterPosController extends Controller
         ];
     }
 
-    protected function resolvePossiblePortions(InventoryItem $inventoryItem): int
+    protected function getItemGroupComponents(InventoryItem $inventoryItem): array
     {
         if (! $inventoryItem->accurate_id) {
-            return 0;
+            return [];
         }
 
-        try {
-            $components = $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id);
-        } catch (\Throwable $exception) {
-            return 0;
+        $cacheKey = "accurate_item_group_{$inventoryItem->accurate_id}";
+
+        return Cache::remember(
+            $cacheKey,
+            now()->addHour(),
+            function () use ($inventoryItem): array {
+                try {
+                    return $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id);
+                } catch (\Throwable $exception) {
+                    return [];
+                }
+            }
+        );
+    }
+
+    protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array
+    {
+        if ((bool) ($setting?->is_item_group ?? false)) {
+            return [];
         }
+
+        if (! (bool) ($setting?->is_menu ?? false)) {
+            return [];
+        }
+
+        return $this->getItemGroupComponents($inventoryItem);
+    }
+
+    protected function resolvePossiblePortions(InventoryItem $inventoryItem, ?array $components = null): int
+    {
+        $components ??= $this->getItemGroupComponents($inventoryItem);
 
         if ($components === []) {
             return 0;

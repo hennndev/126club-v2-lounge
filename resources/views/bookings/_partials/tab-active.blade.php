@@ -33,7 +33,7 @@
     </div>
     <div>
       <div class="text-lg font-bold text-white">
-        Rp {{ number_format($activeSessions->sum(fn($s) => $s->billing?->grand_total ?? 0), 0, ',', '.') }}
+        Rp {{ number_format($activeSessions->sum(fn($s) => (float) ($activeSessionChargePreviews[$s->id]['grand_total'] ?? 0)), 0, ',', '.') }}
       </div>
       <div class="text-base font-semibold text-white">Total Tagihan Berjalan</div>
     </div>
@@ -119,14 +119,15 @@
               // Billing state
               $canClose = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $billing->orders_total >= $billing->minimum_charge;
               $belowMinCharge = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $billing->orders_total < $billing->minimum_charge;
+              $chargePreview = $activeSessionChargePreviews[$session->id] ?? null;
 
               // Waiter
               $waiterDisplayName = $session->waiter?->profile?->name ?? ($session->waiter?->name ?? null);
               $waiterId = $session->waiter_id;
 
               // Compute live total: orders - discount
-              $ordersSubtotal = (float) ($billing?->orders_total ?? 0);
-              $computedGrandTotal = $ordersSubtotal - (float) ($billing?->discount_amount ?? 0);
+              $ordersSubtotal = (float) ($chargePreview['orders_total'] ?? ($billing?->orders_total ?? 0));
+              $computedGrandTotal = (float) ($chargePreview['grand_total'] ?? $ordersSubtotal - (float) ($billing?->discount_amount ?? 0));
               $checkerItems = $session->orders->flatMap->items->where('status', '!=', 'cancelled');
               $checkerTotalItems = $checkerItems->count();
               $checkerCheckedItems = $checkerItems->where('status', 'served')->count();
@@ -282,8 +283,12 @@
                       <button type="button"
                               data-booking-id="{{ $reservation->id }}"
                               data-minimum-charge="{{ (float) $billing->minimum_charge }}"
-                              data-orders-total="{{ (float) $billing->orders_total }}"
-                              data-discount-amount="{{ (float) $billing->discount_amount }}"
+                              data-orders-total="{{ (float) ($chargePreview['orders_total'] ?? 0) }}"
+                              data-discount-amount="{{ (float) ($chargePreview['discount_amount'] ?? 0) }}"
+                              data-service-charge="{{ (float) ($chargePreview['service_charge'] ?? 0) }}"
+                              data-tax="{{ (float) ($chargePreview['tax'] ?? 0) }}"
+                              data-service-charge-percentage="{{ (float) ($chargePreview['service_charge_percentage'] ?? 0) }}"
+                              data-tax-percentage="{{ (float) ($chargePreview['tax_percentage'] ?? 0) }}"
                               data-grand-total="{{ (float) $computedGrandTotal }}"
                               data-checker-checked="{{ $checkerCheckedItems }}"
                               data-checker-total="{{ $checkerTotalItems }}"

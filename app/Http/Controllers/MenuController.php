@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\InventoryItem;
 use App\Models\PosCategorySetting;
+use App\Models\Printer;
 use App\Services\AccurateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class MenuController extends Controller
@@ -20,6 +20,14 @@ class MenuController extends Controller
             ->orderBy('name')
             ->get(['id', 'code', 'name', 'unit']);
 
+        $inventoryCategoryTypes = InventoryItem::query()
+            ->where('is_active', true)
+            ->whereNotNull('category_type')
+            ->where('category_type', '!=', '')
+            ->distinct()
+            ->orderBy('category_type')
+            ->pluck('category_type');
+
         $menuCategoryTypes = PosCategorySetting::query()
             ->where('is_menu', true)
             ->orderBy('category_type')
@@ -28,44 +36,44 @@ class MenuController extends Controller
         $menusByCategory = $menuCategoryTypes
             ->mapWithKeys(function (string $categoryType) {
                 $menus = InventoryItem::query()
+                    ->with(['printers:id,name,location'])
                     ->where('is_active', true)
                     ->where('category_type', $categoryType)
                     ->orderBy('name')
-                    ->get(['id', 'code', 'name', 'category_type', 'price', 'unit']);
+                    ->get(['id', 'code', 'name', 'category_type', 'price', 'unit', 'include_tax', 'include_service_charge']);
 
                 return [$categoryType => $menus];
             });
 
-        return view('menus.index', compact('inventoryItems', 'menuCategoryTypes', 'menusByCategory'));
+        $printers = Printer::query()
+            ->active()
+            ->orderBy('location')
+            ->orderBy('name')
+            ->get(['id', 'name', 'location']);
+
+        return view('menus.index', compact('inventoryItems', 'inventoryCategoryTypes', 'menuCategoryTypes', 'menusByCategory', 'printers'));
     }
 
     public function store(Request $request): JsonResponse
     {
-        $menuCategoryTypes = PosCategorySetting::query()
-            ->where('is_menu', true)
-            ->pluck('category_type')
-            ->all();
-
-        if ($menuCategoryTypes === []) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Belum ada kategori yang ditandai sebagai menu di pengaturan POS.',
-            ], 422);
-        }
-
         $validated = $request->validate([
-            'no' => 'required|string|max:100',
+            'code_mode' => ['required', 'string', 'in:manual,auto'],
+            'no' => 'nullable|required_if:code_mode,manual|string|max:100',
             'name' => 'required|string|max:255',
-            'category_type' => ['required', 'string', 'max:255', Rule::in($menuCategoryTypes)],
+            'item_type' => ['required', 'string', 'in:GROUP,INVENTORY'],
+            'category_type' => ['required', 'string', 'max:255'],
             'unit' => 'required|string|max:50',
             'selling_price' => 'required|numeric|min:0',
+            'include_tax' => ['nullable', 'boolean'],
+            'include_service_charge' => ['nullable', 'boolean'],
+            'printer_ids' => ['nullable', 'array'],
+            'printer_ids.*' => ['integer', 'exists:printers,id'],
             'detail_group' => 'nullable|array',
             'detail_group.*.item_no' => 'required|string|max:100',
             'detail_group.*.detail_name' => 'required|string|max:255',
             'detail_group.*.quantity' => 'required|integer|min:1',
         ], [
             'category_type.required' => 'Kategori menu wajib dipilih.',
-            'category_type.in' => 'Kategori yang dipilih belum ditandai sebagai menu di pengaturan POS.',
         ]);
 
         $detailGroup = collect($validated['detail_group'] ?? [])
@@ -78,13 +86,16 @@ class MenuController extends Controller
             ->toArray();
 
         $payload = [
-            'no' => $validated['no'],
             'name' => $validated['name'],
-            'itemType' => 'GROUP',
+            'itemType' => $validated['item_type'],
             'unit1Name' => $validated['unit'],
             'unitPrice' => $validated['selling_price'],
             'detailGroup' => $detailGroup,
         ];
+
+        if (($validated['code_mode'] ?? 'manual') === 'manual' && ! empty($validated['no'])) {
+            $payload['no'] = $validated['no'];
+        }
 
         if (! empty($validated['category_type'])) {
             $payload['itemCategoryName'] = $validated['category_type'];
@@ -94,20 +105,29 @@ class MenuController extends Controller
             $result = $this->accurateService->saveItem($payload);
 
             $accurateId = $result['r']['id'] ?? null;
+            $accurateNo = $validated['no']
+                ?? $result['r']['no']
+                ?? $result['d']['no']
+                ?? null;
 
             if ($accurateId !== null) {
-                InventoryItem::updateOrCreate(
-                    ['code' => $validated['no']],
+                $inventoryItem = InventoryItem::updateOrCreate(
+                    ['accurate_id' => $accurateId],
                     [
                         'accurate_id' => $accurateId,
+                        'code' => $accurateNo ?? 'ACC-'.$accurateId,
                         'name' => $validated['name'],
                         'category_type' => $validated['category_type'] ?? '',
                         'price' => $validated['selling_price'],
+                        'include_tax' => (bool) ($validated['include_tax'] ?? false),
+                        'include_service_charge' => (bool) ($validated['include_service_charge'] ?? false),
                         'stock_quantity' => 0,
                         'unit' => $validated['unit'],
                         'is_active' => true,
                     ]
                 );
+
+                $inventoryItem->printers()->sync($validated['printer_ids'] ?? []);
             }
 
             return response()->json(['success' => true, 'data' => $result]);
@@ -116,8 +136,22 @@ class MenuController extends Controller
         }
     }
 
+    public function updateTaxFlags(Request $request, InventoryItem $inventory): JsonResponse
+    {
+        $validated = $request->validate([
+            'field' => ['required', 'string', 'in:include_tax,include_service_charge'],
+            'value' => ['required', 'boolean'],
+        ]);
+
+        $inventory->update([$validated['field'] => $validated['value']]);
+
+        return response()->json(['success' => true, 'value' => $inventory->fresh()->{$validated['field']}]);
+    }
+
     public function fetchDetail(InventoryItem $inventory): JsonResponse
     {
+        $inventory->loadMissing(['printers:id']);
+
         if (! $inventory->accurate_id) {
             return response()->json(['success' => false, 'message' => 'Item tidak memiliki Accurate ID.'], 422);
         }
@@ -139,7 +173,23 @@ class MenuController extends Controller
         return response()->json([
             'success' => true,
             'name' => $inventory->name,
+            'printer_ids' => $inventory->printers->pluck('id')->values()->all(),
             'detail_group' => $detailGroup,
+        ]);
+    }
+
+    public function updatePrinterTargets(Request $request, InventoryItem $inventory): JsonResponse
+    {
+        $validated = $request->validate([
+            'printer_ids' => ['nullable', 'array'],
+            'printer_ids.*' => ['integer', 'exists:printers,id'],
+        ]);
+
+        $inventory->printers()->sync($validated['printer_ids'] ?? []);
+
+        return response()->json([
+            'success' => true,
+            'printer_ids' => $inventory->printers()->pluck('printers.id')->all(),
         ]);
     }
 }

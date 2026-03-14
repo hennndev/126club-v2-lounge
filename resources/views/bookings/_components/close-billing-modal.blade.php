@@ -1,5 +1,4 @@
 <!-- Close Billing Modal -->
-@php $generalSettings = \App\Models\GeneralSetting::instance(); @endphp
 <div id="closeBillingModal"
      class="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 hidden">
   <div class="bg-white w-full sm:max-w-md sm:mx-4 rounded-t-2xl sm:rounded-2xl shadow-xl"
@@ -61,12 +60,12 @@
         </div>
         <div class="flex justify-between text-gray-600"
              id="cbServiceChargeRow">
-          <span id="cbServiceChargeLabel">Service Charge ({{ $generalSettings->service_charge_percentage }}%)</span>
+          <span id="cbServiceChargeLabel">Service Charge</span>
           <span id="cbServiceCharge">Rp 0</span>
         </div>
         <div class="flex justify-between text-gray-600"
              id="cbTaxRow">
-          <span id="cbTaxLabel">PPN ({{ $generalSettings->tax_percentage }}%)</span>
+          <span id="cbTaxLabel">PPN</span>
           <span id="cbTax">Rp 0</span>
         </div>
         <div class="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-900 text-base">
@@ -233,9 +232,6 @@
 </div>
 
 <script>
-  const cbServiceChargePercentage = {{ $generalSettings->service_charge_percentage }};
-  const cbTaxPercentage = {{ $generalSettings->tax_percentage }};
-
   let closeBillingBookingId = null;
   let cbCurrentGrandTotal = 0;
   let cbCheckerIncomplete = false;
@@ -287,6 +283,10 @@
     const minimumCharge = Number(trigger?.dataset?.minimumCharge || 0);
     const ordersTotal = Number(trigger?.dataset?.ordersTotal || 0);
     const discountAmount = Number(trigger?.dataset?.discountAmount || 0);
+    const serviceChargeAmount = Number(trigger?.dataset?.serviceCharge || 0);
+    const taxAmount = Number(trigger?.dataset?.tax || 0);
+    const serviceChargePercentage = Number(trigger?.dataset?.serviceChargePercentage || 0);
+    const taxPercentage = Number(trigger?.dataset?.taxPercentage || 0);
     const checkerChecked = Number(trigger?.dataset?.checkerChecked || 0);
     const checkerTotal = Number(trigger?.dataset?.checkerTotal || 0);
 
@@ -305,22 +305,27 @@
       discountRow.style.setProperty('display', 'none', 'important');
     }
 
-    // Compute subtotal after discount
     const subtotal = Math.max(minimumCharge, ordersTotal);
-    const afterDiscount = subtotal - discountAmount;
 
-    // Service charge
-    const serviceChargeAmount = Math.round(afterDiscount * cbServiceChargePercentage / 100);
+    const serviceLabel = serviceChargePercentage > 0 ?
+      `Service Charge (${serviceChargePercentage}%)` :
+      'Service Charge';
+    const taxLabel = taxPercentage > 0 ?
+      `PPN (${taxPercentage}%)` :
+      'PPN';
+
+    document.getElementById('cbServiceChargeLabel').textContent = serviceLabel;
+    document.getElementById('cbTaxLabel').textContent = taxLabel;
     document.getElementById('cbServiceCharge').textContent = fmt(serviceChargeAmount);
-
-    // Tax
-    const taxAmount = Math.round((afterDiscount + serviceChargeAmount) * cbTaxPercentage / 100);
     document.getElementById('cbTax').textContent = fmt(taxAmount);
 
     // Grand total
-    const computedGrandTotal = afterDiscount + serviceChargeAmount + taxAmount;
+    const computedGrandTotal = Number(trigger?.dataset?.grandTotal || 0);
     cbCurrentGrandTotal = computedGrandTotal;
     document.getElementById('cbGrandTotal').textContent = fmt(computedGrandTotal);
+
+    document.getElementById('cbServiceChargeRow').style.display = serviceChargeAmount > 0 ? 'flex' : 'none';
+    document.getElementById('cbTaxRow').style.display = taxAmount > 0 ? 'flex' : 'none';
 
     // Minimum charge warning
     const warning = document.getElementById('cbMinWarning');

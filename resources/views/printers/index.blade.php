@@ -125,6 +125,21 @@
                 </td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end space-x-2">
+                    @if ($printer->connection_type === 'network')
+                      <button onclick="pingPrinter({{ $printer->id }})"
+                              class="p-2 text-cyan-600 hover:bg-cyan-50 rounded-lg transition"
+                              title="Ping / Cek Koneksi">
+                        <svg class="w-5 h-5"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+                          <path stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                        </svg>
+                      </button>
+                    @endif
                     <button onclick="testPrint({{ $printer->id }})"
                             class="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
                             title="Test Print">
@@ -295,6 +310,20 @@
           });
       }
 
+      function pingPrinter(printerId) {
+        fetch(`/admin/printers/${printerId}/ping`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            }
+          }).then(r => r.json())
+          .then(data => {
+            alert((data.success ? '✅ ' : '❌ ') + data.message);
+          })
+          .catch(() => alert('❌ Gagal menghubungi server.'));
+      }
+
       function testPrint(printerId) {
         fetch(`/admin/printers/${printerId}/test`, {
             method: 'POST',
@@ -302,10 +331,11 @@
               'Content-Type': 'application/json',
               'X-CSRF-TOKEN': '{{ csrf_token() }}'
             }
-          }).then(response => response.json())
+          }).then(r => r.json())
           .then(data => {
-            alert(data.message);
-          });
+            alert((data.success ? '✅ ' : '❌ ') + data.message);
+          })
+          .catch(() => alert('❌ Gagal menghubungi server.'));
       }
 
       // Logo preview on file select

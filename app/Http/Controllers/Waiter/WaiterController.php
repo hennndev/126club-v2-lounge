@@ -15,6 +15,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
@@ -34,7 +35,7 @@ class WaiterController extends Controller
     {
         $waiterId = (int) Auth::id();
 
-        $sessions = TableSession::with(['table.area', 'customer.profile', 'billing'])
+        $sessions = TableSession::with(['table.area', 'customer.profile', 'billing', 'orders.items.inventoryItem'])
             ->withSum(['orders as total_spent' => fn ($q) => $q->whereNotIn('status', ['cancelled'])], 'total')
             ->where('waiter_id', $waiterId)
             ->where('status', 'active')
@@ -42,9 +43,107 @@ class WaiterController extends Controller
             ->get();
 
         $areas = Area::where('is_active', true)->orderBy('sort_order')->get();
-        $generalSettings = GeneralSetting::instance();
+        $sessionChargePreviews = $sessions->mapWithKeys(function (TableSession $session) {
+            $billing = $session->billing;
 
-        return view('waiter.active-tables', compact('sessions', 'areas', 'generalSettings'));
+            return [
+                $session->id => $this->calculateSessionChargeTotals(
+                    $session,
+                    (float) ($billing?->discount_amount ?? 0),
+                    (float) ($billing?->minimum_charge ?? 0),
+                ),
+            ];
+        });
+
+        return view('waiter.active-tables', compact('sessions', 'areas', 'sessionChargePreviews'));
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    protected function calculateSessionChargeTotals(TableSession $session, float $discountAmount, float $minimumCharge): array
+    {
+        $settings = GeneralSetting::instance();
+        $orders = $session->orders->where('status', '!=', 'cancelled')->values();
+        $ordersTotal = (float) $orders->sum(fn ($order) => (float) ($order->total ?? 0));
+        $subtotal = $ordersTotal;
+        $discountAmount = min(max($discountAmount, 0), $subtotal);
+        $subtotalAfterDiscount = max($subtotal - $discountAmount, 0);
+
+        $bases = $this->resolveChargeableBases($orders);
+        $discountRatio = $ordersTotal > 0 ? min(max($discountAmount / $ordersTotal, 0), 1) : 0;
+
+        $serviceChargeBaseAfterDiscount = max($bases['service_charge_base'] * (1 - $discountRatio), 0);
+        $taxBaseAfterDiscount = max($bases['tax_base'] * (1 - $discountRatio), 0);
+        $taxAndServiceBaseAfterDiscount = max($bases['tax_and_service_base'] * (1 - $discountRatio), 0);
+
+        $serviceCharge = round($serviceChargeBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
+        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
+        $tax = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+
+        return [
+            'orders_total' => $ordersTotal,
+            'minimum_charge' => $minimumCharge,
+            'subtotal' => $subtotal,
+            'discount_amount' => $discountAmount,
+            'subtotal_after_discount' => $subtotalAfterDiscount,
+            'service_charge_percentage' => (float) $settings->service_charge_percentage,
+            'service_charge' => $serviceCharge,
+            'tax_percentage' => (float) $settings->tax_percentage,
+            'tax' => $tax,
+            'grand_total' => $subtotalAfterDiscount + $serviceCharge + $tax,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $orders
+     * @return array<string, float>
+     */
+    protected function resolveChargeableBases(Collection $orders): array
+    {
+        $serviceChargeBase = 0;
+        $taxBase = 0;
+        $taxAndServiceBase = 0;
+
+        foreach ($orders as $order) {
+            $orderItems = $order->items->where('status', '!=', 'cancelled')->values();
+            $orderNetTotal = (float) ($order->total ?? 0);
+
+            if ($orderItems->isEmpty()) {
+                $serviceChargeBase += max($orderNetTotal, 0);
+                $taxBase += max($orderNetTotal, 0);
+                $taxAndServiceBase += max($orderNetTotal, 0);
+
+                continue;
+            }
+
+            $itemsSubtotal = (float) $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0));
+            $ratio = $itemsSubtotal > 0 ? max($orderNetTotal, 0) / $itemsSubtotal : 0;
+
+            foreach ($orderItems as $orderItem) {
+                $itemNetSubtotal = (float) ($orderItem->subtotal ?? 0) * $ratio;
+                $includeTax = (bool) ($orderItem->inventoryItem?->include_tax ?? true);
+                $includeServiceCharge = (bool) ($orderItem->inventoryItem?->include_service_charge ?? true);
+
+                if ($includeServiceCharge) {
+                    $serviceChargeBase += $itemNetSubtotal;
+                }
+
+                if ($includeTax) {
+                    $taxBase += $itemNetSubtotal;
+                }
+
+                if ($includeTax && $includeServiceCharge) {
+                    $taxAndServiceBase += $itemNetSubtotal;
+                }
+            }
+        }
+
+        return [
+            'service_charge_base' => $serviceChargeBase,
+            'tax_base' => $taxBase,
+            'tax_and_service_base' => $taxAndServiceBase,
+        ];
     }
 
     public function updatePax(Request $request, TableSession $session): JsonResponse
@@ -77,14 +176,16 @@ class WaiterController extends Controller
             ->get()
             ->map(function ($item) use ($posSettings) {
                 $setting = $posSettings->get($item->category_type);
+                $isItemGroup = (bool) ($setting?->is_item_group ?? false);
 
                 return [
                     'id' => 'item_'.$item->id,
                     'name' => $item->name,
                     'category' => $item->category_type,
                     'price' => (float) $item->price,
-                    'stock' => $setting?->is_menu ? null : (int) ($item->stock_quantity ?? 0),
+                    'stock' => $isItemGroup ? null : (int) ($item->stock_quantity ?? 0),
                     'is_menu' => (bool) $setting?->is_menu,
+                    'is_item_group' => $isItemGroup,
                     'type' => 'item',
                 ];
             })

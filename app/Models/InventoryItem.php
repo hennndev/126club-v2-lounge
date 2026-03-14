@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InventoryItem extends Model
 {
@@ -13,24 +16,31 @@ class InventoryItem extends Model
         'stock_quantity' => 'integer',
         'threshold' => 'integer',
         'is_active' => 'boolean',
+        'include_tax' => 'boolean',
+        'include_service_charge' => 'boolean',
     ];
 
-    public function category()
+    public function category(): BelongsTo
     {
         return $this->belongsTo(InventoryCategory::class);
     }
 
-    public function orderItems()
+    public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
 
-    public function isLowStock()
+    public function printers(): BelongsToMany
+    {
+        return $this->belongsToMany(Printer::class)->withTimestamps();
+    }
+
+    public function isLowStock(): bool
     {
         return $this->stock_quantity <= $this->threshold;
     }
 
-    public function getStockStatusAttribute()
+    public function getStockStatusAttribute(): string
     {
         return $this->isLowStock() ? 'low' : 'normal';
     }

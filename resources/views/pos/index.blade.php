@@ -51,10 +51,10 @@
               $category = strtolower($product['category'] ?? '');
               $prepLoc = $posSettings->get($product['category'] ?? '')?->preparation_location ?? 'bar';
               $isKitchen = $prepLoc === 'kitchen';
-              $isMenu = (bool) ($product['is_menu'] ?? false);
+              $isItemGroup = (bool) ($product['is_item_group'] ?? false);
               $gradientClass = $isKitchen ? 'from-orange-500 to-red-600' : 'from-blue-400 to-cyan-500';
               $dotColor = $isKitchen ? 'bg-orange-400' : 'bg-blue-300';
-              $outOfStock = isset($product['type']) && $product['type'] === 'item' && !$isMenu && ($product['stock'] ?? 0) <= 0;
+              $outOfStock = isset($product['type']) && $product['type'] === 'item' && !$isItemGroup && ($product['stock'] ?? 0) <= 0;
               $unavailable = isset($product['type']) && $product['type'] === 'bom' && !($product['is_available'] ?? true);
               $disabled = $outOfStock || $unavailable;
             @endphp
@@ -69,9 +69,9 @@
                     <span class="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded">Habis</span>
                   </div>
                 @endif
-                @if ($isMenu)
+                @if ($isItemGroup)
                   <div class="absolute bottom-2 left-2 z-10">
-                    <span class="px-2 py-0.5 bg-emerald-500 text-white text-xs font-bold rounded">Menu</span>
+                    <span class="px-2 py-0.5 bg-emerald-500 text-white text-xs font-bold rounded">Item Group</span>
                   </div>
                 @elseif (!$isKitchen && isset($product['stock']))
                   <div class="absolute bottom-2 left-2 z-10">
@@ -892,17 +892,17 @@
               <span x-text="'Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)'"></span>
               <span x-text="'-' + formatCurrency(discountAmount())"></span>
             </div>
-            <div x-show="checkoutForm.customer_type === 'walk-in' && posCharges.serviceChargePercentage > 0"
+            <div x-show="calculatedServiceCharge() > 0"
                  style="display: none;"
                  class="flex justify-between text-sm text-gray-300">
               <span x-text="'Service Charge (' + posCharges.serviceChargePercentage + '%)'"></span>
-              <span x-text="formatCurrency(walkInServiceCharge())"></span>
+              <span x-text="formatCurrency(calculatedServiceCharge())"></span>
             </div>
-            <div x-show="checkoutForm.customer_type === 'walk-in' && posCharges.taxPercentage > 0"
+            <div x-show="calculatedTax() > 0"
                  style="display: none;"
                  class="flex justify-between text-sm text-gray-300">
               <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
-              <span x-text="formatCurrency(walkInTax())"></span>
+              <span x-text="formatCurrency(calculatedTax())"></span>
             </div>
             <div class="border-t border-gray-700 pt-2.5 flex justify-between font-bold text-white">
               <span class="text-base">Total Tagihan Order</span>
@@ -952,7 +952,7 @@
          x-transition:leave-end="opacity-0 scale-95"
          style="display: none;"
          class="fixed inset-0 bg-black/50 flex items-center justify-center z-[65] px-4"
-         @click.self="showConfirmModal = false">
+         @click.self="if (!isProcessing) { showConfirmModal = false }">
       <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
            @click.stop>
 
@@ -976,8 +976,9 @@
               <p class="text-xs text-gray-500 mt-0.5">Pastikan semua detail transaksi sudah benar sebelum melanjutkan</p>
             </div>
           </div>
-          <button @click="showConfirmModal = false"
-                  class="text-gray-400 hover:text-gray-600 transition mt-0.5 flex-shrink-0">
+          <button @click="if (!isProcessing) { showConfirmModal = false }"
+                  :disabled="isProcessing"
+                  class="text-gray-400 hover:text-gray-600 transition mt-0.5 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed">
             <svg class="w-5 h-5"
                  fill="none"
                  stroke="currentColor"
@@ -1062,17 +1063,17 @@
                 <span x-text="'-' + formatCurrency(discountAmount())"></span>
               </div>
             </template>
-            <div x-show="checkoutForm.customer_type === 'walk-in' && posCharges.serviceChargePercentage > 0"
+            <div x-show="calculatedServiceCharge() > 0"
                  style="display: none;"
                  class="flex justify-between text-sm text-gray-300">
               <span x-text="'Service Charge (' + posCharges.serviceChargePercentage + '%)'"></span>
-              <span x-text="formatCurrency(walkInServiceCharge())"></span>
+              <span x-text="formatCurrency(calculatedServiceCharge())"></span>
             </div>
-            <div x-show="checkoutForm.customer_type === 'walk-in' && posCharges.taxPercentage > 0"
+            <div x-show="calculatedTax() > 0"
                  style="display: none;"
                  class="flex justify-between text-sm text-gray-300">
               <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
-              <span x-text="formatCurrency(walkInTax())"></span>
+              <span x-text="formatCurrency(calculatedTax())"></span>
             </div>
             <div class="border-t border-gray-700 pt-2 flex justify-between font-bold text-white">
               <span>Total Pembayaran</span>
@@ -1095,7 +1096,7 @@
                       stroke-width="2"
                       d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
               </svg>
-              <p class="text-xs text-amber-700">Transaksi booking tidak memerlukan pembayaran di tempat. Pastikan semua data sudah benar sebelum melanjutkan.</p>
+              <p class="text-xs text-amber-700">Transaksi booking tidak memerlukan pembayaran di tempat. Estimasi total tetap memperhitungkan flag PPN dan service charge per item.</p>
             </div>
           </template>
 
@@ -1104,12 +1105,13 @@
         <!-- Footer -->
         <div class="flex gap-3 px-5 pb-5 pt-3 border-t border-gray-100">
           <button type="button"
-                  @click="showConfirmModal = false"
-                  class="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 font-medium text-sm transition">
+                  @click="if (!isProcessing) { showConfirmModal = false }"
+                  :disabled="isProcessing"
+                  class="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 font-medium text-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
             Kembali
           </button>
           <button type="button"
-                  @click="showConfirmModal = false; submitCheckout()"
+                  @click="submitCheckout()"
                   :disabled="isProcessing"
                   class="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 font-semibold text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
             <svg x-show="isProcessing"
@@ -1247,38 +1249,32 @@
               <span class="font-semibold text-gray-800"
                     x-text="receiptData?.customerName"></span>
             </div>
-            <div x-show="receiptData?.customerType !== 'walk-in'"
-                 class="flex justify-between">
-              <span class="text-gray-500">Meja</span>
-              <span class="font-semibold text-gray-800"
-                    x-text="receiptData?.tableDisplay"></span>
-            </div>
             <div x-show="receiptData?.minimumCharge > 0"
                  class="flex justify-between">
               <span class="text-gray-500">Minimum Charge</span>
               <span class="font-semibold text-gray-800"
                     x-text="'Rp ' + new Intl.NumberFormat('id-ID').format(receiptData?.minimumCharge || 0)"></span>
             </div>
-            <div x-show="receiptData?.customerType === 'walk-in'"
+            <div x-show="(receiptData?.itemsTotal || 0) > 0"
                  class="flex justify-between">
               <span class="text-gray-500">Subtotal</span>
               <span class="font-semibold text-gray-800"
                     x-text="formatCurrency(receiptData?.itemsTotal || 0)"></span>
             </div>
-            <div x-show="receiptData?.customerType === 'walk-in' && (receiptData?.discountAmount || 0) > 0"
+            <div x-show="(receiptData?.discountAmount || 0) > 0"
                  class="flex justify-between">
               <span class="text-gray-500">Diskon</span>
               <span class="font-semibold text-orange-500"
                     x-text="'-' + formatCurrency(receiptData?.discountAmount || 0)"></span>
             </div>
-            <div x-show="receiptData?.customerType === 'walk-in' && (receiptData?.serviceCharge || 0) > 0"
+            <div x-show="(receiptData?.serviceCharge || 0) > 0"
                  class="flex justify-between">
               <span class="text-gray-500"
                     x-text="'Service Charge (' + (receiptData?.serviceChargePercentage || 0) + '%)'"></span>
               <span class="font-semibold text-gray-800"
                     x-text="formatCurrency(receiptData?.serviceCharge || 0)"></span>
             </div>
-            <div x-show="receiptData?.customerType === 'walk-in' && (receiptData?.tax || 0) > 0"
+            <div x-show="(receiptData?.tax || 0) > 0"
                  class="flex justify-between">
               <span class="text-gray-500"
                     x-text="'PPN (' + (receiptData?.taxPercentage || 0) + '%)'"></span>
@@ -2046,28 +2042,59 @@
             return this.cartTotal - this.discountAmount();
           },
 
-          walkInServiceCharge() {
-            if (this.checkoutForm.customer_type !== 'walk-in') {
-              return 0;
-            }
+          chargeableBases() {
+            return this.cart.reduce((acc, item) => {
+              const subtotal = Number(item.price || 0) * Number(item.quantity || 0);
+              const includeTax = item.include_tax !== false;
+              const includeServiceCharge = item.include_service_charge !== false;
 
-            return Math.round(this.finalTotal() * (this.posCharges.serviceChargePercentage / 100));
+              if (includeServiceCharge) {
+                acc.serviceChargeBase += subtotal;
+              }
+
+              if (includeTax) {
+                acc.taxBase += subtotal;
+              }
+
+              if (includeTax && includeServiceCharge) {
+                acc.taxAndServiceBase += subtotal;
+              }
+
+              return acc;
+            }, {
+              serviceChargeBase: 0,
+              taxBase: 0,
+              taxAndServiceBase: 0,
+            });
           },
 
-          walkInTax() {
-            if (this.checkoutForm.customer_type !== 'walk-in') {
+          discountRatio() {
+            if (this.cartTotal <= 0) {
               return 0;
             }
 
-            return Math.round((this.finalTotal() + this.walkInServiceCharge()) * (this.posCharges.taxPercentage / 100));
+            return Math.min(Math.max(this.discountAmount() / this.cartTotal, 0), 1);
+          },
+
+          calculatedServiceCharge() {
+            const bases = this.chargeableBases();
+            const serviceChargeBaseAfterDiscount = bases.serviceChargeBase * (1 - this.discountRatio());
+
+            return Math.round(serviceChargeBaseAfterDiscount * (this.posCharges.serviceChargePercentage / 100));
+          },
+
+          calculatedTax() {
+            const bases = this.chargeableBases();
+            const discountRatio = this.discountRatio();
+            const taxBaseAfterDiscount = bases.taxBase * (1 - discountRatio);
+            const taxAndServiceBaseAfterDiscount = bases.taxAndServiceBase * (1 - discountRatio);
+            const serviceChargeTaxable = Math.round(taxAndServiceBaseAfterDiscount * (this.posCharges.serviceChargePercentage / 100));
+
+            return Math.round((taxBaseAfterDiscount + serviceChargeTaxable) * (this.posCharges.taxPercentage / 100));
           },
 
           payableTotal() {
-            if (this.checkoutForm.customer_type === 'walk-in') {
-              return this.finalTotal() + this.walkInServiceCharge() + this.walkInTax();
-            }
-
-            return this.finalTotal();
+            return this.finalTotal() + this.calculatedServiceCharge() + this.calculatedTax();
           },
 
           pointsEarned() {
@@ -2139,6 +2166,7 @@
                 this.cartTotal = 0;
                 this.cartNotes = {};
                 this.menuAvailability = null;
+                this.showConfirmModal = false;
                 this.showCheckoutModal = false;
                 this.showReceiptModal = true;
                 this.checkoutForm = {
@@ -2278,10 +2306,10 @@
               '<hr class="sep">' +
               '<table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Harga</th></tr></thead><tbody>' + rows + '</tbody></table>' +
               '<hr class="sep">' +
-              (d.customerType === 'walk-in' ? '<p style="text-align:right;margin:2px 0">Subtotal: ' + this.formatCurrency(d.itemsTotal || 0) + '</p>' : '') +
-              (d.customerType === 'walk-in' && (d.discountAmount || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Diskon: -' + this.formatCurrency(d.discountAmount || 0) + '</p>' : '') +
-              (d.customerType === 'walk-in' && (d.serviceCharge || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Service Charge (' + (d.serviceChargePercentage || 0) + '%): ' + this.formatCurrency(d.serviceCharge || 0) + '</p>' : '') +
-              (d.customerType === 'walk-in' && (d.tax || 0) > 0 ? '<p style="text-align:right;margin:2px 0">PPN (' + (d.taxPercentage || 0) + '%): ' + this.formatCurrency(d.tax || 0) + '</p>' : '') +
+              ((d.itemsTotal || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Subtotal: ' + this.formatCurrency(d.itemsTotal || 0) + '</p>' : '') +
+              ((d.discountAmount || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Diskon: -' + this.formatCurrency(d.discountAmount || 0) + '</p>' : '') +
+              ((d.serviceCharge || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Service Charge (' + (d.serviceChargePercentage || 0) + '%): ' + this.formatCurrency(d.serviceCharge || 0) + '</p>' : '') +
+              ((d.tax || 0) > 0 ? '<p style="text-align:right;margin:2px 0">PPN (' + (d.taxPercentage || 0) + '%): ' + this.formatCurrency(d.tax || 0) + '</p>' : '') +
               '<p style="text-align:right;font-weight:bold">TOTAL: ' + d.formattedTotal + '</p>' +
               '<hr class="sep">' +
               '<p style="text-align:center;margin-top:8px">Terima kasih!</p>';

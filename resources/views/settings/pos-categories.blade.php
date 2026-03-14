@@ -50,6 +50,10 @@
       background-color: rgb(16 185 129);
     }
 
+    .settings-toggle--group .settings-toggle__input:checked+.settings-toggle__track {
+      background-color: rgb(14 165 233);
+    }
+
     .settings-toggle__input:checked+.settings-toggle__track::after {
       transform: translateX(1rem);
     }
@@ -104,7 +108,8 @@
       <p class="font-semibold mb-2">Petunjuk:</p>
       <ul class="space-y-1 list-disc list-inside">
         <li><strong>Tampil di POS</strong> — aktifkan agar kategori ini muncul di halaman POS.</li>
-        <li><strong>Menu</strong> — kategori ini tidak memakai stok item jadi pengurangan stok akan mengikuti ingredient dari Accurate.</li>
+        <li><strong>Menu</strong> — penanda kategori menu untuk kebutuhan listing/organisasi menu.</li>
+        <li><strong>Item Group</strong> — jika aktif, POS tidak mewajibkan stok item utama dan akan menghitung dari stok bahan/komponen.</li>
         <li><strong>Arah</strong> — <em>Kitchen</em>: kirim ke dapur, <em>Bar</em>: kirim ke bar, <em>Langsung</em>: masuk transaksi saja tanpa order kitchen/bar.</li>
       </ul>
     </div>
@@ -124,6 +129,7 @@
                 <th class="px-5 py-3 text-left font-medium text-slate-600">Kategori</th>
                 <th class="px-5 py-3 text-center font-medium text-slate-600">Tampil di POS</th>
                 <th class="px-5 py-3 text-center font-medium text-slate-600">Menu</th>
+                <th class="px-5 py-3 text-center font-medium text-slate-600">Item Group</th>
                 <th class="px-5 py-3 text-left font-medium text-slate-600">Arah</th>
               </tr>
             </thead>
@@ -161,6 +167,20 @@
                              value="1"
                              class="settings-toggle__input"
                              {{ $s && $s->is_menu ? 'checked' : '' }}>
+                      <span class="settings-toggle__track"></span>
+                    </label>
+                  </td>
+
+                  <td class="px-5 py-3 text-center">
+                    <input type="hidden"
+                           name="categories[{{ $type }}][is_item_group]"
+                           value="0">
+                    <label class="settings-toggle settings-toggle--group">
+                      <input type="checkbox"
+                             name="categories[{{ $type }}][is_item_group]"
+                             value="1"
+                             class="settings-toggle__input"
+                             {{ $s && $s->is_item_group ? 'checked' : '' }}>
                       <span class="settings-toggle__track"></span>
                     </label>
                   </td>

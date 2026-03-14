@@ -239,8 +239,15 @@
     </div>
     <div class="row">
       <span class="lbl">Tipe</span>
-      <span class="val">WALK-IN</span>
+      <span class="val">{{ $order->table_session_id === null ? 'WALK-IN' : 'BOOKING' }}</span>
     </div>
+
+    @if ($order->table_session_id !== null)
+      <div class="row">
+        <span class="lbl">Meja</span>
+        <span class="val">{{ $order->tableSession?->table?->table_number ?? '-' }}</span>
+      </div>
+    @endif
 
     <hr class="section-sep">
 

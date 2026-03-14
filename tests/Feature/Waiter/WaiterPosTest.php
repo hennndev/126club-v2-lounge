@@ -7,14 +7,19 @@ use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\Order;
 use App\Models\PosCategorySetting;
+use App\Models\Printer;
 use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Models\UserProfile;
+use App\Services\AccurateService;
+use App\Services\PrinterService;
+use Mockery\MockInterface;
 use Spatie\Permission\Models\Role;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\mock;
 
 function posWaiter(string $name = 'Waiter'): User
 {
@@ -195,6 +200,96 @@ test('waiter checkout links kitchen order to customer user for booking session',
         ->and((int) $kitchenOrder->customer_user_id)->toBe((int) $customerUser->id);
 });
 
+test('waiter checkout auto prints one menu to multiple assigned target printers', function () {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-21');
+    $session = posSession($table, $customer, $waiter);
+
+    $targetPrinterOne = Printer::create([
+        'name' => 'Waiter Kitchen A',
+        'location' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $targetPrinterTwo = Printer::create([
+        'name' => 'Waiter Kitchen B',
+        'location' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter Multi Printer Menu',
+        'code' => 'MENU-WAITER-MULTI',
+        'accurate_id' => 55001,
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 100,
+        'is_active' => true,
+    ]);
+
+    $menuItem->printers()->sync([$targetPrinterOne->id, $targetPrinterTwo->id]);
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($targetPrinterOne, $targetPrinterTwo): void {
+        $mock->shouldReceive('printKitchenTicket')
+            ->twice()
+            ->withArgs(function ($order, $printer) use ($targetPrinterOne, $targetPrinterTwo): bool {
+                if (! in_array($printer->id, [$targetPrinterOne->id, $targetPrinterTwo->id], true)) {
+                    return false;
+                }
+
+                return (int) ($order->items->count() ?? 0) === 1;
+            })
+            ->andReturnTrue();
+
+        $mock->shouldReceive('printBarTicket')->never();
+    });
+
+    $productId = 'item_'.$menuItem->id;
+
+    actingAs($waiter)
+        ->withSession([
+            'accurate_database' => 'test',
+            WaiterPosController::CART_KEY => [
+                $productId => [
+                    'id' => $productId,
+                    'name' => $menuItem->name,
+                    'price' => 35000,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
+        ->assertOk()
+        ->assertJsonPath('success', true);
+});
+
 test('waiter cannot checkout for a session belonging to another waiter', function () {
     $waiterA = posWaiter('Waiter A');
     $waiterB = posWaiter('Waiter B');
@@ -223,6 +318,100 @@ test('waiter cannot checkout for a session belonging to another waiter', functio
         ->post(route('waiter.pos.checkout'), ['session_id' => $sessionB->id])
         ->assertStatus(422)
         ->assertJsonPath('success', false);
+});
+
+test('waiter checkout keeps printing to other assigned printers when one target printer fails', function () {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-FAILOVER');
+    $session = posSession($table, $customer, $waiter);
+
+    $networkPrinter = Printer::create([
+        'name' => 'Waiter Kitchen Network Fail',
+        'location' => 'kitchen',
+        'connection_type' => 'network',
+        'ip' => '10.10.10.10',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $logPrinter = Printer::create([
+        'name' => 'Waiter Kitchen Log Success',
+        'location' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter Multi Printer Failover Menu',
+        'code' => 'MENU-WAITER-FAILOVER',
+        'accurate_id' => 55002,
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 100,
+        'is_active' => true,
+    ]);
+
+    $menuItem->printers()->sync([$networkPrinter->id, $logPrinter->id]);
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($networkPrinter, $logPrinter): void {
+        $mock->shouldReceive('printKitchenTicket')
+            ->twice()
+            ->andReturnUsing(function ($order, $printer) use ($networkPrinter, $logPrinter): bool {
+                expect((int) ($order->items->count() ?? 0))->toBe(1);
+
+                if ($printer->id === $networkPrinter->id) {
+                    throw new RuntimeException('Network printer unreachable');
+                }
+
+                expect($printer->id)->toBe($logPrinter->id);
+
+                return true;
+            });
+
+        $mock->shouldReceive('printBarTicket')->never();
+    });
+
+    $productId = 'item_'.$menuItem->id;
+
+    actingAs($waiter)
+        ->withSession([
+            'accurate_database' => 'test',
+            WaiterPosController::CART_KEY => [
+                $productId => [
+                    'id' => $productId,
+                    'name' => $menuItem->name,
+                    'price' => 35000,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
+        ->assertOk()
+        ->assertJsonPath('success', true);
 });
 
 test('waiter cannot checkout non booking session even if assigned', function () {
@@ -273,7 +462,7 @@ test('waiter pos page lists products from pos category settings including custom
         ->and($products->where('id', 'item_'.$product->id)->first()['category'])->toBe($customCategory);
 });
 
-test('waiter add to cart blocks menu when possible portions are not sufficient', function () {
+test('waiter add to cart allows item group regardless of possible portions', function () {
     $waiter = posWaiter();
 
     PosCategorySetting::updateOrCreate(
@@ -281,6 +470,7 @@ test('waiter add to cart blocks menu when possible portions are not sufficient',
         [
             'show_in_pos' => true,
             'is_menu' => true,
+            'is_item_group' => true,
             'preparation_location' => 'kitchen',
             'source' => 'inventory',
         ]
@@ -300,7 +490,62 @@ test('waiter add to cart blocks menu when possible portions are not sufficient',
     actingAs($waiter)
         ->withSession(['accurate_database' => 'test'])
         ->post(route('waiter.pos.add-to-cart', 'item_'.$menuItem->id))
-        ->assertStatus(422)
-        ->assertJsonPath('success', false)
-        ->assertJsonPath('possible_portions', 0);
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.item_'.$menuItem->id.'.qty', 1);
+});
+
+test('waiter add to cart allows detail group menu when sold item stock is zero', function () {
+    $waiter = posWaiter();
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter Detail Group Menu',
+        'code' => 'MENU-WAITER-DG-001',
+        'accurate_id' => 5002,
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 0,
+        'is_active' => true,
+    ]);
+
+    InventoryItem::create([
+        'name' => 'Waiter Ingredient',
+        'code' => 'ING-WAITER-001',
+        'accurate_id' => 6002,
+        'category_type' => 'ingredient',
+        'price' => 1000,
+        'stock_quantity' => 10,
+        'is_active' => true,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')
+            ->once()
+            ->with(5002)
+            ->andReturn([
+                [
+                    'itemId' => 6002,
+                    'quantity' => 2,
+                ],
+            ]);
+    });
+
+    actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->post(route('waiter.pos.add-to-cart', 'item_'.$menuItem->id))
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.item_'.$menuItem->id.'.qty', 1);
 });

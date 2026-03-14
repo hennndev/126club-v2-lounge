@@ -25,6 +25,7 @@ use App\Services\AccurateService;
 use App\Services\PrinterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +59,7 @@ class PosController extends Controller
         // Map inventory items to product format
         $products = $inventoryQuery->get()->map(function ($item) use ($posSettings) {
             $setting = $posSettings->get($item->category_type);
+            $isItemGroup = (bool) ($setting?->is_item_group ?? false);
 
             return [
                 'id' => 'item_'.$item->id,
@@ -65,21 +67,34 @@ class PosController extends Controller
                 'name' => $item->name,
                 'category' => $item->category_type,
                 'price' => $item->price ?? 0,
-                'stock' => $setting?->is_menu ? null : ($item->stock_quantity ?? 0),
+                'stock' => $isItemGroup ? null : ($item->stock_quantity ?? 0),
                 'is_menu' => (bool) $setting?->is_menu,
+                'is_item_group' => $isItemGroup,
+                'include_tax' => (bool) $item->include_tax,
+                'include_service_charge' => (bool) $item->include_service_charge,
                 'type' => 'item',
             ];
         })->values();
 
         // Get cart from session
         $cart = session()->get('pos_cart', []);
-        $cartItems = collect($cart)->map(function ($item) {
+        $cartItemFlags = InventoryItem::query()
+            ->whereIn('id', collect($cart)->map(fn ($item) => (int) str_replace('item_', '', (string) ($item['id'] ?? '0')))->filter()->values())
+            ->get(['id', 'include_tax', 'include_service_charge'])
+            ->keyBy('id');
+
+        $cartItems = collect($cart)->map(function ($item) use ($cartItemFlags) {
+            $inventoryItemId = (int) str_replace('item_', '', (string) ($item['id'] ?? '0'));
+            $flags = $cartItemFlags->get($inventoryItemId);
+
             return [
                 'id' => $item['id'],
                 'name' => $item['name'],
                 'price' => $item['price'],
                 'quantity' => $item['quantity'],
                 'preparation_location' => $item['preparation_location'] ?? 'direct',
+                'include_tax' => (bool) ($flags?->include_tax ?? $item['include_tax'] ?? true),
+                'include_service_charge' => (bool) ($flags?->include_service_charge ?? $item['include_service_charge'] ?? true),
             ];
         });
 
@@ -298,13 +313,27 @@ class PosController extends Controller
             'price' => $inventoryItem->price ?? 0,
             'type' => 'item',
             'preparation_location' => $setting->preparation_location,
+            'include_tax' => (bool) $inventoryItem->include_tax,
+            'include_service_charge' => (bool) $inventoryItem->include_service_charge,
         ];
 
         $cart = session()->get('pos_cart', []);
 
         $nextQuantity = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
 
-        if (! $setting->is_menu && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQuantity) {
+        $isItemGroup = (bool) ($setting->is_item_group ?? false);
+        $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
+
+        if ($detailGroupComponents !== []) {
+            $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
+
+            if ($nextQuantity > $possiblePortions) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Stok bahan hanya cukup {$this->formatStockNumber($possiblePortions)} porsi.",
+                ], 422);
+            }
+        } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQuantity) {
             return response()->json([
                 'success' => false,
                 'message' => 'Stok tidak mencukupi untuk item ini.',
@@ -313,6 +342,8 @@ class PosController extends Controller
 
         if (isset($cart[$productId])) {
             $cart[$productId]['quantity']++;
+            $cart[$productId]['include_tax'] = $product['include_tax'];
+            $cart[$productId]['include_service_charge'] = $product['include_service_charge'];
         } else {
             $cart[$productId] = [
                 'id' => $product['id'],
@@ -320,6 +351,8 @@ class PosController extends Controller
                 'price' => $product['price'],
                 'quantity' => 1,
                 'preparation_location' => $product['preparation_location'],
+                'include_tax' => $product['include_tax'],
+                'include_service_charge' => $product['include_service_charge'],
             ];
         }
 
@@ -347,7 +380,19 @@ class PosController extends Controller
                     ], 404);
                 }
 
-                if (! $setting->is_menu && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQuantity) {
+                $isItemGroup = (bool) ($setting->is_item_group ?? false);
+                $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
+
+                if ($detailGroupComponents !== []) {
+                    $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
+
+                    if ($nextQuantity > $possiblePortions) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Stok bahan hanya cukup {$this->formatStockNumber($possiblePortions)} porsi.",
+                        ], 422);
+                    }
+                } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQuantity) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Stok tidak mencukupi untuk item ini.',
@@ -480,6 +525,9 @@ class PosController extends Controller
                 ]);
 
                 $itemsTotal = 0;
+                $serviceChargeBase = 0;
+                $taxBase = 0;
+                $taxAndServiceBase = 0;
 
                 // Create Order Items from cart
                 foreach ($cart as $productId => $cartItem) {
@@ -502,6 +550,20 @@ class PosController extends Controller
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
                     $itemsTotal += $subtotal;
+                    $includeTax = (bool) $inventoryItem->include_tax;
+                    $includeServiceCharge = (bool) $inventoryItem->include_service_charge;
+
+                    if ($includeServiceCharge) {
+                        $serviceChargeBase += $subtotal;
+                    }
+
+                    if ($includeTax) {
+                        $taxBase += $subtotal;
+                    }
+
+                    if ($includeTax && $includeServiceCharge) {
+                        $taxAndServiceBase += $subtotal;
+                    }
 
                     // Create Order Item
                     OrderItem::create([
@@ -521,9 +583,13 @@ class PosController extends Controller
                     $this->decrementInventoryStock($inventoryItem, $quantity);
                 }
 
-                // Apply tier discount
-                $discountAmount = (int) round($itemsTotal * $discountPercentage / 100);
-                $finalTotal = $itemsTotal - $discountAmount;
+                $orderTotals = $this->calculateWalkInTotals($itemsTotal, $discountPercentage, null, [
+                    'service_charge_base' => $serviceChargeBase,
+                    'tax_base' => $taxBase,
+                    'tax_and_service_base' => $taxAndServiceBase,
+                ]);
+                $discountAmount = (float) $orderTotals['discount_amount'];
+                $finalTotal = (float) $orderTotals['subtotal_after_discount'];
 
                 // Update Order totals
                 $order->update([
@@ -538,12 +604,23 @@ class PosController extends Controller
                 // Update Billing
                 if ($tableSession->billing) {
                     $billing = $tableSession->billing;
-                    $billing->orders_total = $tableSession->orders()->sum('total');
-                    // Minimum charge = minimum spend, not additive fee. Tax not yet implemented.
-                    $billing->subtotal = max((float) $billing->minimum_charge, (float) $billing->orders_total);
-                    $billing->tax = 0;
-                    $billing->grand_total = $billing->subtotal - $billing->discount_amount;
-                    $billing->save();
+                    $tableSession->loadMissing('orders.items.inventoryItem');
+
+                    $sessionTotals = $this->calculateSessionBillingTotals(
+                        $tableSession,
+                        (float) $billing->discount_amount,
+                        (float) $billing->minimum_charge,
+                    );
+
+                    $billing->update([
+                        'orders_total' => (float) $sessionTotals['orders_total'],
+                        'subtotal' => (float) $sessionTotals['subtotal'],
+                        'tax_percentage' => (float) $sessionTotals['tax_percentage'],
+                        'tax' => (float) $sessionTotals['tax'],
+                        'service_charge_percentage' => (float) $sessionTotals['service_charge_percentage'],
+                        'service_charge' => (float) $sessionTotals['service_charge'],
+                        'grand_total' => (float) $sessionTotals['grand_total'],
+                    ]);
                 }
 
                 DB::commit();
@@ -551,18 +628,21 @@ class PosController extends Controller
                 // Clear cart
                 session()->forget('pos_cart');
 
-                // Print receipt if requested
-                if ($request->boolean('print_receipt')) {
-                    $this->printOrderReceipt($order);
-                }
+                $this->printOrderReceipt($order);
 
                 return response()->json([
                     'success' => true,
                     'message' => "Order #{$orderNumber} berhasil dibuat!",
                     'order_number' => $orderNumber,
                     'order_id' => $order->id,
-                    'total' => $finalTotal,
-                    'formatted_total' => 'Rp '.number_format($finalTotal, 0, ',', '.'),
+                    'items_total' => $itemsTotal,
+                    'discount_amount' => $discountAmount,
+                    'service_charge_percentage' => (float) $orderTotals['service_charge_percentage'],
+                    'service_charge' => (float) $orderTotals['service_charge'],
+                    'tax_percentage' => (float) $orderTotals['tax_percentage'],
+                    'tax' => (float) $orderTotals['tax'],
+                    'total' => (float) $orderTotals['grand_total'],
+                    'formatted_total' => 'Rp '.number_format((float) $orderTotals['grand_total'], 0, ',', '.'),
                 ]);
             }
 
@@ -600,6 +680,9 @@ class PosController extends Controller
                 ]);
 
                 $itemsTotal = 0;
+                $serviceChargeBase = 0;
+                $taxBase = 0;
+                $taxAndServiceBase = 0;
 
                 foreach ($cart as $productId => $cartItem) {
                     $itemId = str_replace('item_', '', $productId);
@@ -617,6 +700,20 @@ class PosController extends Controller
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
                     $itemsTotal += $subtotal;
+                    $includeTax = (bool) $inventoryItem->include_tax;
+                    $includeServiceCharge = (bool) $inventoryItem->include_service_charge;
+
+                    if ($includeServiceCharge) {
+                        $serviceChargeBase += $subtotal;
+                    }
+
+                    if ($includeTax) {
+                        $taxBase += $subtotal;
+                    }
+
+                    if ($includeTax && $includeServiceCharge) {
+                        $taxAndServiceBase += $subtotal;
+                    }
 
                     OrderItem::create([
                         'order_id' => $order->id,
@@ -635,7 +732,11 @@ class PosController extends Controller
                     $this->decrementInventoryStock($inventoryItem, $quantity);
                 }
 
-                $totals = $this->calculateWalkInTotals($itemsTotal, $discountPercentage);
+                $totals = $this->calculateWalkInTotals($itemsTotal, $discountPercentage, null, [
+                    'service_charge_base' => $serviceChargeBase,
+                    'tax_base' => $taxBase,
+                    'tax_and_service_base' => $taxAndServiceBase,
+                ]);
 
                 $order->update([
                     'items_total' => $itemsTotal,
@@ -694,26 +795,136 @@ class PosController extends Controller
      */
     public function orderReceipt(Order $order): \Illuminate\View\View
     {
-        $order->load(['items', 'customer.user', 'customer.profile']);
+        $order->load(['items.inventoryItem', 'customer.user', 'customer.profile']);
 
         $customerName = $order->customer?->user?->name
             ?? $order->customer?->profile?->name
             ?? 'Walk-in';
 
-        $receiptTotals = $order->table_session_id === null
-            ? $this->calculateWalkInTotals((float) $order->items_total, 0, (float) $order->discount_amount)
-            : null;
+        $receiptTotals = $this->calculateWalkInTotals(
+            (float) $order->items_total,
+            0,
+            (float) $order->discount_amount,
+            $this->resolveChargeableBasesFromOrderItems($order->items)
+        );
 
         return view('pos.receipt', compact('order', 'customerName', 'receiptTotals'));
     }
 
-    protected function calculateWalkInTotals(float|int $itemsTotal, int $discountPercentage = 0, ?float $discountAmountOverride = null): array
+    /**
+     * @return array<string, float>
+     */
+    protected function calculateSessionBillingTotals(TableSession $session, float $discountAmount, float $minimumCharge): array
     {
         $settings = GeneralSetting::instance();
-        $discountAmount = $discountAmountOverride ?? (float) round($itemsTotal * $discountPercentage / 100);
-        $subtotalAfterDiscount = (float) $itemsTotal - (float) $discountAmount;
-        $serviceChargeAmount = round($subtotalAfterDiscount * ((float) $settings->service_charge_percentage / 100), 2);
-        $taxAmount = round(($subtotalAfterDiscount + $serviceChargeAmount) * ((float) $settings->tax_percentage / 100), 2);
+        $orders = $session->orders
+            ->where('status', '!=', 'cancelled')
+            ->values();
+
+        $ordersTotal = (float) $orders->sum(fn ($order) => (float) ($order->total ?? 0));
+        $subtotal = max($minimumCharge, $ordersTotal);
+        $discountAmount = min(max($discountAmount, 0), $subtotal);
+        $subtotalAfterDiscount = max($subtotal - $discountAmount, 0);
+
+        $bases = $this->resolveSessionChargeableBases($orders);
+        $discountRatio = $ordersTotal > 0 ? min(max($discountAmount / $ordersTotal, 0), 1) : 0;
+
+        $serviceChargeBaseAfterDiscount = max($bases['service_charge_base'] * (1 - $discountRatio), 0);
+        $taxBaseAfterDiscount = max($bases['tax_base'] * (1 - $discountRatio), 0);
+        $taxAndServiceBaseAfterDiscount = max($bases['tax_and_service_base'] * (1 - $discountRatio), 0);
+
+        $serviceCharge = round($serviceChargeBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
+        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
+        $tax = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+
+        return [
+            'orders_total' => $ordersTotal,
+            'minimum_charge' => $minimumCharge,
+            'subtotal' => $subtotal,
+            'discount_amount' => $discountAmount,
+            'subtotal_after_discount' => $subtotalAfterDiscount,
+            'service_charge_percentage' => (float) $settings->service_charge_percentage,
+            'service_charge' => $serviceCharge,
+            'tax_percentage' => (float) $settings->tax_percentage,
+            'tax' => $tax,
+            'grand_total' => $subtotalAfterDiscount + $serviceCharge + $tax,
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, mixed>  $orders
+     * @return array<string, float>
+     */
+    protected function resolveSessionChargeableBases($orders): array
+    {
+        $serviceChargeBase = 0;
+        $taxBase = 0;
+        $taxAndServiceBase = 0;
+
+        foreach ($orders as $order) {
+            $orderItems = $order->items->where('status', '!=', 'cancelled')->values();
+            $orderNetTotal = (float) ($order->total ?? 0);
+
+            if ($orderItems->isEmpty()) {
+                $serviceChargeBase += max($orderNetTotal, 0);
+                $taxBase += max($orderNetTotal, 0);
+                $taxAndServiceBase += max($orderNetTotal, 0);
+
+                continue;
+            }
+
+            $itemsSubtotal = (float) $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0));
+            $ratio = $itemsSubtotal > 0 ? max($orderNetTotal, 0) / $itemsSubtotal : 0;
+
+            foreach ($orderItems as $orderItem) {
+                $itemNetSubtotal = (float) ($orderItem->subtotal ?? 0) * $ratio;
+                $includeTax = (bool) ($orderItem->inventoryItem?->include_tax ?? true);
+                $includeServiceCharge = (bool) ($orderItem->inventoryItem?->include_service_charge ?? true);
+
+                if ($includeServiceCharge) {
+                    $serviceChargeBase += $itemNetSubtotal;
+                }
+
+                if ($includeTax) {
+                    $taxBase += $itemNetSubtotal;
+                }
+
+                if ($includeTax && $includeServiceCharge) {
+                    $taxAndServiceBase += $itemNetSubtotal;
+                }
+            }
+        }
+
+        return [
+            'service_charge_base' => $serviceChargeBase,
+            'tax_base' => $taxBase,
+            'tax_and_service_base' => $taxAndServiceBase,
+        ];
+    }
+
+    protected function calculateWalkInTotals(
+        float|int $itemsTotal,
+        int $discountPercentage = 0,
+        ?float $discountAmountOverride = null,
+        ?array $chargeableBases = null,
+    ): array {
+        $settings = GeneralSetting::instance();
+        $itemsTotalFloat = (float) $itemsTotal;
+        $discountAmount = $discountAmountOverride ?? (float) round($itemsTotalFloat * $discountPercentage / 100);
+        $subtotalAfterDiscount = max($itemsTotalFloat - (float) $discountAmount, 0);
+        $discountRatio = $itemsTotalFloat > 0 ? min(max((float) $discountAmount / $itemsTotalFloat, 0), 1) : 0;
+
+        $serviceChargeBase = (float) ($chargeableBases['service_charge_base'] ?? $itemsTotalFloat);
+        $taxBase = (float) ($chargeableBases['tax_base'] ?? $itemsTotalFloat);
+        $taxAndServiceBase = (float) ($chargeableBases['tax_and_service_base'] ?? $serviceChargeBase);
+
+        $serviceChargeBaseAfterDiscount = max($serviceChargeBase * (1 - $discountRatio), 0);
+        $taxBaseAfterDiscount = max($taxBase * (1 - $discountRatio), 0);
+        $taxAndServiceBaseAfterDiscount = max($taxAndServiceBase * (1 - $discountRatio), 0);
+
+        $serviceChargeAmount = round($serviceChargeBaseAfterDiscount * ((float) $settings->service_charge_percentage / 100), 2);
+        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * ((float) $settings->service_charge_percentage / 100), 2);
+        $taxAmount = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * ((float) $settings->tax_percentage / 100), 2);
         $grandTotal = $subtotalAfterDiscount + $serviceChargeAmount + $taxAmount;
 
         return [
@@ -727,6 +938,37 @@ class PosController extends Controller
         ];
     }
 
+    protected function resolveChargeableBasesFromOrderItems($orderItems): array
+    {
+        $serviceChargeBase = 0;
+        $taxBase = 0;
+        $taxAndServiceBase = 0;
+
+        foreach ($orderItems as $orderItem) {
+            $subtotal = (float) ($orderItem->subtotal ?? ((float) $orderItem->price * (int) $orderItem->quantity));
+            $includeTax = (bool) ($orderItem->inventoryItem?->include_tax ?? true);
+            $includeServiceCharge = (bool) ($orderItem->inventoryItem?->include_service_charge ?? true);
+
+            if ($includeServiceCharge) {
+                $serviceChargeBase += $subtotal;
+            }
+
+            if ($includeTax) {
+                $taxBase += $subtotal;
+            }
+
+            if ($includeTax && $includeServiceCharge) {
+                $taxAndServiceBase += $subtotal;
+            }
+        }
+
+        return [
+            'service_charge_base' => $serviceChargeBase,
+            'tax_base' => $taxBase,
+            'tax_and_service_base' => $taxAndServiceBase,
+        ];
+    }
+
     /**
      * Print receipt for a specific order.
      */
@@ -737,10 +979,10 @@ class PosController extends Controller
             if (! $order) {
                 $orderId = $request->input('order_id');
                 if ($orderId) {
-                    $order = Order::with(['items', 'tableSession.table'])->find($orderId);
+                    $order = Order::with(['items.inventoryItem', 'tableSession.table'])->find($orderId);
                 }
             } else {
-                $order->load(['items', 'tableSession.table']);
+                $order->load(['items.inventoryItem', 'tableSession.table']);
             }
 
             if (! $order) {
@@ -823,7 +1065,7 @@ class PosController extends Controller
                 return false;
             }
 
-            $order->load(['items', 'tableSession.table']);
+            $order->load(['items.inventoryItem', 'tableSession.table']);
             $this->printerService->printReceipt($order, $printer);
 
             return true;
@@ -923,16 +1165,14 @@ class PosController extends Controller
     protected function printKitchenTicket(KitchenOrder $kitchenOrder): bool
     {
         try {
-            $printer = $this->getPrinterForLocation('kitchen');
+            $kitchenOrder->load(['items.inventoryItem.printers', 'table']);
 
-            if (! $printer) {
-                return false;
-            }
-
-            $kitchenOrder->load(['items.recipe.inventoryItem', 'table']);
-            $this->printerService->printKitchenTicket($kitchenOrder, $printer);
-
-            return true;
+            return $this->printItemsToAssignedPrinters(
+                $kitchenOrder,
+                $kitchenOrder->items,
+                $this->getPrinterForLocation('kitchen'),
+                fn (KitchenOrder $order, Printer $printer): bool => $this->printerService->printKitchenTicket($order, $printer)
+            );
         } catch (\Exception $e) {
             return false;
         }
@@ -944,19 +1184,76 @@ class PosController extends Controller
     protected function printBarTicket(BarOrder $barOrder): bool
     {
         try {
-            $printer = $this->getPrinterForLocation('bar');
+            $barOrder->load(['items.inventoryItem.printers', 'table']);
 
-            if (! $printer) {
-                return false;
-            }
-
-            $barOrder->load(['items.recipe.inventoryItem', 'items.inventoryItem', 'table']);
-            $this->printerService->printBarTicket($barOrder, $printer);
-
-            return true;
+            return $this->printItemsToAssignedPrinters(
+                $barOrder,
+                $barOrder->items,
+                $this->getPrinterForLocation('bar'),
+                fn (BarOrder $order, Printer $printer): bool => $this->printerService->printBarTicket($order, $printer)
+            );
         } catch (\Exception $e) {
             return false;
         }
+    }
+
+    protected function printItemsToAssignedPrinters(object $order, Collection $items, ?Printer $fallbackPrinter, callable $callback): bool
+    {
+        $groupedByPrinter = [];
+        $fallbackItems = collect();
+
+        foreach ($items as $item) {
+            $targetPrinters = $item->inventoryItem?->printers?->filter(fn (Printer $printer): bool => $printer->is_active) ?? collect();
+
+            if ($targetPrinters->isEmpty()) {
+                $fallbackItems->push($item);
+
+                continue;
+            }
+
+            foreach ($targetPrinters as $printer) {
+                $groupedByPrinter[$printer->id]['printer'] = $printer;
+                $groupedByPrinter[$printer->id]['items'][$item->id] = $item;
+            }
+        }
+
+        $printed = false;
+
+        foreach ($groupedByPrinter as $group) {
+            try {
+                $orderForPrinter = clone $order;
+                $orderForPrinter->setRelation('items', collect($group['items'])->values());
+                $callback($orderForPrinter, $group['printer']);
+                $printed = true;
+            } catch (\Exception $e) {
+                Log::warning('Assigned printer failed during POS checkout print fan-out', [
+                    'printer_id' => $group['printer']->id ?? null,
+                    'printer_name' => $group['printer']->name ?? null,
+                    'connection_type' => $group['printer']->connection_type ?? null,
+                    'order_number' => $order->order_number ?? null,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($fallbackItems->isNotEmpty() && $fallbackPrinter) {
+            try {
+                $fallbackOrder = clone $order;
+                $fallbackOrder->setRelation('items', $fallbackItems->values());
+                $callback($fallbackOrder, $fallbackPrinter);
+                $printed = true;
+            } catch (\Exception $e) {
+                Log::warning('Fallback printer failed during POS checkout print fan-out', [
+                    'printer_id' => $fallbackPrinter->id,
+                    'printer_name' => $fallbackPrinter->name,
+                    'connection_type' => $fallbackPrinter->connection_type,
+                    'order_number' => $order->order_number ?? null,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $printed;
     }
 
     /**
@@ -995,10 +1292,10 @@ class PosController extends Controller
     protected function decrementInventoryStock(InventoryItem $inventoryItem, int $quantity): void
     {
         $setting = PosCategorySetting::allKeyed()->get($inventoryItem->category_type);
-        $isMenu = (bool) $setting?->is_menu;
+        $isItemGroup = (bool) ($setting?->is_item_group ?? false);
 
         if (! $inventoryItem->accurate_id) {
-            if (! $isMenu) {
+            if (! $isItemGroup) {
                 $this->decrementSingleItemStock($inventoryItem->id, $quantity);
             }
 
@@ -1008,7 +1305,7 @@ class PosController extends Controller
         $components = $this->getItemGroupComponents($inventoryItem);
 
         if (empty($components)) {
-            if (! $isMenu) {
+            if (! $isItemGroup) {
                 $this->decrementSingleItemStock($inventoryItem->id, $quantity);
             }
 
@@ -1068,8 +1365,37 @@ class PosController extends Controller
             }
 
             $setting = $posSettings->get($inventoryItem->category_type);
+            $isItemGroup = (bool) ($setting?->is_item_group ?? false);
+            $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
-            if (! $setting?->is_menu) {
+            if ($detailGroupComponents !== []) {
+                $possiblePortions = $this->resolvePossiblePortions($inventoryItem, $detailGroupComponents);
+                $isAvailable = $possiblePortions >= $requestedQuantity;
+
+                $menuItems[] = [
+                    'product_id' => $productId,
+                    'item_id' => $inventoryItem->id,
+                    'name' => $inventoryItem->name,
+                    'requested_quantity' => $requestedQuantity,
+                    'possible_portions' => $possiblePortions,
+                    'is_available' => $isAvailable,
+                ];
+
+                if (! $isAvailable) {
+                    $stockIssues[] = [
+                        'type' => 'detail_group_shortage',
+                        'product_id' => $productId,
+                        'name' => $inventoryItem->name,
+                        'possible_portions' => $possiblePortions,
+                        'requested_quantity' => $requestedQuantity,
+                        'message' => "Stok bahan {$inventoryItem->name} hanya cukup {$this->formatStockNumber($possiblePortions)} porsi.",
+                    ];
+                }
+
+                continue;
+            }
+
+            if (! $isItemGroup) {
                 $availableStock = (float) ($inventoryItem->stock_quantity ?? 0);
 
                 if ($availableStock < $requestedQuantity) {
@@ -1086,120 +1412,7 @@ class PosController extends Controller
                 continue;
             }
 
-            if (! $inventoryItem->accurate_id) {
-                $menuItems[] = [
-                    'product_id' => $productId,
-                    'name' => $inventoryItem->name,
-                    'requested_quantity' => $requestedQuantity,
-                    'possible_portions' => 0,
-                    'is_available' => false,
-                    'ingredients' => [],
-                    'message' => 'Menu belum memiliki Accurate ID.',
-                ];
-
-                $stockIssues[] = [
-                    'type' => 'missing_accurate_id',
-                    'product_id' => $productId,
-                    'name' => $inventoryItem->name,
-                    'message' => "Menu {$inventoryItem->name} belum memiliki Accurate ID sehingga stok bahan belum bisa divalidasi.",
-                ];
-
-                continue;
-            }
-
-            $components = $this->getItemGroupComponents($inventoryItem);
-
-            if ($components === []) {
-                $menuItems[] = [
-                    'product_id' => $productId,
-                    'name' => $inventoryItem->name,
-                    'requested_quantity' => $requestedQuantity,
-                    'possible_portions' => 0,
-                    'is_available' => false,
-                    'ingredients' => [],
-                    'message' => 'Detail group Accurate tidak ditemukan.',
-                ];
-
-                $stockIssues[] = [
-                    'type' => 'missing_detail_group',
-                    'product_id' => $productId,
-                    'name' => $inventoryItem->name,
-                    'message' => "Menu {$inventoryItem->name} belum memiliki detail group Accurate sehingga possible portion tidak bisa dihitung.",
-                ];
-
-                continue;
-            }
-
-            $linePossiblePortions = null;
-            $lineIngredients = [];
-
-            foreach ($components as $component) {
-                $componentAccurateId = (int) ($component['itemId'] ?? 0);
-                $componentQuantity = (float) ($component['quantity'] ?? 0);
-
-                if ($componentAccurateId <= 0 || $componentQuantity <= 0) {
-                    continue;
-                }
-
-                $ingredient = InventoryItem::query()
-                    ->where('accurate_id', $componentAccurateId)
-                    ->first();
-
-                $availableStock = max((float) ($ingredient?->stock_quantity ?? 0), 0);
-                $possibleByIngredient = (int) floor($availableStock / $componentQuantity);
-                $linePossiblePortions = $linePossiblePortions === null
-                    ? $possibleByIngredient
-                    : min($linePossiblePortions, $possibleByIngredient);
-
-                $requiredTotal = $componentQuantity * $requestedQuantity;
-
-                $lineIngredients[] = [
-                    'ingredient_name' => $ingredient?->name ?? ($component['detailName'] ?? 'Bahan tidak ditemukan'),
-                    'ingredient_code' => $ingredient?->code,
-                    'required_per_portion' => $componentQuantity,
-                    'requested_total' => $requiredTotal,
-                    'available_stock' => $availableStock,
-                    'possible_portions' => $possibleByIngredient,
-                ];
-
-                if (! isset($ingredientRequirements[$componentAccurateId])) {
-                    $ingredientRequirements[$componentAccurateId] = [
-                        'ingredient_name' => $ingredient?->name ?? ($component['detailName'] ?? 'Bahan tidak ditemukan'),
-                        'ingredient_code' => $ingredient?->code,
-                        'available_stock' => $availableStock,
-                        'required_total' => 0,
-                        'menus' => [],
-                    ];
-                }
-
-                $ingredientRequirements[$componentAccurateId]['required_total'] += $requiredTotal;
-                $ingredientRequirements[$componentAccurateId]['menus'][$inventoryItem->name] = true;
-            }
-
-            $linePossiblePortions ??= 0;
-
-            $menuItems[] = [
-                'product_id' => $productId,
-                'name' => $inventoryItem->name,
-                'requested_quantity' => $requestedQuantity,
-                'possible_portions' => $linePossiblePortions,
-                'is_available' => $linePossiblePortions >= $requestedQuantity,
-                'ingredients' => $lineIngredients,
-                'message' => $linePossiblePortions >= $requestedQuantity
-                    ? null
-                    : "Stok bahan {$inventoryItem->name} hanya cukup {$linePossiblePortions} porsi.",
-            ];
-
-            if ($linePossiblePortions < $requestedQuantity) {
-                $stockIssues[] = [
-                    'type' => 'menu_portion',
-                    'product_id' => $productId,
-                    'name' => $inventoryItem->name,
-                    'requested_quantity' => $requestedQuantity,
-                    'possible_portions' => $linePossiblePortions,
-                    'message' => "Stok bahan {$inventoryItem->name} hanya cukup {$linePossiblePortions} porsi.",
-                ];
-            }
+            continue;
         }
 
         foreach ($ingredientRequirements as $ingredientAccurateId => $ingredientRequirement) {
@@ -1239,6 +1452,52 @@ class PosController extends Controller
             now()->addHour(),
             fn () => $this->accurateService->getItemGroupComponents((int) $inventoryItem->accurate_id)
         );
+    }
+
+    protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array
+    {
+        if ((bool) ($setting?->is_item_group ?? false)) {
+            return [];
+        }
+
+        if (! (bool) ($setting?->is_menu ?? false)) {
+            return [];
+        }
+
+        return $this->getItemGroupComponents($inventoryItem);
+    }
+
+    protected function resolvePossiblePortions(InventoryItem $inventoryItem, ?array $components = null): int
+    {
+        $components ??= $this->getItemGroupComponents($inventoryItem);
+
+        if ($components === []) {
+            return 0;
+        }
+
+        $linePossiblePortions = null;
+
+        foreach ($components as $component) {
+            $componentAccurateId = (int) ($component['itemId'] ?? 0);
+            $componentQuantity = (float) ($component['quantity'] ?? 0);
+
+            if ($componentAccurateId <= 0 || $componentQuantity <= 0) {
+                continue;
+            }
+
+            $ingredient = InventoryItem::query()
+                ->where('accurate_id', $componentAccurateId)
+                ->first();
+
+            $availableStock = max((float) ($ingredient?->stock_quantity ?? 0), 0);
+            $possibleByIngredient = (int) floor($availableStock / $componentQuantity);
+
+            $linePossiblePortions = $linePossiblePortions === null
+                ? $possibleByIngredient
+                : min($linePossiblePortions, $possibleByIngredient);
+        }
+
+        return $linePossiblePortions ?? 0;
     }
 
     protected function formatStockNumber(float|int $value): string
@@ -1400,7 +1659,15 @@ class PosController extends Controller
      */
     protected function cartResponse(string $message, array $cart): JsonResponse
     {
-        $cartItems = collect($cart)->values()->map(function ($item) {
+        $cartItemFlags = InventoryItem::query()
+            ->whereIn('id', collect($cart)->map(fn ($item) => (int) str_replace('item_', '', (string) ($item['id'] ?? '0')))->filter()->values())
+            ->get(['id', 'include_tax', 'include_service_charge'])
+            ->keyBy('id');
+
+        $cartItems = collect($cart)->values()->map(function ($item) use ($cartItemFlags) {
+            $inventoryItemId = (int) str_replace('item_', '', (string) ($item['id'] ?? '0'));
+            $flags = $cartItemFlags->get($inventoryItemId);
+
             return [
                 'id' => $item['id'],
                 'name' => $item['name'],
@@ -1408,6 +1675,8 @@ class PosController extends Controller
                 'quantity' => (int) $item['quantity'],
                 'subtotal' => (float) $item['price'] * (int) $item['quantity'],
                 'preparation_location' => $item['preparation_location'] ?? 'direct',
+                'include_tax' => (bool) ($flags?->include_tax ?? $item['include_tax'] ?? true),
+                'include_service_charge' => (bool) ($flags?->include_service_charge ?? $item['include_service_charge'] ?? true),
             ];
         });
 
