@@ -1337,20 +1337,6 @@
               </svg>
               <span class="text-xs font-semibold text-blue-600">Bar</span>
             </button>
-            <a href="{{ route('admin.tables.index') }}"
-               x-show="receiptData?.customerType !== 'walk-in'"
-               class="flex flex-1 flex-col items-center gap-1.5 p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl transition">
-              <svg class="w-5 h-5 text-green-500"
-                   fill="none"
-                   stroke="currentColor"
-                   viewBox="0 0 24 24">
-                <path stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M3 10h18M3 14h18M10 4v16M14 4v16" />
-              </svg>
-              <span class="text-xs font-semibold text-green-600">Meja</span>
-            </a>
           </div>
         </div>
 

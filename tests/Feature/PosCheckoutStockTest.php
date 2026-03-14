@@ -111,6 +111,7 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
         ->assertSee('x-show="calculatedServiceCharge() > 0"', false)
         ->assertSee('x-show="calculatedTax() > 0"', false)
         ->assertDontSee('x-text="receiptData?.tableDisplay"', false)
+        ->assertDontSee('<span class="text-xs font-semibold text-green-600">Meja</span>', false)
         ->assertSee('Memproses...', false);
 });
 

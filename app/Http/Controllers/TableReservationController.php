@@ -418,11 +418,22 @@ class TableReservationController extends Controller
         $validated = $request->validate([
             'payment_mode' => 'required|in:normal,split',
             'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit',
+            'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
-            'split_debit_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
+            'split_non_cash_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
+            'split_non_cash_method' => 'required_if:payment_mode,split|nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
+            'split_non_cash_reference_number' => 'nullable|string|max:100',
         ]);
 
-        $session = $booking->load('tableSession.billing.tableSession.orders.items')->tableSession;
+        $session = TableSession::with(['billing', 'orders.items'])
+            ->where('table_reservation_id', $booking->id)
+            ->where('status', 'active')
+            ->latest('id')
+            ->first();
+
+        if (! $session) {
+            $session = $booking->load('tableSession.billing.tableSession.orders.items')->tableSession;
+        }
 
         if (! $session) {
             return response()->json(['success' => false, 'message' => 'Table session tidak ditemukan.'], 404);
@@ -461,18 +472,43 @@ class TableReservationController extends Controller
                 $paymentMethod = $paymentMode === 'split'
                     ? null
                     : $validated['payment_method'];
+                $paymentReferenceNumber = $paymentMode === 'normal'
+                    ? (($paymentMethod ?? null) === 'cash' ? null : ($validated['payment_reference_number'] ?? null))
+                    : null;
+
+                if ($paymentMode === 'normal' && ($paymentMethod ?? null) !== 'cash' && blank($paymentReferenceNumber)) {
+                    throw ValidationException::withMessages([
+                        'payment_reference_number' => 'Nomor referensi pembayaran non-cash wajib diisi.',
+                    ]);
+                }
 
                 $splitCashAmount = null;
                 $splitDebitAmount = null;
+                $splitNonCashMethod = null;
+                $splitNonCashReferenceNumber = null;
 
                 if ($paymentMode === 'split') {
                     $splitCashAmount = (float) $validated['split_cash_amount'];
-                    $splitDebitAmount = (float) $validated['split_debit_amount'];
+                    $splitDebitAmount = (float) $validated['split_non_cash_amount'];
+                    $splitNonCashMethod = $validated['split_non_cash_method'];
+                    $splitNonCashReferenceNumber = $validated['split_non_cash_reference_number'] ?? null;
                     $splitTotal = round($splitCashAmount + $splitDebitAmount, 2);
+
+                    if ($splitCashAmount <= 0 || $splitDebitAmount <= 0) {
+                        throw ValidationException::withMessages([
+                            'split_total' => 'Untuk split bill, nominal cash dan non-cash harus lebih dari 0.',
+                        ]);
+                    }
 
                     if (abs($splitTotal - (float) $totals['grand_total']) > 0.01) {
                         throw ValidationException::withMessages([
-                            'split_total' => 'Total pembayaran split (cash + debit) harus sama dengan grand total.',
+                            'split_total' => 'Total pembayaran split (cash + non-cash) harus sama dengan grand total.',
+                        ]);
+                    }
+
+                    if (blank($splitNonCashReferenceNumber)) {
+                        throw ValidationException::withMessages([
+                            'split_non_cash_reference_number' => 'Nomor referensi non-cash untuk split bill wajib diisi.',
                         ]);
                     }
                 }
@@ -489,15 +525,27 @@ class TableReservationController extends Controller
                     'billing_status' => 'paid',
                     'transaction_code' => $transactionCode,
                     'payment_method' => $paymentMethod,
+                    'payment_reference_number' => $paymentReferenceNumber,
                     'payment_mode' => $paymentMode,
                     'split_cash_amount' => $splitCashAmount,
                     'split_debit_amount' => $splitDebitAmount,
+                    'split_non_cash_method' => $splitNonCashMethod,
+                    'split_non_cash_reference_number' => $splitNonCashReferenceNumber,
                 ]);
 
                 $session->update([
                     'checked_out_at' => now(),
                     'status' => 'completed',
                 ]);
+
+                TableSession::query()
+                    ->where('table_reservation_id', $booking->id)
+                    ->where('status', 'active')
+                    ->where('id', '!=', $session->id)
+                    ->update([
+                        'checked_out_at' => now(),
+                        'status' => 'completed',
+                    ]);
 
                 $booking->update(['status' => 'completed']);
 
@@ -546,8 +594,11 @@ class TableReservationController extends Controller
                     'grand_total' => (float) $billing->grand_total,
                     'payment_mode' => strtoupper($billing->payment_mode ?? 'NORMAL'),
                     'payment_method' => strtoupper($billing->payment_method ?? ($billing->payment_mode === 'split' ? 'split' : '-')),
+                    'payment_reference_number' => $billing->payment_reference_number,
                     'split_cash_amount' => (float) ($billing->split_cash_amount ?? 0),
                     'split_debit_amount' => (float) ($billing->split_debit_amount ?? 0),
+                    'split_non_cash_method' => strtoupper((string) ($billing->split_non_cash_method ?? '')),
+                    'split_non_cash_reference_number' => $billing->split_non_cash_reference_number,
                 ],
                 'receipt_url' => route('admin.bookings.receipt', $booking->id),
             ]);

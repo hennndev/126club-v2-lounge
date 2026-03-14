@@ -121,15 +121,45 @@ test('close billing works with normal payment mode', function () {
         ->assertJsonPath('success', true);
 
     $updatedBilling = $booking->fresh()->tableSession->billing;
+    $updatedBooking = $booking->fresh();
+    $updatedSession = $updatedBooking->tableSession;
+    $updatedTable = $updatedBooking->table;
 
     expect($updatedBilling->billing_status)->toBe('paid')
         ->and($updatedBilling->payment_mode)->toBe('normal')
         ->and($updatedBilling->payment_method)->toBe('cash')
         ->and((float) $updatedBilling->split_cash_amount)->toBe(0.0)
-        ->and((float) $updatedBilling->split_debit_amount)->toBe(0.0);
+        ->and((float) $updatedBilling->split_debit_amount)->toBe(0.0)
+        ->and($updatedBooking->status)->toBe('completed')
+        ->and($updatedSession?->status)->toBe('completed')
+        ->and($updatedTable?->status)->toBe('available');
 });
 
-test('close billing works with split payment mode cash and debit', function () {
+test('close billing works with normal non-cash payment and reference number', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'normal',
+        'payment_method' => 'debit',
+        'payment_reference_number' => 'APPROVAL-12345',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('receipt.payment_method', 'DEBIT')
+        ->assertJsonPath('receipt.payment_reference_number', 'APPROVAL-12345');
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect($updatedBilling->billing_status)->toBe('paid')
+        ->and($updatedBilling->payment_mode)->toBe('normal')
+        ->and($updatedBilling->payment_method)->toBe('debit')
+        ->and($updatedBilling->payment_reference_number)->toBe('APPROVAL-12345');
+});
+
+test('close billing works with split payment mode cash and non-cash method', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
 
@@ -138,7 +168,9 @@ test('close billing works with split payment mode cash and debit', function () {
     $previewResponse = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
         'payment_mode' => 'split',
         'split_cash_amount' => 70000,
-        'split_debit_amount' => 50000,
+        'split_non_cash_amount' => 50000,
+        'split_non_cash_method' => 'kredit',
+        'split_non_cash_reference_number' => 'KREDIT-9988',
     ]);
 
     $previewResponse
@@ -152,6 +184,8 @@ test('close billing works with split payment mode cash and debit', function () {
         ->and($updatedBilling->payment_method)->toBeNull()
         ->and((float) $updatedBilling->split_cash_amount)->toBe(70000.0)
         ->and((float) $updatedBilling->split_debit_amount)->toBe(50000.0)
+        ->and($updatedBilling->split_non_cash_method)->toBe('kredit')
+        ->and($updatedBilling->split_non_cash_reference_number)->toBe('KREDIT-9988')
         ->and((float) $updatedBilling->paid_amount)->toBe((float) $updatedBilling->grand_total);
 });
 
@@ -162,7 +196,9 @@ test('close billing rejects split payment when totals do not match', function ()
     $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
         'payment_mode' => 'split',
         'split_cash_amount' => 10000,
-        'split_debit_amount' => 10000,
+        'split_non_cash_amount' => 10000,
+        'split_non_cash_method' => 'debit',
+        'split_non_cash_reference_number' => 'DB-01',
     ]);
 
     $response
@@ -174,4 +210,67 @@ test('close billing rejects split payment when totals do not match', function ()
     expect($updatedBilling->billing_status)->toBe('draft')
         ->and($updatedBilling->payment_mode)->toBeNull()
         ->and($updatedBilling->payment_method)->toBeNull();
+});
+
+test('close billing rejects split payment when non-cash reference is missing', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'split',
+        'split_cash_amount' => 70000,
+        'split_non_cash_amount' => 50000,
+        'split_non_cash_method' => 'debit',
+    ]);
+
+    $response
+        ->assertStatus(422)
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('errors.split_non_cash_reference_number.0', 'Nomor referensi non-cash untuk split bill wajib diisi.');
+});
+
+test('close billing prioritizes active session when booking has multiple sessions', function () {
+    $admin = adminUser();
+    [$booking, $activeSession] = makeBookingCloseBillingFixture($admin);
+
+    $olderSession = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $booking->table_id,
+        'customer_id' => $booking->customer_id,
+        'session_code' => 'SESSION-OLDER-'.uniqid(),
+        'checked_in_at' => now()->subHours(5),
+        'checked_out_at' => now()->subHours(3),
+        'status' => 'completed',
+    ]);
+
+    Billing::create([
+        'table_session_id' => $olderSession->id,
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 0,
+        'paid_amount' => 0,
+        'billing_status' => 'paid',
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    expect($activeSession->fresh()->status)->toBe('completed')
+        ->and($activeSession->fresh()->billing?->billing_status)->toBe('paid')
+        ->and($booking->fresh()->status)->toBe('completed')
+        ->and($booking->fresh()->table?->status)->toBe('available');
 });
