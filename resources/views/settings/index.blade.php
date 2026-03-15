@@ -176,7 +176,7 @@
         </div>
         <div class="flex-1 min-w-0">
           <h3 class="font-semibold text-slate-800 mb-1">Kategori POS</h3>
-          <p class="text-sm text-slate-500 mb-3">Atur kategori mana yang tampil di POS dan arahnya (kitchen/bar/langsung)</p>
+          <p class="text-sm text-slate-500 mb-3">Atur kategori mana yang tampil di POS</p>
           <span class="text-sm font-medium text-violet-600 hover:text-violet-700">Lihat Detail →</span>
         </div>
       </a>

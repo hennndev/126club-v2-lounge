@@ -90,7 +90,7 @@
     <!-- Header -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-slate-800">Kategori POS</h1>
-      <p class="text-sm text-slate-500 mt-1">Atur kategori mana yang tampil di POS dan ke mana diarahkan</p>
+      <p class="text-sm text-slate-500 mt-1">Atur kategori mana yang tampil di POS</p>
     </div>
 
     @if ($errors->any())
@@ -110,7 +110,6 @@
         <li><strong>Tampil di POS</strong> — aktifkan agar kategori ini muncul di halaman POS.</li>
         <li><strong>Menu</strong> — penanda kategori menu untuk kebutuhan listing/organisasi menu.</li>
         <li><strong>Item Group</strong> — jika aktif, POS tidak mewajibkan stok item utama dan akan menghitung dari stok bahan/komponen.</li>
-        <li><strong>Arah</strong> — <em>Kitchen</em>: kirim ke dapur, <em>Bar</em>: kirim ke bar, <em>Langsung</em>: masuk transaksi saja tanpa order kitchen/bar.</li>
       </ul>
     </div>
 
@@ -130,7 +129,6 @@
                 <th class="px-5 py-3 text-center font-medium text-slate-600">Tampil di POS</th>
                 <th class="px-5 py-3 text-center font-medium text-slate-600">Menu</th>
                 <th class="px-5 py-3 text-center font-medium text-slate-600">Item Group</th>
-                <th class="px-5 py-3 text-left font-medium text-slate-600">Arah</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -183,19 +181,6 @@
                              {{ $s && $s->is_item_group ? 'checked' : '' }}>
                       <span class="settings-toggle__track"></span>
                     </label>
-                  </td>
-
-                  {{-- Arah --}}
-                  <td class="px-5 py-3">
-                    <select name="categories[{{ $type }}][preparation_location]"
-                            class="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                      <option value="kitchen"
-                              {{ $s && $s->preparation_location === 'kitchen' ? 'selected' : '' }}>🍳 Kitchen</option>
-                      <option value="bar"
-                              {{ !$s || $s->preparation_location === 'bar' ? 'selected' : '' }}>🍹 Bar</option>
-                      <option value="direct"
-                              {{ $s && $s->preparation_location === 'direct' ? 'selected' : '' }}>⚡ Langsung (tanpa order)</option>
-                    </select>
                   </td>
                 </tr>
               @endforeach

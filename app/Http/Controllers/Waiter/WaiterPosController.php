@@ -210,19 +210,17 @@ class WaiterPosController extends Controller
                 'notes' => null,
             ]);
 
-            $posSettings = PosCategorySetting::allKeyed();
             $itemsTotal = 0;
 
             foreach ($cart as $productId => $cartItem) {
                 $itemId = str_replace('item_', '', $productId);
-                $inventoryItem = InventoryItem::find($itemId);
+                $inventoryItem = InventoryItem::with('printers')->find($itemId);
 
                 if (! $inventoryItem) {
                     continue;
                 }
 
-                $setting = $posSettings->get($inventoryItem->category_type);
-                $preparationLocation = $setting?->preparation_location ?? $cartItem['preparation_location'] ?? 'direct';
+                $preparationLocation = $this->resolvePreparationLocationFromPrinters($inventoryItem);
 
                 $price = (float) $inventoryItem->price;
                 $quantity = (int) $cartItem['quantity'];
@@ -276,15 +274,41 @@ class WaiterPosController extends Controller
 
     protected function routeOrderToPreparation(Order $order, TableSession $tableSession, string $orderNumber): void
     {
+        $order->loadMissing(['items.inventoryItem.printers']);
+
         $kitchenItems = collect();
         $barItems = collect();
 
         foreach ($order->items as $item) {
-            if ($item->preparation_location === 'kitchen') {
-                $kitchenItems->push($item);
-            } elseif ($item->preparation_location === 'bar') {
+            $assignedTypes = $item->inventoryItem?->printers
+                ?->filter(fn (Printer $printer): bool => $printer->is_active)
+                ->map(function (Printer $printer): ?string {
+                    $type = strtolower(trim((string) $printer->printer_type));
+
+                    if (in_array($type, ['kitchen', 'bar'], true)) {
+                        return $type;
+                    }
+
+                    $location = strtolower(trim((string) $printer->location));
+
+                    return in_array($location, ['kitchen', 'bar'], true) ? $location : null;
+                })
+                ->filter()
+                ->values() ?? collect();
+
+            if ($assignedTypes->contains('bar')) {
                 $barItems->push($item);
+
+                continue;
             }
+
+            if ($assignedTypes->contains('kitchen')) {
+                $kitchenItems->push($item);
+
+                continue;
+            }
+
+            // Unassigned items go straight to transaction checker (no kitchen/bar order)
         }
 
         $customerUserId = CustomerUser::where('user_id', $tableSession->customer_id)
@@ -350,8 +374,12 @@ class WaiterPosController extends Controller
             $this->printItemsToAssignedPrinters(
                 $kitchenOrder,
                 $kitchenOrder->items,
-                Printer::active()->byLocation('kitchen')->first(),
-                fn (KitchenOrder $order, Printer $printer): bool => $this->printerService->printKitchenTicket($order, $printer)
+                fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
+                    'checker' => $this->printerService->printCheckerTicket($order, $printer),
+                    'cashier' => $this->printerService->printCashierTicket($order, $printer),
+                    'bar' => $this->printerService->printBarTicket($order, $printer),
+                    default => $this->printerService->printKitchenTicket($order, $printer),
+                }
             );
         } catch (\Exception $e) {
             // Silent fail — don't block checkout
@@ -365,25 +393,26 @@ class WaiterPosController extends Controller
             $this->printItemsToAssignedPrinters(
                 $barOrder,
                 $barOrder->items,
-                Printer::active()->byLocation('bar')->first(),
-                fn (BarOrder $order, Printer $printer): bool => $this->printerService->printBarTicket($order, $printer)
+                fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
+                    'checker' => $this->printerService->printCheckerTicket($order, $printer),
+                    'cashier' => $this->printerService->printCashierTicket($order, $printer),
+                    'kitchen' => $this->printerService->printKitchenTicket($order, $printer),
+                    default => $this->printerService->printBarTicket($order, $printer),
+                }
             );
         } catch (\Exception $e) {
             // Silent fail — don't block checkout
         }
     }
 
-    protected function printItemsToAssignedPrinters(object $order, Collection $items, ?Printer $fallbackPrinter, callable $callback): void
+    protected function printItemsToAssignedPrinters(object $order, Collection $items, callable $callback): void
     {
         $groupedByPrinter = [];
-        $fallbackItems = collect();
 
         foreach ($items as $item) {
             $targetPrinters = $item->inventoryItem?->printers?->filter(fn (Printer $printer): bool => $printer->is_active) ?? collect();
 
             if ($targetPrinters->isEmpty()) {
-                $fallbackItems->push($item);
-
                 continue;
             }
 
@@ -409,21 +438,35 @@ class WaiterPosController extends Controller
             }
         }
 
-        if ($fallbackItems->isNotEmpty() && $fallbackPrinter) {
-            try {
-                $fallbackOrder = clone $order;
-                $fallbackOrder->setRelation('items', $fallbackItems->values());
-                $callback($fallbackOrder, $fallbackPrinter);
-            } catch (\Exception $e) {
-                Log::warning('Fallback printer failed during waiter checkout print fan-out', [
-                    'printer_id' => $fallbackPrinter->id,
-                    'printer_name' => $fallbackPrinter->name,
-                    'connection_type' => $fallbackPrinter->connection_type,
-                    'order_number' => $order->order_number ?? null,
-                    'message' => $e->getMessage(),
-                ]);
-            }
+    }
+
+    protected function resolvePreparationLocationFromPrinters(InventoryItem $inventoryItem): ?string
+    {
+        $assignedTypes = $inventoryItem->printers
+            ?->filter(fn (Printer $printer): bool => $printer->is_active)
+            ->map(function (Printer $printer): ?string {
+                $type = strtolower(trim((string) $printer->printer_type));
+
+                if (in_array($type, ['kitchen', 'bar'], true)) {
+                    return $type;
+                }
+
+                $location = strtolower(trim((string) $printer->location));
+
+                return in_array($location, ['kitchen', 'bar'], true) ? $location : null;
+            })
+            ->filter()
+            ->values() ?? collect();
+
+        if ($assignedTypes->contains('bar')) {
+            return 'bar';
         }
+
+        if ($assignedTypes->contains('kitchen')) {
+            return 'kitchen';
+        }
+
+        return null;
     }
 
     protected function cartResponse(array $cart): JsonResponse
@@ -526,10 +569,6 @@ class WaiterPosController extends Controller
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array
     {
         if ((bool) ($setting?->is_item_group ?? false)) {
-            return [];
-        }
-
-        if (! (bool) ($setting?->is_menu ?? false)) {
             return [];
         }
 

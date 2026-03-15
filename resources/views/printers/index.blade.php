@@ -68,6 +68,7 @@
             <tr>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Nama</th>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Lokasi</th>
+              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Tipe</th>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Koneksi</th>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
               <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Default</th>
@@ -87,6 +88,24 @@
                 </td>
                 <td class="px-6 py-4">
                   <span class="text-sm text-gray-600">{{ $printer->location ?? '-' }}</span>
+                </td>
+                <td class="px-6 py-4">
+                  @php
+                    $typeColors = [
+                        'kitchen' => 'bg-amber-100 text-amber-700',
+                        'bar' => 'bg-purple-100 text-purple-700',
+                        'cashier' => 'bg-green-100 text-green-700',
+                        'checker' => 'bg-blue-100 text-blue-700',
+                    ];
+                    $typeLabels = ['kitchen' => 'Kitchen', 'bar' => 'Bar', 'cashier' => 'Kasir', 'checker' => 'Checker'];
+                  @endphp
+                  @if ($printer->printer_type)
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold {{ $typeColors[$printer->printer_type] ?? 'bg-gray-100 text-gray-500' }}">
+                      {{ $typeLabels[$printer->printer_type] ?? $printer->printer_type }}
+                    </span>
+                  @else
+                    <span class="text-xs text-gray-400">-</span>
+                  @endif
                 </td>
                 <td class="px-6 py-4">
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -243,6 +262,7 @@
 
         document.getElementById('name').value = printer.name;
         document.getElementById('location').value = printer.location || '';
+        document.getElementById('printer_type').value = printer.printer_type || '';
         document.getElementById('connection_type').value = printer.connection_type;
         document.getElementById('ip').value = printer.ip || '';
         document.getElementById('port').value = printer.port || 9100;

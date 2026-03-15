@@ -24,15 +24,16 @@ class PosCategorySettingController extends Controller
         $validated = $request->validated();
 
         foreach ($validated['categories'] as $categoryType => $data) {
-            PosCategorySetting::updateOrCreate(
-                ['category_type' => $categoryType],
-                [
-                    'show_in_pos' => (bool) ($data['show_in_pos'] ?? false),
-                    'is_menu' => (bool) ($data['is_menu'] ?? false),
-                    'is_item_group' => (bool) ($data['is_item_group'] ?? false),
-                    'preparation_location' => $data['preparation_location'],
-                ]
-            );
+            $setting = PosCategorySetting::firstOrNew(['category_type' => $categoryType]);
+
+            $setting->fill([
+                'show_in_pos' => (bool) ($data['show_in_pos'] ?? false),
+                'is_menu' => (bool) ($data['is_menu'] ?? false),
+                'is_item_group' => (bool) ($data['is_item_group'] ?? false),
+                'preparation_location' => $setting->preparation_location ?? 'bar',
+            ]);
+
+            $setting->save();
         }
 
         PosCategorySetting::clearCache();

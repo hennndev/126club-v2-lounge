@@ -155,9 +155,6 @@
           <tbody class="bg-white divide-y divide-gray-200"
                  id="itemTableBody">
             @foreach ($items as $item)
-              @php
-                $isMenuCategory = in_array($item->category_type, $menuCategoryTypes ?? [], true);
-              @endphp
               <tr class="hover:bg-gray-50 transition item-row"
                   data-category="{{ $item->category_type }}"
                   data-low-stock="{{ $item->isLowStock() ? '1' : '0' }}">
@@ -182,15 +179,11 @@
                   <div class="text-sm text-gray-900">Rp {{ number_format($item->price, 0, ',', '.') }}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                  @if ($isMenuCategory)
-                    <div class="text-sm text-gray-400 stock-empty-menu">&mdash;</div>
-                  @else
-                    <div class="text-sm">
-                      <span class="@if ($item->isLowStock()) text-red-600 font-bold @else text-green-600 font-medium @endif">
-                        {{ $item->stock_quantity }} {{ $item->unit }}
-                      </span>
-                    </div>
-                  @endif
+                  <div class="text-sm">
+                    <span class="@if ($item->isLowStock()) text-red-600 font-bold @else text-green-600 font-medium @endif">
+                      {{ $item->stock_quantity }} {{ $item->unit }}
+                    </span>
+                  </div>
                 </td>
                 <td class="px-6 py-4">
                   @php

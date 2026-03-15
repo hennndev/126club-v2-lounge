@@ -388,7 +388,7 @@ class PrinterService
     /**
      * Print a kitchen order ticket.
      */
-    public function printKitchenTicket(KitchenOrder $kitchenOrder, Printer $printer): bool
+    public function printKitchenTicket(KitchenOrder|BarOrder $kitchenOrder, Printer $printer): bool
     {
         if ($printer->connection_type === 'log') {
             $lines = [
@@ -399,7 +399,7 @@ class PrinterService
                 '',
             ];
             foreach ($kitchenOrder->items as $item) {
-                $name = $item->recipe->inventoryItem->name ?? 'Item';
+                $name = $item->inventoryItem?->name ?? 'Unknown';
                 $lines[] = "  {$item->quantity}x {$name}";
             }
             $this->logPrint('KITCHEN ORDER', $lines);
@@ -434,7 +434,7 @@ class PrinterService
             $escpos->setEmphasis(false);
 
             foreach ($kitchenOrder->items as $item) {
-                $name = $item->recipe->inventoryItem->name ?? $item->recipe->type ?? 'Item';
+                $name = $item->inventoryItem?->name ?? 'Unknown';
                 $escpos->setEmphasis(true);
                 $escpos->text("  {$item->quantity}x {$name}\n");
                 $escpos->setEmphasis(false);
@@ -457,7 +457,7 @@ class PrinterService
     /**
      * Print a bar order ticket.
      */
-    public function printBarTicket(BarOrder $barOrder, Printer $printer): bool
+    public function printBarTicket(KitchenOrder|BarOrder $barOrder, Printer $printer): bool
     {
         if ($printer->connection_type === 'log') {
             $lines = [
@@ -468,7 +468,7 @@ class PrinterService
                 '',
             ];
             foreach ($barOrder->items as $item) {
-                $name = $item->recipe?->inventoryItem?->name ?? $item->inventoryItem?->name ?? 'Item';
+                $name = $item->inventoryItem?->name ?? 'Unknown';
                 $lines[] = "  {$item->quantity}x {$name}";
             }
             $this->logPrint('BAR ORDER', $lines);
@@ -503,7 +503,7 @@ class PrinterService
             $escpos->setEmphasis(false);
 
             foreach ($barOrder->items as $item) {
-                $name = $item->recipe?->inventoryItem?->name ?? $item->inventoryItem?->name ?? 'Item';
+                $name = $item->inventoryItem?->name ?? 'Unknown';
                 $escpos->setEmphasis(true);
                 $escpos->text("  {$item->quantity}x {$name}\n");
                 $escpos->setEmphasis(false);
@@ -521,5 +521,149 @@ class PrinterService
         } finally {
             $escpos->close();
         }
+    }
+
+    /**
+     * Print a checker ticket (serve notification for floor staff).
+     */
+    public function printCheckerTicket(KitchenOrder|BarOrder $order, Printer $printer): bool
+    {
+        if ($printer->connection_type === 'log') {
+            $lines = [
+                "Order : #{$order->order_number}",
+                'Table : '.($order->table?->table_number ?? 'N/A'),
+                'Time  : '.now()->format('H:i'),
+                "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
+                '',
+            ];
+            foreach ($order->items as $item) {
+                $name = $item->inventoryItem?->name ?? 'Unknown';
+                $lines[] = "  {$item->quantity}x {$name}";
+            }
+            $this->logPrint('CHECKER', $lines);
+
+            return true;
+        }
+
+        $connector = $this->createConnector($printer);
+        $escpos = new EscposPrinter($connector);
+
+        try {
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->setEmphasis(true);
+            $escpos->setTextSize(2, 2);
+            $escpos->text("CHECKER\n");
+            $escpos->setTextSize(1, 1);
+            $escpos->text("Order #{$order->order_number}\n");
+            $escpos->setEmphasis(false);
+            $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+            $escpos->feed(1);
+
+            $tableName = $order->table?->table_number ?? 'N/A';
+            $escpos->text("Table: {$tableName}\n");
+            $escpos->text('Time: '.now()->format('H:i')."\n");
+            $escpos->text(str_repeat('-', $printer->width)."\n");
+
+            $escpos->setEmphasis(true);
+            $escpos->text("SAJIKAN\n");
+            $escpos->setEmphasis(false);
+
+            foreach ($order->items as $item) {
+                $name = $item->inventoryItem?->name ?? 'Unknown';
+                $escpos->setEmphasis(true);
+                $escpos->text("  {$item->quantity}x {$name}\n");
+                $escpos->setEmphasis(false);
+            }
+
+            $escpos->text(str_repeat('-', $printer->width)."\n");
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->text("*** SIAP DISAJIKAN ***\n");
+
+            $escpos->feed(3);
+            $escpos->cut();
+
+            return true;
+        } finally {
+            $escpos->close();
+        }
+    }
+
+    /**
+     * Print a cashier notification ticket (order summary for cashier awareness).
+     */
+    public function printCashierTicket(KitchenOrder|BarOrder $order, Printer $printer): bool
+    {
+        if ($printer->connection_type === 'log') {
+            $lines = [
+                "Order : #{$order->order_number}",
+                'Table : '.($order->table?->table_number ?? 'N/A'),
+                'Time  : '.now()->format('H:i'),
+                "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
+                '',
+            ];
+            foreach ($order->items as $item) {
+                $name = $item->inventoryItem?->name ?? 'Unknown';
+                $lines[] = "  {$item->quantity}x {$name}  Rp ".number_format((float) ($item->price ?? 0) * (int) $item->quantity, 0, ',', '.');
+            }
+            $this->logPrint('KASIR', $lines);
+
+            return true;
+        }
+
+        $connector = $this->createConnector($printer);
+        $escpos = new EscposPrinter($connector);
+
+        try {
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->setEmphasis(true);
+            $escpos->setTextSize(2, 2);
+            $escpos->text("KASIR\n");
+            $escpos->setTextSize(1, 1);
+            $escpos->text("Order #{$order->order_number}\n");
+            $escpos->setEmphasis(false);
+            $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+            $escpos->feed(1);
+
+            $tableName = $order->table?->table_number ?? 'N/A';
+            $escpos->text("Table: {$tableName}\n");
+            $escpos->text('Time: '.now()->format('H:i')."\n");
+            $escpos->text(str_repeat('-', $printer->width)."\n");
+
+            $escpos->setEmphasis(true);
+            $escpos->text("ITEM\n");
+            $escpos->setEmphasis(false);
+
+            $subtotal = 0;
+            foreach ($order->items as $item) {
+                $name = $item->inventoryItem?->name ?? 'Unknown';
+                $lineTotal = (float) ($item->price ?? 0) * (int) $item->quantity;
+                $subtotal += $lineTotal;
+                $escpos->text(sprintf(
+                    "  %dx %-{$this->labelWidth($printer->width)}s Rp %s\n",
+                    $item->quantity,
+                    $this->truncate($name, $this->labelWidth($printer->width)),
+                    number_format($lineTotal, 0, ',', '.')
+                ));
+            }
+
+            $escpos->text(str_repeat('-', $printer->width)."\n");
+            $escpos->setEmphasis(true);
+            $escpos->text(sprintf("%-{$printer->width}s\n",
+                str_pad('Total Rp '.number_format($subtotal, 0, ',', '.'), $printer->width, ' ', STR_PAD_LEFT)
+            ));
+            $escpos->setEmphasis(false);
+
+            $escpos->feed(3);
+            $escpos->cut();
+
+            return true;
+        } finally {
+            $escpos->close();
+        }
+    }
+
+    protected function labelWidth(int $printerWidth): int
+    {
+        return max(10, $printerWidth - 22);
     }
 }

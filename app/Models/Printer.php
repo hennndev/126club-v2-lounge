@@ -10,6 +10,7 @@ class Printer extends Model
     protected $fillable = [
         'name',
         'location',
+        'printer_type',
         'connection_type',
         'ip',
         'port',
@@ -48,6 +49,11 @@ class Printer extends Model
         return $query->whereRaw('TRIM(LOWER(location)) = ?', [strtolower(trim($location))]);
     }
 
+    public function scopeByType($query, string $type)
+    {
+        return $query->where('printer_type', $type);
+    }
+
     public static function getDefault(): ?self
     {
         return static::active()->default()->first()
@@ -57,6 +63,19 @@ class Printer extends Model
     public static function getByLocation(string $location): ?self
     {
         return static::active()->byLocation($location)->first();
+    }
+
+    public static function getByType(string $type): ?self
+    {
+        return static::active()->byType($type)->first();
+    }
+
+    /**
+     * Get printer for a service location, preferring printer_type match over location string.
+     */
+    public static function getForService(string $serviceLocation): ?self
+    {
+        return static::getByType($serviceLocation) ?? static::getByLocation($serviceLocation);
     }
 
     public function inventoryItems(): BelongsToMany

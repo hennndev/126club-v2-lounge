@@ -69,3 +69,28 @@ it('shows N/A in bar ticket when no table is assigned', function () {
 
     expect($log)->toContain('N/A');
 });
+
+it('prints kitchen ticket with correct item names from inventoryItem relationship', function () {
+    $table = new Tabel;
+    $table->table_number = 'T-10';
+
+    $inventoryItem = new \App\Models\InventoryItem;
+    $inventoryItem->name = 'Test Food';
+
+    $item = new \App\Models\KitchenOrderItem;
+    $item->quantity = 2;
+    $item->setRelation('inventoryItem', $inventoryItem);
+
+    $kitchenOrder = new KitchenOrder;
+    $kitchenOrder->order_number = 'ORD-TEST-K002';
+    $kitchenOrder->setRelation('table', $table);
+    $kitchenOrder->setRelation('items', collect([$item]));
+
+    $printer = Printer::make(['name' => 'Kitchen Test', 'connection_type' => 'log', 'width' => 42]);
+
+    (new PrinterService)->printKitchenTicket($kitchenOrder, $printer);
+
+    $log = file_get_contents(storage_path('logs/printer.log'));
+
+    expect($log)->toContain('2x Test Food');
+});

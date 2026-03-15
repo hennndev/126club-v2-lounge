@@ -175,6 +175,18 @@ test('waiter checkout links kitchen order to customer user for booking session',
     $table = posTable($area, 'P-11');
     $session = posSession($table, $customer, $waiter);
     $product = posProduct('food');
+    $kitchenPrinter = Printer::create([
+        'name' => 'Waiter Kitchen Link Test',
+        'location' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+    $product->printers()->sync([$kitchenPrinter->id]);
     $productId = 'item_'.$product->id;
 
     actingAs($waiter)
@@ -548,4 +560,59 @@ test('waiter add to cart allows detail group menu when sold item stock is zero',
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('cart.item_'.$menuItem->id.'.qty', 1);
+});
+
+test('waiter add to cart allows non menu detail group item when sold item stock is zero', function () {
+    $waiter = posWaiter();
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'warehouse-group'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => false,
+            'is_item_group' => false,
+            'preparation_location' => 'bar',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $groupItem = InventoryItem::create([
+        'name' => 'Waiter Warehouse Group',
+        'code' => 'WAIT-GROUP-001',
+        'accurate_id' => 5003,
+        'category_type' => 'warehouse-group',
+        'price' => 35000,
+        'stock_quantity' => 0,
+        'is_active' => true,
+    ]);
+
+    InventoryItem::create([
+        'name' => 'Waiter Warehouse Ingredient',
+        'code' => 'WAIT-ING-003',
+        'accurate_id' => 6003,
+        'category_type' => 'ingredient',
+        'price' => 1000,
+        'stock_quantity' => 10,
+        'is_active' => true,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')
+            ->once()
+            ->with(5003)
+            ->andReturn([
+                [
+                    'itemId' => 6003,
+                    'quantity' => 2,
+                ],
+            ]);
+    });
+
+    actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->post(route('waiter.pos.add-to-cart', 'item_'.$groupItem->id))
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.item_'.$groupItem->id.'.qty', 1);
 });

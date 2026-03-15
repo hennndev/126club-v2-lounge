@@ -27,7 +27,6 @@ test('admin can save menu flag for pos category settings', function () {
                 'show_in_pos' => '1',
                 'is_menu' => '1',
                 'is_item_group' => '1',
-                'preparation_location' => 'kitchen',
             ],
         ],
     ]);
@@ -38,6 +37,5 @@ test('admin can save menu flag for pos category settings', function () {
         ->not->toBeNull()
         ->show_in_pos->toBeTrue()
         ->is_menu->toBeTrue()
-        ->is_item_group->toBeTrue()
-        ->preparation_location->toBe('kitchen');
+        ->is_item_group->toBeTrue();
 });

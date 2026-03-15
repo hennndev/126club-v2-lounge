@@ -65,6 +65,22 @@
           </select>
         </div>
 
+        <!-- Printer Type -->
+        <div class="col-span-2 sm:col-span-1">
+          <label for="printer_type"
+                 class="block text-sm font-medium text-gray-700 mb-1">Tipe Printer</label>
+          <select id="printer_type"
+                  name="printer_type"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            <option value="">-- Tanpa Tipe --</option>
+            <option value="kitchen">Kitchen</option>
+            <option value="bar">Bar</option>
+            <option value="cashier">Kasir</option>
+            <option value="checker">Checker</option>
+          </select>
+          <p class="mt-1 text-xs text-gray-400">Menentukan tipe print job yang dikirim ke printer ini.</p>
+        </div>
+
         <!-- Connection Type -->
         <div class="col-span-2">
           <label for="connection_type"

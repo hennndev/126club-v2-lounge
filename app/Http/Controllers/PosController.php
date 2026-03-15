@@ -535,7 +535,7 @@ class PosController extends Controller
                 // Create Order Items from cart
                 foreach ($cart as $productId => $cartItem) {
                     $itemId = str_replace('item_', '', $productId);
-                    $inventoryItem = InventoryItem::find($itemId);
+                    $inventoryItem = InventoryItem::with('printers')->find($itemId);
 
                     if (! $inventoryItem) {
                         continue;
@@ -545,10 +545,7 @@ class PosController extends Controller
                     $itemName = $inventoryItem->name;
                     $itemCode = $inventoryItem->code;
                     $price = $inventoryItem->price;
-                    $categoryType = $inventoryItem->category_type;
-
-                    $posSettings = PosCategorySetting::allKeyed();
-                    $preparationLocation = $posSettings->get($categoryType)?->preparation_location ?? $cartItem['preparation_location'] ?? 'bar';
+                    $preparationLocation = $this->resolvePreparationLocationFromPrinters($inventoryItem);
 
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
@@ -631,8 +628,6 @@ class PosController extends Controller
                 // Clear cart
                 session()->forget('pos_cart');
 
-                $this->printOrderReceipt($order);
-
                 return response()->json([
                     'success' => true,
                     'message' => "Order #{$orderNumber} berhasil dibuat!",
@@ -668,8 +663,6 @@ class PosController extends Controller
                 );
 
                 $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
-                $posSettings = PosCategorySetting::allKeyed();
-
                 $order = Order::create([
                     'table_session_id' => null,
                     'customer_user_id' => $customerUser?->id,
@@ -689,7 +682,7 @@ class PosController extends Controller
 
                 foreach ($cart as $productId => $cartItem) {
                     $itemId = str_replace('item_', '', $productId);
-                    $inventoryItem = InventoryItem::find($itemId);
+                    $inventoryItem = InventoryItem::with('printers')->find($itemId);
                     if (! $inventoryItem) {
                         continue;
                     }
@@ -697,9 +690,7 @@ class PosController extends Controller
                     $itemName = $inventoryItem->name;
                     $itemCode = $inventoryItem->code;
                     $price = $inventoryItem->price;
-                    $categoryType = $inventoryItem->category_type;
-
-                    $preparationLocation = $posSettings->get($categoryType)?->preparation_location ?? $cartItem['preparation_location'] ?? 'bar';
+                    $preparationLocation = $this->resolvePreparationLocationFromPrinters($inventoryItem);
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
                     $itemsTotal += $subtotal;
@@ -757,8 +748,7 @@ class PosController extends Controller
                 // Push to Accurate: Sales Order + Sales Invoice (non-blocking)
                 $this->pushOrderToAccurate($order, $customerUser, $totals['grand_total']);
 
-                // Always auto-print receipt for walk-in
-                $this->printOrderReceipt($order);
+                // Receipt can be printed manually from POS action when needed
 
                 return response()->json([
                     'success' => true,
@@ -1082,17 +1072,42 @@ class PosController extends Controller
      */
     protected function routeOrderToPreparation(Order $order, ?TableSession $tableSession, string $orderNumber, ?int $walkInCustomerUserId = null): void
     {
+        $order->loadMissing(['items.inventoryItem.printers']);
+
         $kitchenItems = collect();
         $barItems = collect();
 
-        // Categorize items by preparation location
+        // Prioritize kitchen/bar printer assignment. Fallback to preparation location.
         foreach ($order->items as $item) {
-            if ($item->preparation_location === 'kitchen') {
-                $kitchenItems->push($item);
-            } elseif ($item->preparation_location === 'bar') {
+            $assignedTypes = $item->inventoryItem?->printers
+                ?->filter(fn (Printer $printer): bool => $printer->is_active)
+                ->map(function (Printer $printer): ?string {
+                    $type = strtolower(trim((string) $printer->printer_type));
+
+                    if (in_array($type, ['kitchen', 'bar'], true)) {
+                        return $type;
+                    }
+
+                    $location = strtolower(trim((string) $printer->location));
+
+                    return in_array($location, ['kitchen', 'bar'], true) ? $location : null;
+                })
+                ->filter()
+                ->values() ?? collect();
+
+            if ($assignedTypes->contains('bar')) {
                 $barItems->push($item);
+
+                continue;
             }
-            // 'direct' items go straight to transaction — no kitchen/bar order needed
+
+            if ($assignedTypes->contains('kitchen')) {
+                $kitchenItems->push($item);
+
+                continue;
+            }
+
+            // Unassigned items go straight to transaction checker (no kitchen/bar order)
         }
 
         // Resolve customer_user_id: from session (booking) or from walk-in param
@@ -1173,8 +1188,12 @@ class PosController extends Controller
             return $this->printItemsToAssignedPrinters(
                 $kitchenOrder,
                 $kitchenOrder->items,
-                $this->getPrinterForLocation('kitchen'),
-                fn (KitchenOrder $order, Printer $printer): bool => $this->printerService->printKitchenTicket($order, $printer)
+                fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
+                    'checker' => $this->printerService->printCheckerTicket($order, $printer),
+                    'cashier' => $this->printerService->printCashierTicket($order, $printer),
+                    'bar' => $this->printerService->printBarTicket($order, $printer),
+                    default => $this->printerService->printKitchenTicket($order, $printer),
+                }
             );
         } catch (\Exception $e) {
             return false;
@@ -1192,25 +1211,26 @@ class PosController extends Controller
             return $this->printItemsToAssignedPrinters(
                 $barOrder,
                 $barOrder->items,
-                $this->getPrinterForLocation('bar'),
-                fn (BarOrder $order, Printer $printer): bool => $this->printerService->printBarTicket($order, $printer)
+                fn (KitchenOrder|BarOrder $order, Printer $printer): bool => match ($printer->printer_type) {
+                    'checker' => $this->printerService->printCheckerTicket($order, $printer),
+                    'cashier' => $this->printerService->printCashierTicket($order, $printer),
+                    'kitchen' => $this->printerService->printKitchenTicket($order, $printer),
+                    default => $this->printerService->printBarTicket($order, $printer),
+                }
             );
         } catch (\Exception $e) {
             return false;
         }
     }
 
-    protected function printItemsToAssignedPrinters(object $order, Collection $items, ?Printer $fallbackPrinter, callable $callback): bool
+    protected function printItemsToAssignedPrinters(object $order, Collection $items, callable $callback): bool
     {
         $groupedByPrinter = [];
-        $fallbackItems = collect();
 
         foreach ($items as $item) {
             $targetPrinters = $item->inventoryItem?->printers?->filter(fn (Printer $printer): bool => $printer->is_active) ?? collect();
 
             if ($targetPrinters->isEmpty()) {
-                $fallbackItems->push($item);
-
                 continue;
             }
 
@@ -1239,23 +1259,6 @@ class PosController extends Controller
             }
         }
 
-        if ($fallbackItems->isNotEmpty() && $fallbackPrinter) {
-            try {
-                $fallbackOrder = clone $order;
-                $fallbackOrder->setRelation('items', $fallbackItems->values());
-                $callback($fallbackOrder, $fallbackPrinter);
-                $printed = true;
-            } catch (\Exception $e) {
-                Log::warning('Fallback printer failed during POS checkout print fan-out', [
-                    'printer_id' => $fallbackPrinter->id,
-                    'printer_name' => $fallbackPrinter->name,
-                    'connection_type' => $fallbackPrinter->connection_type,
-                    'order_number' => $order->order_number ?? null,
-                    'message' => $e->getMessage(),
-                ]);
-            }
-        }
-
         return $printed;
     }
 
@@ -1275,8 +1278,8 @@ class PosController extends Controller
             }
         }
 
-        // 2. Fallback to service location printer (kitchen/bar)
-        $printer = Printer::getByLocation($serviceLocation);
+        // 2. Fallback to service location printer (kitchen/bar) — prefer printer_type match
+        $printer = Printer::getForService($serviceLocation);
         if ($printer) {
             return $printer;
         }
@@ -1336,6 +1339,35 @@ class PosController extends Controller
 
             $this->decrementSingleItemStock($ingredient->id, (int) round($componentQty * $quantity));
         }
+    }
+
+    protected function resolvePreparationLocationFromPrinters(InventoryItem $inventoryItem): ?string
+    {
+        $assignedTypes = $inventoryItem->printers
+            ?->filter(fn (Printer $printer): bool => $printer->is_active)
+            ->map(function (Printer $printer): ?string {
+                $type = strtolower(trim((string) $printer->printer_type));
+
+                if (in_array($type, ['kitchen', 'bar'], true)) {
+                    return $type;
+                }
+
+                $location = strtolower(trim((string) $printer->location));
+
+                return in_array($location, ['kitchen', 'bar'], true) ? $location : null;
+            })
+            ->filter()
+            ->values() ?? collect();
+
+        if ($assignedTypes->contains('bar')) {
+            return 'bar';
+        }
+
+        if ($assignedTypes->contains('kitchen')) {
+            return 'kitchen';
+        }
+
+        return null;
     }
 
     protected function decrementSingleItemStock(int $itemId, int $quantity): void
@@ -1460,10 +1492,6 @@ class PosController extends Controller
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array
     {
         if ((bool) ($setting?->is_item_group ?? false)) {
-            return [];
-        }
-
-        if (! (bool) ($setting?->is_menu ?? false)) {
             return [];
         }
 

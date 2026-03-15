@@ -198,7 +198,7 @@ test('booking checkout auto prints one menu to multiple assigned target printers
             ->andReturnTrue();
 
         $mock->shouldReceive('printBarTicket')->never();
-        $mock->shouldReceive('printReceipt')->once()->andReturnTrue();
+        $mock->shouldReceive('printReceipt')->never();
     });
 
     $cartKey = 'item_'.$inventoryItem->id;
@@ -264,9 +264,9 @@ test('booking checkout returns tax and service totals based on menu flags', func
     ]);
 
     mock(PrinterService::class, function (MockInterface $mock): void {
-        $mock->shouldReceive('printKitchenTicket')->once()->andReturnTrue();
+        $mock->shouldReceive('printKitchenTicket')->never();
         $mock->shouldReceive('printBarTicket')->never();
-        $mock->shouldReceive('printReceipt')->once()->andReturnTrue();
+        $mock->shouldReceive('printReceipt')->never();
     });
 
     $cartKey = 'item_'.$inventoryItem->id;
@@ -383,7 +383,7 @@ test('booking checkout keeps printing to other assigned printers when one target
             });
 
         $mock->shouldReceive('printBarTicket')->never();
-        $mock->shouldReceive('printReceipt')->once()->andReturnTrue();
+        $mock->shouldReceive('printReceipt')->never();
     });
 
     $cartKey = 'item_'.$inventoryItem->id;
@@ -592,7 +592,7 @@ test('walk in checkout auto prints one menu to multiple assigned target printers
             })
             ->andReturnTrue();
 
-        $mock->shouldReceive('printReceipt')->once()->andReturnTrue();
+        $mock->shouldReceive('printReceipt')->never();
         $mock->shouldReceive('printBarTicket')->never();
     });
 
@@ -762,6 +762,50 @@ test('detail group menu can be added to cart when sold item stock is zero', func
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('cart.0.id', 'item_'.$menuItem->id)
+        ->assertJsonPath('cart.0.quantity', 1);
+});
+
+test('non menu detail group item can be added to cart when sold item stock is zero', function () {
+    $admin = adminUser();
+
+    PosCategorySetting::create([
+        'category_type' => 'warehouse-group',
+        'show_in_pos' => true,
+        'is_menu' => false,
+        'is_item_group' => false,
+        'preparation_location' => 'bar',
+    ]);
+
+    $groupItem = makePosInventoryItem([
+        'accurate_id' => 8401,
+        'category_type' => 'warehouse-group',
+        'stock_quantity' => 0,
+    ]);
+
+    makePosInventoryItem([
+        'accurate_id' => 9401,
+        'stock_quantity' => 10,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')
+            ->once()
+            ->with(8401)
+            ->andReturn([
+                [
+                    'itemId' => 9401,
+                    'quantity' => 2,
+                ],
+            ]);
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.pos.add-to-cart', [
+            'productId' => 'item_'.$groupItem->id,
+        ]))
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.0.id', 'item_'.$groupItem->id)
         ->assertJsonPath('cart.0.quantity', 1);
 });
 

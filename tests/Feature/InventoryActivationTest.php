@@ -66,7 +66,7 @@ test('inactive inventory item is not shown on pos page', function () {
         ->and($products)->not->toContain($inactiveItem->name);
 });
 
-test('inventory page shows blank stock column for menu categories', function () {
+test('inventory page always shows stock column for menu categories', function () {
     $admin = adminUser();
 
     PosCategorySetting::query()->updateOrCreate(
@@ -89,5 +89,5 @@ test('inventory page shows blank stock column for menu categories', function () 
         ->get(route('admin.inventory.index'))
         ->assertSuccessful()
         ->assertSee('MENU STOCK BLANK TEST')
-        ->assertSee('stock-empty-menu', false);
+        ->assertSee('77 porsi');
 });

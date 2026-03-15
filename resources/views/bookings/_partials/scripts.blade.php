@@ -96,21 +96,37 @@
     const booking = (window.activeBookingsById || {})[bookingId];
     if (!booking) return;
 
+    const formatReservationDate = (value) => {
+      if (!value) {
+        return '—';
+      }
+
+      const raw = String(value).trim();
+      let parsedDate = null;
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        parsedDate = new Date(`${raw}T00:00:00`);
+      } else {
+        parsedDate = new Date(raw);
+      }
+
+      if (Number.isNaN(parsedDate.getTime())) {
+        return raw;
+      }
+
+      return parsedDate.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    };
+
     document.getElementById('biModalBookingName').textContent = booking.booking_name || '—';
     document.getElementById('biModalCustomerName').textContent = booking.customer_name || '—';
     document.getElementById('biModalPhone').textContent = booking.customer_phone || '—';
     document.getElementById('biModalTable').textContent = [booking.table_number, booking.area_name].filter(Boolean).join(' · ') || '—';
 
-    if (booking.reservation_date) {
-      const d = new Date(booking.reservation_date + 'T00:00:00');
-      document.getElementById('biModalDate').textContent = d.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-    } else {
-      document.getElementById('biModalDate').textContent = '—';
-    }
+    document.getElementById('biModalDate').textContent = formatReservationDate(booking.reservation_date);
     document.getElementById('biModalTime').textContent =
       booking.reservation_time ? booking.reservation_time.substring(0, 5) : '—';
 
