@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BarOrder;
 use App\Models\BarOrderItem;
 use App\Models\CustomerUser;
+use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\KitchenOrderItem;
@@ -211,6 +212,9 @@ class WaiterPosController extends Controller
             ]);
 
             $itemsTotal = 0;
+            $generalSettings = GeneralSetting::instance();
+            $taxPercentage = (float) $generalSettings->tax_percentage;
+            $serviceChargePercentage = (float) $generalSettings->service_charge_percentage;
 
             foreach ($cart as $productId => $cartItem) {
                 $itemId = str_replace('item_', '', $productId);
@@ -226,6 +230,14 @@ class WaiterPosController extends Controller
                 $quantity = (int) $cartItem['quantity'];
                 $subtotal = $price * $quantity;
                 $itemsTotal += $subtotal;
+                $includeTax = (bool) $inventoryItem->include_tax;
+                $includeServiceCharge = (bool) $inventoryItem->include_service_charge;
+                $itemServiceChargeAmount = $includeServiceCharge
+                    ? round($subtotal * ($serviceChargePercentage / 100), 2)
+                    : 0;
+                $itemTaxAmount = $includeTax
+                    ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
+                    : 0;
 
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -236,6 +248,8 @@ class WaiterPosController extends Controller
                     'price' => $price,
                     'subtotal' => $subtotal,
                     'discount_amount' => 0,
+                    'tax_amount' => $itemTaxAmount,
+                    'service_charge_amount' => $itemServiceChargeAmount,
                     'preparation_location' => $preparationLocation,
                     'status' => 'pending',
                     'notes' => null,

@@ -231,22 +231,22 @@ test('close billing works with normal non-cash payment and reference number', fu
 
     $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
         'payment_mode' => 'normal',
-        'payment_method' => 'debit',
-        'payment_reference_number' => 'APPROVAL-12345',
+        'payment_method' => 'transfer',
+        'payment_reference_number' => 'TRF-APPROVAL-12345',
     ]);
 
     $response
         ->assertSuccessful()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('receipt.payment_method', 'DEBIT')
-        ->assertJsonPath('receipt.payment_reference_number', 'APPROVAL-12345');
+        ->assertJsonPath('receipt.payment_method', 'TRANSFER')
+        ->assertJsonPath('receipt.payment_reference_number', 'TRF-APPROVAL-12345');
 
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
     expect($updatedBilling->billing_status)->toBe('paid')
         ->and($updatedBilling->payment_mode)->toBe('normal')
-        ->and($updatedBilling->payment_method)->toBe('debit')
-        ->and($updatedBilling->payment_reference_number)->toBe('APPROVAL-12345');
+        ->and($updatedBilling->payment_method)->toBe('transfer')
+        ->and($updatedBilling->payment_reference_number)->toBe('TRF-APPROVAL-12345');
 });
 
 test('close billing works with normal qris payment and reference number', function () {
@@ -271,6 +271,30 @@ test('close billing works with normal qris payment and reference number', functi
         ->and($updatedBilling->payment_mode)->toBe('normal')
         ->and($updatedBilling->payment_method)->toBe('qris')
         ->and($updatedBilling->payment_reference_number)->toBe('QRIS-INV-001');
+});
+
+test('close billing works with normal transfer payment and reference number', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'normal',
+        'payment_method' => 'transfer',
+        'payment_reference_number' => 'TRF-INV-001',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('receipt.payment_method', 'TRANSFER')
+        ->assertJsonPath('receipt.payment_reference_number', 'TRF-INV-001');
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect($updatedBilling->billing_status)->toBe('paid')
+        ->and($updatedBilling->payment_mode)->toBe('normal')
+        ->and($updatedBilling->payment_method)->toBe('transfer')
+        ->and($updatedBilling->payment_reference_number)->toBe('TRF-INV-001');
 });
 
 test('close billing works with split payment mode cash and non-cash method', function () {

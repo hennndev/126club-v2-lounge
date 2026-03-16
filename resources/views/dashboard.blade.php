@@ -1,9 +1,37 @@
 <x-app-layout>
   <div class="p-6">
+    @if (session('success'))
+      <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+        {{ session('success') }}
+      </div>
+    @endif
+
     <!-- Hero Section -->
     <div class="bg-gradient-to-br from-slate-700 to-slate-800 rounded-2xl p-8 mb-6">
-      <h1 class="text-3xl font-bold text-white mb-2">Dashboard 126 Club</h1>
-      <p class="text-slate-300">Ringkasan sistem manajemen POS dan booking</p>
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 class="text-3xl font-bold text-white mb-2">Dashboard 126 Club</h1>
+          <p class="text-slate-300">Ringkasan sistem manajemen POS dan booking</p>
+        </div>
+        <form method="POST"
+              action="{{ route('admin.dashboard.sync') }}"
+              class="sm:pt-1">
+          @csrf
+          <button type="submit"
+                  class="inline-flex items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20">
+            <svg class="h-4 w-4"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Sync Dashboard Hari Ini
+          </button>
+        </form>
+      </div>
     </div>
 
     <!-- Stats Cards Row -->
@@ -94,6 +122,53 @@
           <p class="text-2xl font-bold text-gray-800">{{ $availableTables }}/{{ $totalTables }}</p>
         </div>
         <p class="text-sm text-gray-500">meja siap digunakan</p>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+      <div class="flex items-center space-x-2 mb-4">
+        <svg class="w-5 h-5 text-gray-600"
+             fill="none"
+             stroke="currentColor"
+             viewBox="0 0 24 24">
+          <path stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <h2 class="text-lg font-semibold text-gray-800">Ringkasan Transaksi Dashboard</h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <p class="text-sm font-medium text-amber-700">Total Pajak</p>
+          <p class="text-2xl font-bold text-amber-800 mt-1">Rp {{ number_format($dashboardTotalTax, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+          <p class="text-sm font-medium text-orange-700">Total Service Charge</p>
+          <p class="text-2xl font-bold text-orange-800 mt-1">Rp {{ number_format($dashboardTotalServiceCharge, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-sky-50 border border-sky-200 rounded-lg">
+          <p class="text-sm font-medium text-sky-700">Total Pembayaran Transfer</p>
+          <p class="text-2xl font-bold text-sky-800 mt-1">Rp {{ number_format($dashboardTotalTransfer, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+          <p class="text-sm font-medium text-indigo-700">Total Pembayaran Debit</p>
+          <p class="text-2xl font-bold text-indigo-800 mt-1">Rp {{ number_format($dashboardTotalDebit, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-violet-50 border border-violet-200 rounded-lg">
+          <p class="text-sm font-medium text-violet-700">Total Pembayaran Kredit</p>
+          <p class="text-2xl font-bold text-violet-800 mt-1">Rp {{ number_format($dashboardTotalKredit, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <p class="text-sm font-medium text-emerald-700">Total Pembayaran QRIS</p>
+          <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardTotalQris, 0, ',', '.') }}</p>
+        </div>
       </div>
     </div>
 

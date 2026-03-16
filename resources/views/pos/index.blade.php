@@ -827,21 +827,190 @@
 
           <div x-show="checkoutForm.customer_type === 'walk-in'"
                style="display: none;"
-               class="space-y-2">
-            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide">Metode Pembayaran</label>
-            <div class="grid grid-cols-3 gap-2">
-              <template x-for="option in [{ value: 'cash', label: 'Tunai' }, { value: 'debit', label: 'Debit' }, { value: 'kredit', label: 'Kredit' }]"
-                        :key="option.value">
-                <label class="flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium cursor-pointer transition"
-                       :class="checkoutForm.payment_method === option.value ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'">
+               class="space-y-4">
+            <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-2">Discount (Opsional)</label>
+                <div class="grid grid-cols-3 gap-2">
+                  <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
+                         :class="checkoutForm.discount_type === 'none' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
+                    <input type="radio"
+                           name="walk_in_discount_type"
+                           value="none"
+                           class="sr-only"
+                           x-model="checkoutForm.discount_type">
+                    <span class="text-xs font-semibold text-gray-700">Tanpa</span>
+                  </label>
+                  <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
+                         :class="checkoutForm.discount_type === 'percentage' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
+                    <input type="radio"
+                           name="walk_in_discount_type"
+                           value="percentage"
+                           class="sr-only"
+                           x-model="checkoutForm.discount_type">
+                    <span class="text-xs font-semibold text-gray-700">%</span>
+                  </label>
+                  <label class="flex items-center justify-center gap-2 p-2.5 rounded-lg border cursor-pointer transition"
+                         :class="checkoutForm.discount_type === 'nominal' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
+                    <input type="radio"
+                           name="walk_in_discount_type"
+                           value="nominal"
+                           class="sr-only"
+                           x-model="checkoutForm.discount_type">
+                    <span class="text-xs font-semibold text-gray-700">Nominal</span>
+                  </label>
+                </div>
+              </div>
+
+              <div x-show="checkoutForm.discount_type === 'percentage'"
+                   style="display: none;">
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Diskon Persentase</label>
+                <input type="number"
+                       min="0"
+                       max="100"
+                       step="0.01"
+                       placeholder="Contoh: 10"
+                       x-model.number="checkoutForm.discount_percentage"
+                       class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+              </div>
+
+              <div x-show="checkoutForm.discount_type === 'nominal'"
+                   style="display: none;">
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Diskon Nominal</label>
+                <input type="text"
+                       inputmode="numeric"
+                       :value="formatCurrency(checkoutForm.discount_nominal || 0)"
+                       @input="onWalkInDiscountNominalInput($event)"
+                       class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+              </div>
+
+              <div x-show="checkoutForm.discount_type !== 'none'"
+                   style="display: none;">
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Auth Code Diskon (4 digit)</label>
+                <input type="password"
+                       inputmode="numeric"
+                       maxlength="4"
+                       x-model="checkoutForm.discount_auth_code"
+                       placeholder="Masukkan auth code"
+                       class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-2">Mode Pembayaran</label>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer transition"
+                       :class="checkoutForm.payment_mode === 'normal' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
                   <input type="radio"
+                         name="walk_in_payment_mode"
+                         value="normal"
                          class="sr-only"
-                         name="walk_in_payment_method"
-                         :value="option.value"
-                         x-model="checkoutForm.payment_method">
-                  <span x-text="option.label"></span>
+                         x-model="checkoutForm.payment_mode">
+                  <span class="text-xs font-semibold text-gray-700">Payment Biasa</span>
                 </label>
-              </template>
+                <label class="flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer transition"
+                       :class="checkoutForm.payment_mode === 'split' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'">
+                  <input type="radio"
+                         name="walk_in_payment_mode"
+                         value="split"
+                         class="sr-only"
+                         x-model="checkoutForm.payment_mode">
+                  <span class="text-xs font-semibold text-gray-700">Split Bill</span>
+                </label>
+              </div>
+            </div>
+
+            <div x-show="checkoutForm.payment_mode === 'normal'"
+                 style="display: none;"
+                 class="space-y-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-2">Metode Pembayaran</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <template x-for="option in [
+                    { value: 'cash', label: 'Tunai' },
+                    { value: 'kredit', label: 'Kredit' },
+                    { value: 'debit', label: 'Debit' },
+                    { value: 'qris', label: 'QRIS' },
+                    { value: 'transfer', label: 'Transfer' }
+                  ]"
+                            :key="option.value">
+                    <label class="flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium cursor-pointer transition"
+                           :class="checkoutForm.payment_method === option.value ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'">
+                      <input type="radio"
+                             class="sr-only"
+                             name="walk_in_payment_method"
+                             :value="option.value"
+                             x-model="checkoutForm.payment_method">
+                      <span x-text="option.label"></span>
+                    </label>
+                  </template>
+                </div>
+              </div>
+
+              <div x-show="isWalkInNonCashNormalMode()"
+                   style="display: none;">
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nomor Referensi</label>
+                <input type="text"
+                       x-model="checkoutForm.payment_reference_number"
+                       placeholder="Nomor kartu / approval / referensi QRIS"
+                       class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+              </div>
+            </div>
+
+            <div x-show="checkoutForm.payment_mode === 'split'"
+                 style="display: none;"
+                 class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-1.5">Cash</label>
+                  <input type="text"
+                         inputmode="numeric"
+                         :value="formatCurrency(checkoutForm.split_cash_amount || 0)"
+                         @input="onWalkInSplitInput('cash', $event)"
+                         class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nominal Non-Cash</label>
+                  <input type="text"
+                         inputmode="numeric"
+                         :value="formatCurrency(checkoutForm.split_non_cash_amount || 0)"
+                         @input="onWalkInSplitInput('non-cash', $event)"
+                         class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Metode Non-Cash</label>
+                <select x-model="checkoutForm.split_non_cash_method"
+                        class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                  <option value="debit">Debit</option>
+                  <option value="kredit">Kredit</option>
+                  <option value="qris">QRIS</option>
+                  <option value="transfer">Transfer</option>
+                  <option value="ewallet">E-Wallet</option>
+                  <option value="lainnya">Lainnya</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nomor Referensi Non-Cash</label>
+                <input type="text"
+                       x-model="checkoutForm.split_non_cash_reference_number"
+                       placeholder="Nomor kartu / approval / referensi"
+                       class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+              </div>
+
+              <div class="rounded-xl border p-3 text-xs space-y-1"
+                   :class="Math.abs(walkInSplitDiff()) > 0.01 ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 bg-gray-50 text-gray-700'">
+                <div class="flex items-center justify-between">
+                  <span>Total Split</span>
+                  <span x-text="formatCurrency(walkInSplitTotal())"></span>
+                </div>
+                <div class="flex items-center justify-between font-semibold">
+                  <span>Sisa / Selisih</span>
+                  <span x-text="formatCurrency(walkInSplitDiff())"></span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -907,10 +1076,14 @@
               <span>Subtotal</span>
               <span x-text="formatCurrency(cartTotal)"></span>
             </div>
-            <div x-show="checkoutForm.discountPercentage > 0"
+            <div x-show="discountAmount() > 0"
                  style="display: none;"
                  class="flex justify-between text-sm text-orange-400">
-              <span x-text="'Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)'"></span>
+              <span x-text="checkoutForm.customer_type === 'walk-in'
+                ? (checkoutForm.discount_type === 'percentage'
+                  ? 'Diskon (' + getWalkInDiscountPercentage() + '%)'
+                  : 'Diskon Nominal')
+                : ('Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)')"></span>
               <span x-text="'-' + formatCurrency(discountAmount())"></span>
             </div>
             <div x-show="calculatedServiceCharge() > 0"
@@ -1665,6 +1838,15 @@
             walk_in_customer_id: '',
             payment_method: 'cash',
             payment_mode: 'normal',
+            payment_reference_number: '',
+            split_cash_amount: 0,
+            split_non_cash_amount: 0,
+            split_non_cash_method: 'debit',
+            split_non_cash_reference_number: '',
+            discount_type: 'none',
+            discount_percentage: 0,
+            discount_nominal: 0,
+            discount_auth_code: '',
             customerName: '',
             customerInitial: '',
             customerPhone: '',
@@ -1974,6 +2156,10 @@
               return;
             }
 
+            if (!this.validateWalkInPaymentFields()) {
+              return;
+            }
+
             this.showConfirmModal = true;
           },
 
@@ -2051,12 +2237,163 @@
             this.checkoutForm.discountPercentage = 0;
             this.checkoutForm.waiterName = '';
             this.checkoutForm.reservationId = null;
+            this.checkoutForm.payment_mode = 'normal';
+            this.checkoutForm.payment_method = 'cash';
+            this.checkoutForm.payment_reference_number = '';
+            this.checkoutForm.split_cash_amount = 0;
+            this.checkoutForm.split_non_cash_amount = this.payableTotal();
+            this.checkoutForm.split_non_cash_method = 'debit';
+            this.checkoutForm.split_non_cash_reference_number = '';
+            this.checkoutForm.discount_type = 'none';
+            this.checkoutForm.discount_percentage = 0;
+            this.checkoutForm.discount_nominal = 0;
+            this.checkoutForm.discount_auth_code = '';
             this.showCustomerTypeModal = false;
             this.bookingStep = 'type';
             this.showCheckoutModal = true;
           },
 
+          getWalkInDiscountPercentage() {
+            return Number(this.checkoutForm.discount_percentage || 0);
+          },
+
+          getWalkInDiscountNominal() {
+            return Number(this.checkoutForm.discount_nominal || 0);
+          },
+
+          onWalkInDiscountNominalInput(event) {
+            const nominal = this.extractNumber(event.target.value);
+            const maxNominal = Math.max(this.cartTotal, 0);
+            this.checkoutForm.discount_nominal = Math.min(Math.max(nominal, 0), maxNominal);
+          },
+
+          isWalkInNonCashNormalMode() {
+            return this.checkoutForm.customer_type === 'walk-in' &&
+              this.checkoutForm.payment_mode === 'normal' &&
+              this.checkoutForm.payment_method !== 'cash';
+          },
+
+          walkInSplitTotal() {
+            return Number(this.checkoutForm.split_cash_amount || 0) + Number(this.checkoutForm.split_non_cash_amount || 0);
+          },
+
+          walkInSplitDiff() {
+            return Math.round((this.payableTotal() - this.walkInSplitTotal()) * 100) / 100;
+          },
+
+          onWalkInSplitInput(which, event) {
+            const enteredAmount = this.extractNumber(event.target.value);
+            const maxAmount = Math.max(this.payableTotal(), 0);
+            const normalizedAmount = Math.min(Math.max(enteredAmount, 0), maxAmount);
+
+            if (which === 'cash') {
+              this.checkoutForm.split_cash_amount = normalizedAmount;
+              this.checkoutForm.split_non_cash_amount = Math.max(maxAmount - normalizedAmount, 0);
+
+              return;
+            }
+
+            this.checkoutForm.split_non_cash_amount = normalizedAmount;
+            this.checkoutForm.split_cash_amount = Math.max(maxAmount - normalizedAmount, 0);
+          },
+
+          extractNumber(value) {
+            const digits = String(value || '').replace(/[^0-9]/g, '');
+
+            return digits ? Number(digits) : 0;
+          },
+
+          validateWalkInPaymentFields() {
+            if (this.checkoutForm.customer_type !== 'walk-in') {
+              return true;
+            }
+
+            if (this.checkoutForm.discount_type === 'percentage') {
+              const discountPercentage = this.getWalkInDiscountPercentage();
+              if (discountPercentage <= 0 || discountPercentage > 100) {
+                this.showToastMessage('Diskon persentase harus lebih dari 0 dan maksimal 100.', 'error');
+
+                return false;
+              }
+            }
+
+            if (this.checkoutForm.discount_type === 'nominal') {
+              const discountNominal = this.getWalkInDiscountNominal();
+              if (discountNominal <= 0) {
+                this.showToastMessage('Diskon nominal harus lebih dari 0.', 'error');
+
+                return false;
+              }
+            }
+
+            if (this.checkoutForm.discount_type !== 'none' && !/^\d{4}$/.test(String(this.checkoutForm.discount_auth_code || '').trim())) {
+              this.showToastMessage('Auth code diskon harus 4 digit.', 'error');
+
+              return false;
+            }
+
+            if (this.checkoutForm.payment_mode === 'normal') {
+              if (!this.checkoutForm.payment_method) {
+                this.showToastMessage('Metode pembayaran wajib dipilih.', 'error');
+
+                return false;
+              }
+
+              if (this.isWalkInNonCashNormalMode() && !String(this.checkoutForm.payment_reference_number || '').trim()) {
+                this.showToastMessage('Nomor referensi pembayaran non-cash wajib diisi.', 'error');
+
+                return false;
+              }
+
+              return true;
+            }
+
+            const splitCashAmount = Number(this.checkoutForm.split_cash_amount || 0);
+            const splitNonCashAmount = Number(this.checkoutForm.split_non_cash_amount || 0);
+            const splitTotal = splitCashAmount + splitNonCashAmount;
+
+            if (splitCashAmount <= 0 || splitNonCashAmount <= 0) {
+              this.showToastMessage('Untuk split bill, nominal cash dan non-cash harus lebih dari 0.', 'error');
+
+              return false;
+            }
+
+            if (!this.checkoutForm.split_non_cash_method) {
+              this.showToastMessage('Metode non-cash untuk split bill wajib dipilih.', 'error');
+
+              return false;
+            }
+
+            if (!String(this.checkoutForm.split_non_cash_reference_number || '').trim()) {
+              this.showToastMessage('Nomor referensi non-cash untuk split bill wajib diisi.', 'error');
+
+              return false;
+            }
+
+            if (Math.abs(splitTotal - this.payableTotal()) > 0.01) {
+              this.showToastMessage('Total split (cash + non-cash) harus sama dengan grand total.', 'error');
+
+              return false;
+            }
+
+            return true;
+          },
+
           discountAmount() {
+            if (this.checkoutForm.customer_type === 'walk-in') {
+              if (this.checkoutForm.discount_type === 'percentage') {
+                const amount = this.cartTotal * (this.getWalkInDiscountPercentage() / 100);
+
+                return Math.round(amount);
+              }
+
+              if (this.checkoutForm.discount_type === 'nominal') {
+                return Math.min(Math.round(this.getWalkInDiscountNominal()), Math.round(this.cartTotal));
+              }
+
+              return 0;
+            }
+
             return Math.round(this.cartTotal * (this.checkoutForm.discountPercentage / 100));
           },
 
@@ -2145,8 +2482,55 @@
               return;
             }
 
+            if (!this.validateWalkInPaymentFields()) {
+              return;
+            }
+
+            if (this.checkoutForm.customer_type === 'walk-in' && this.checkoutForm.discount_type !== 'none') {
+              try {
+                const verifyResponse = await fetch(posRoutes.verifyAuthCode, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                  },
+                  body: JSON.stringify({
+                    code: String(this.checkoutForm.discount_auth_code || '').trim(),
+                  }),
+                });
+                const verifyData = await verifyResponse.json();
+
+                if (!verifyData.valid) {
+                  this.showToastMessage('Auth code diskon tidak valid.', 'error');
+                  return;
+                }
+              } catch (error) {
+                this.showToastMessage('Gagal verifikasi auth code diskon.', 'error');
+                return;
+              }
+            }
+
             this.isProcessing = true;
             try {
+              const payload = {
+                ...this.checkoutForm,
+                cart_notes: this.cartNotes,
+              };
+
+              if (this.checkoutForm.customer_type === 'walk-in') {
+                payload.discount_type = this.checkoutForm.discount_type;
+
+                if (this.checkoutForm.discount_type === 'percentage') {
+                  payload.discount_percentage = this.getWalkInDiscountPercentage();
+                } else if (this.checkoutForm.discount_type === 'nominal') {
+                  payload.discount_nominal = this.getWalkInDiscountNominal();
+                } else {
+                  payload.discount_percentage = 0;
+                }
+              } else {
+                payload.discount_percentage = this.checkoutForm.discountPercentage;
+              }
+
               const response = await fetch(posRoutes.checkout, {
                 method: 'POST',
                 headers: {
@@ -2154,11 +2538,7 @@
                   'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
                   'Accept': 'application/json',
                 },
-                body: JSON.stringify({
-                  ...this.checkoutForm,
-                  discount_percentage: this.checkoutForm.discountPercentage,
-                  cart_notes: this.cartNotes,
-                }),
+                body: JSON.stringify(payload),
               });
               const data = await response.json();
               if (data.success) {
@@ -2203,6 +2583,15 @@
                   walk_in_customer_id: '',
                   payment_method: 'cash',
                   payment_mode: 'normal',
+                  payment_reference_number: '',
+                  split_cash_amount: 0,
+                  split_non_cash_amount: 0,
+                  split_non_cash_method: 'debit',
+                  split_non_cash_reference_number: '',
+                  discount_type: 'none',
+                  discount_percentage: 0,
+                  discount_nominal: 0,
+                  discount_auth_code: '',
                   customerName: '',
                   customerInitial: '',
                   customerPhone: '',

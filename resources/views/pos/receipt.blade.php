@@ -42,6 +42,11 @@
       line-height: 1.4;
     }
 
+    .receipt.walk-in-receipt,
+    .receipt.walk-in-receipt * {
+      font-weight: bold !important;
+    }
+
     .store-name {
       font-size: 16px;
       font-weight: bold;
@@ -205,7 +210,7 @@
 
 <body>
 
-  <div class="receipt">
+  <div class="receipt {{ $order->table_session_id === null ? 'walk-in-receipt' : '' }}">
 
     {{-- ── Store Header ── --}}
     <div class="store-name">126 CLUB</div>

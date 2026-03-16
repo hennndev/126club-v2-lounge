@@ -72,6 +72,82 @@
         </div>
       </div>
 
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-base font-semibold text-gray-900">Preview Dashboard (Akumulasi)</h3>
+          <span class="text-xs text-gray-500">Semua transaksi booking + walk-in</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
+            <p class="text-sm font-medium text-gray-500">Total Transaksi</p>
+            <p class="text-2xl font-bold text-gray-900 mt-1">{{ number_format($dashboardPreview['total_transactions'] ?? 0, 0, ',', '.') }}</p>
+          </div>
+
+          <div class="p-4 border border-gray-200 rounded-lg bg-amber-50">
+            <p class="text-sm font-medium text-amber-700">Total Pajak</p>
+            <p class="text-2xl font-bold text-amber-800 mt-1">Rp {{ number_format($dashboardPreview['total_tax'] ?? 0, 0, ',', '.') }}</p>
+          </div>
+
+          <div class="p-4 border border-gray-200 rounded-lg bg-orange-50">
+            <p class="text-sm font-medium text-orange-700">Total Service Charge</p>
+            <p class="text-2xl font-bold text-orange-800 mt-1">Rp {{ number_format($dashboardPreview['total_service_charge'] ?? 0, 0, ',', '.') }}</p>
+          </div>
+
+          <div class="p-4 border border-gray-200 rounded-lg bg-blue-50">
+            <p class="text-sm font-medium text-blue-700">Total Transfer</p>
+            <p class="text-2xl font-bold text-blue-800 mt-1">Rp {{ number_format($dashboardPreview['total_transfer'] ?? 0, 0, ',', '.') }}</p>
+          </div>
+
+          <div class="p-4 border border-gray-200 rounded-lg bg-indigo-50">
+            <p class="text-sm font-medium text-indigo-700">Total Debit</p>
+            <p class="text-2xl font-bold text-indigo-800 mt-1">Rp {{ number_format($dashboardPreview['total_debit'] ?? 0, 0, ',', '.') }}</p>
+          </div>
+
+          <div class="p-4 border border-gray-200 rounded-lg bg-violet-50">
+            <p class="text-sm font-medium text-violet-700">Total Kredit</p>
+            <p class="text-2xl font-bold text-violet-800 mt-1">Rp {{ number_format($dashboardPreview['total_kredit'] ?? 0, 0, ',', '.') }}</p>
+          </div>
+
+          <div class="p-4 border border-gray-200 rounded-lg bg-emerald-50">
+            <p class="text-sm font-medium text-emerald-700">Total QRIS</p>
+            <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardPreview['total_qris'] ?? 0, 0, ',', '.') }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <p class="text-sm font-medium text-gray-500">Total Pajak</p>
+          <p class="text-2xl font-bold text-amber-700 mt-1">Rp {{ number_format($totalTax, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <p class="text-sm font-medium text-gray-500">Total Service Charge</p>
+          <p class="text-2xl font-bold text-orange-700 mt-1">Rp {{ number_format($totalServiceCharge, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <p class="text-sm font-medium text-gray-500">Total Pembayaran Transfer</p>
+          <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($paymentMethodTotals['transfer'] ?? 0, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <p class="text-sm font-medium text-gray-500">Total Pembayaran Debit</p>
+          <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($paymentMethodTotals['debit'] ?? 0, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <p class="text-sm font-medium text-gray-500">Total Pembayaran Kredit</p>
+          <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($paymentMethodTotals['kredit'] ?? 0, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <p class="text-sm font-medium text-gray-500">Total Pembayaran QRIS</p>
+          <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($paymentMethodTotals['qris'] ?? 0, 0, ',', '.') }}</p>
+        </div>
+      </div>
+
       <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200">
           <h3 class="font-semibold text-gray-900">Kasir (Harga Ditampilkan)</h3>

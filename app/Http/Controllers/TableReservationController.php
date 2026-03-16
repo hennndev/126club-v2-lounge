@@ -11,6 +11,7 @@ use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Services\AccurateService;
+use App\Services\DashboardSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,10 @@ use Illuminate\Validation\ValidationException;
 
 class TableReservationController extends Controller
 {
-    public function __construct(protected AccurateService $accurateService) {}
+    public function __construct(
+        protected AccurateService $accurateService,
+        protected DashboardSyncService $dashboardSyncService,
+    ) {}
 
     public function index(Request $request)
     {
@@ -371,6 +375,8 @@ class TableReservationController extends Controller
                         $minimumCharge = $booking->table?->minimum_charge ?? 0;
                         $billing = Billing::create([
                             'table_session_id' => $session->id,
+                            'is_walk_in' => false,
+                            'is_booking' => true,
                             'minimum_charge' => $minimumCharge,
                             'orders_total' => 0,
                             'subtotal' => 0,
@@ -418,7 +424,7 @@ class TableReservationController extends Controller
     {
         $validated = $request->validate([
             'payment_mode' => 'required|in:normal,split',
-            'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit,qris',
+            'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit,qris,transfer',
             'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
             'split_non_cash_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
@@ -598,6 +604,15 @@ class TableReservationController extends Controller
 
             $billing->refresh();
             $session->load('orders.items');
+
+            try {
+                $this->dashboardSyncService->sync();
+            } catch (\Throwable $e) {
+                Log::warning('Dashboard sync failed after close billing', [
+                    'booking_id' => $booking->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             // Build items list from all orders in the session
             $allItems = $session->orders->flatMap(fn ($order) => $order->items)->groupBy('item_name')->map(function ($group) {

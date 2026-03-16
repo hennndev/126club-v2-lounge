@@ -78,6 +78,7 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('admin')->middleware(['database_selected', 'check.admin.role'])->name('admin.')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
+        Route::post('/dashboard/sync', [\App\Http\Controllers\DashboardController::class, 'syncToday'])->name('dashboard.sync');
 
         Route::get('/', function () {
             return redirect()->route('admin.dashboard');

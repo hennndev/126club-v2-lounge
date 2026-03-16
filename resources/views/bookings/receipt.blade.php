@@ -29,6 +29,11 @@
       padding: 16px 12px 24px;
     }
 
+    body.booking-receipt,
+    body.booking-receipt * {
+      font-weight: bold !important;
+    }
+
     .center {
       text-align: center;
     }
@@ -150,7 +155,7 @@
   </style>
 </head>
 
-<body>
+<body class="booking-receipt">
   <!-- Header -->
   <div class="center">
     <div style="font-size:18px;font-weight:bold;letter-spacing:1px;">126 CLUB</div>

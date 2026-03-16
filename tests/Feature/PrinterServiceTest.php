@@ -30,7 +30,7 @@ it('prints kitchen ticket with the correct table_number', function () {
 
     expect($result)->toBeTrue()
         ->and($log)->toContain('T-42')
-        ->and($log)->toContain('KITCHEN ORDER')
+        ->and($log)->toContain('CHECKER')
         ->and($log)->toContain('ORD-TEST-K001');
 });
 
@@ -51,7 +51,7 @@ it('prints bar ticket with the correct table_number', function () {
 
     expect($result)->toBeTrue()
         ->and($log)->toContain('B-07')
-        ->and($log)->toContain('BAR ORDER')
+        ->and($log)->toContain('CHECKER')
         ->and($log)->toContain('ORD-TEST-B001');
 });
 

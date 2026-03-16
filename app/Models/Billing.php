@@ -8,6 +8,9 @@ class Billing extends Model
 {
     protected $fillable = [
         'table_session_id',
+        'order_id',
+        'is_walk_in',
+        'is_booking',
         'minimum_charge',
         'orders_total',
         'subtotal',
@@ -46,10 +49,17 @@ class Billing extends Model
         'paid_amount' => 'decimal:2',
         'split_cash_amount' => 'decimal:2',
         'split_debit_amount' => 'decimal:2',
+        'is_walk_in' => 'boolean',
+        'is_booking' => 'boolean',
     ];
 
     public function tableSession()
     {
         return $this->belongsTo(TableSession::class);
+    }
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
     }
 }

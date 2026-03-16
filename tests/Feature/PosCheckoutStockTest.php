@@ -1,11 +1,13 @@
 <?php
 
 use App\Models\Area;
+use App\Models\Billing;
 use App\Models\CustomerUser;
 use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\PosCategorySetting;
 use App\Models\Printer;
 use App\Models\Tabel;
@@ -65,6 +67,11 @@ test('booking checkout decrements inventory stock', function () {
     $table = makePosTable($area);
     $inventoryItem = makePosInventoryItem(['stock_quantity' => 10]);
 
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
     TableSession::create([
         'table_id' => $table->id,
         'customer_id' => $customer->id,
@@ -98,7 +105,12 @@ test('booking checkout decrements inventory stock', function () {
         ->assertSuccessful()
         ->assertJsonPath('success', true);
 
-    expect($inventoryItem->fresh()->stock_quantity)->toBe(7);
+    $orderItem = OrderItem::query()->latest('id')->first();
+
+    expect($inventoryItem->fresh()->stock_quantity)->toBe(7)
+        ->and($orderItem)->not->toBeNull()
+        ->and((float) $orderItem->service_charge_amount)->toBe(7500.0)
+        ->and((float) $orderItem->tax_amount)->toBe(9075.0);
 });
 
 test('booking checkout requires waiter assignment for reservation session', function () {
@@ -163,11 +175,68 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
         ->assertSee('@click.self="if (!isProcessing) { showConfirmModal = false }"', false)
         ->assertSee('@click="submitCheckout()"', false)
         ->assertSee(':disabled="isProcessing"', false)
+        ->assertSee('Discount (Opsional)', false)
+        ->assertSee('Split Bill', false)
+        ->assertSee('Auth Code Diskon (4 digit)', false)
         ->assertSee('x-show="calculatedServiceCharge() > 0"', false)
         ->assertSee('x-show="calculatedTax() > 0"', false)
         ->assertDontSee('x-text="receiptData?.tableDisplay"', false)
         ->assertDontSee('<span class="text-xs font-semibold text-green-600">Meja</span>', false)
         ->assertSee('Memproses...', false);
+});
+
+test('walk in checkout split payment must match grand total', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081999999999',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => null,
+        'customer_code' => null,
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
+    $inventoryItem = makePosInventoryItem(['stock_quantity' => 8]);
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 2,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'walk-in',
+            'walk_in_customer_id' => $customer->id,
+            'payment_mode' => 'split',
+            'split_cash_amount' => 10000,
+            'split_non_cash_amount' => 10000,
+            'split_non_cash_method' => 'debit',
+            'split_non_cash_reference_number' => 'SPLIT-REF-001',
+            'discount_type' => 'none',
+        ]);
+
+    $response
+        ->assertUnprocessable()
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'Total split (cash + non-cash) harus sama dengan grand total.');
 });
 
 test('booking checkout auto prints one menu to multiple assigned target printers', function () {
@@ -541,8 +610,9 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->postJson(route('admin.pos.checkout'), [
             'customer_type' => 'walk-in',
             'walk_in_customer_id' => $customer->id,
-            'payment_method' => 'debit',
+            'payment_method' => 'transfer',
             'payment_mode' => 'normal',
+            'payment_reference_number' => 'TRF-REF-001',
             'discount_percentage' => 0,
         ]);
 
@@ -557,13 +627,22 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->assertJsonPath('total', 61050);
 
     $order = Order::query()->latest('id')->first();
+    $billing = Billing::query()->where('order_id', $order?->id)->first();
 
     expect($inventoryItem->fresh()->stock_quantity)->toBe(6)
         ->and($customerUser->fresh()->customer_code)->toBe('CUST-WALKIN-001')
         ->and($customerUser->fresh()->accurate_id)->toBe(98765)
         ->and($order)->not->toBeNull()
+        ->and($billing)->not->toBeNull()
         ->and((float) $order->total)->toBe(61050.0)
-        ->and($order->payment_method)->toBe('debit')
+        ->and((bool) $billing->is_walk_in)->toBeTrue()
+        ->and((bool) $billing->is_booking)->toBeFalse()
+        ->and((float) $billing->grand_total)->toBe(61050.0)
+        ->and((float) $billing->tax)->toBe(6050.0)
+        ->and((float) $billing->service_charge)->toBe(5000.0)
+        ->and((float) $order->items()->latest('id')->first()->service_charge_amount)->toBe(5000.0)
+        ->and((float) $order->items()->latest('id')->first()->tax_amount)->toBe(6050.0)
+        ->and($order->payment_method)->toBe('transfer')
         ->and($order->payment_mode)->toBe('normal')
         ->and($order->accurate_so_number)->toBe('SO-WALKIN-001')
         ->and($order->accurate_inv_number)->toBe('INV-WALKIN-001');

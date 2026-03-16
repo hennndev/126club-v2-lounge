@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\BarOrderItem;
+use App\Models\Billing;
+use App\Models\Dashboard;
+use App\Models\GeneralSetting;
 use App\Models\KitchenOrderItem;
 use App\Models\Order;
 use Illuminate\Contracts\View\View;
@@ -45,6 +48,12 @@ class RecapController extends Controller
             ['Ringkasan'],
             ['Transaksi Kasir', $recapData['cashierCount']],
             ['Total Penjualan Kasir', $recapData['cashierRevenue']],
+            ['Total Pajak', $recapData['totalTax']],
+            ['Total Service Charge', $recapData['totalServiceCharge']],
+            ['Total Pembayaran Transfer', $recapData['paymentMethodTotals']['transfer']],
+            ['Total Pembayaran Debit', $recapData['paymentMethodTotals']['debit']],
+            ['Total Pembayaran Kredit', $recapData['paymentMethodTotals']['kredit']],
+            ['Total Pembayaran QRIS', $recapData['paymentMethodTotals']['qris']],
             ['Item Keluar Kitchen', $recapData['kitchenQtyTotal']],
             ['Item Keluar Bar', $recapData['barQtyTotal']],
             [],
@@ -102,8 +111,8 @@ class RecapController extends Controller
 
     private function buildRecapData(Carbon $startAt, Carbon $endAt): array
     {
-        $cashierTransactions = Order::query()
-            ->with(['items', 'tableSession.billing', 'tableSession.customer.profile', 'customer.user'])
+        $orders = Order::query()
+            ->with(['items.inventoryItem', 'tableSession.customer.profile', 'customer.user'])
             ->where('status', '!=', 'cancelled')
             ->where(function ($query) use ($startAt, $endAt): void {
                 $query->whereBetween('ordered_at', [$startAt, $endAt])
@@ -113,15 +122,23 @@ class RecapController extends Controller
                     });
             })
             ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
+            ->get();
+
+        $billingsBySessionId = Billing::query()
+            ->whereIn('table_session_id', $orders->pluck('table_session_id')->filter()->unique()->values())
             ->get()
-            ->map(function (Order $order): array {
+            ->keyBy('table_session_id');
+
+        $cashierTransactions = $orders
+            ->map(function (Order $order) use ($billingsBySessionId): array {
                 $eventTime = $order->ordered_at ?? $order->created_at;
                 $customerName = $order->tableSession?->customer?->profile?->name
                     ?? $order->tableSession?->customer?->name
                     ?? $order->customer?->user?->name
                     ?? 'Walk-in';
-                $paymentMode = $order->payment_mode ?? $order->tableSession?->billing?->payment_mode;
-                $paymentMethod = $order->payment_method ?? $order->tableSession?->billing?->payment_method;
+                $billing = $billingsBySessionId->get($order->table_session_id);
+                $paymentMode = $order->payment_mode ?? $billing?->payment_mode;
+                $paymentMethod = $order->payment_method ?? $billing?->payment_method;
 
                 return [
                     'timestamp' => $eventTime,
@@ -134,6 +151,15 @@ class RecapController extends Controller
                 ];
             })
             ->values();
+
+        $dashboardAggregate = Dashboard::query()->find(1);
+
+        $paymentMethodTotals = [
+            'transfer' => (float) ($dashboardAggregate?->total_transfer ?? 0),
+            'debit' => (float) ($dashboardAggregate?->total_debit ?? 0),
+            'kredit' => (float) ($dashboardAggregate?->total_kredit ?? 0),
+            'qris' => (float) ($dashboardAggregate?->total_qris ?? 0),
+        ];
 
         $kitchenItems = KitchenOrderItem::query()
             ->with(['inventoryItem', 'kitchenOrder.order'])
@@ -184,12 +210,69 @@ class RecapController extends Controller
             'selectedStartDatetime' => $startAt->format('Y-m-d\TH:i'),
             'selectedEndDatetime' => $endAt->format('Y-m-d\TH:i'),
             'cashierTransactions' => $cashierTransactions,
-            'cashierCount' => $cashierTransactions->count(),
-            'cashierRevenue' => (float) $cashierTransactions->sum('total'),
+            'cashierCount' => (int) ($dashboardAggregate?->total_transactions ?? 0),
+            'cashierRevenue' => (float) ($dashboardAggregate?->total_amount ?? 0),
+            'totalTax' => (float) ($dashboardAggregate?->total_tax ?? 0),
+            'totalServiceCharge' => (float) ($dashboardAggregate?->total_service_charge ?? 0),
+            'paymentMethodTotals' => $paymentMethodTotals,
             'kitchenItems' => $kitchenItems,
             'kitchenQtyTotal' => (int) $kitchenItems->sum('qty'),
             'barItems' => $barItems,
             'barQtyTotal' => (int) $barItems->sum('qty'),
+            'dashboardPreview' => [
+                'total_tax' => (float) ($dashboardAggregate?->total_tax ?? 0),
+                'total_service_charge' => (float) ($dashboardAggregate?->total_service_charge ?? 0),
+                'total_transfer' => (float) ($dashboardAggregate?->total_transfer ?? 0),
+                'total_debit' => (float) ($dashboardAggregate?->total_debit ?? 0),
+                'total_kredit' => (float) ($dashboardAggregate?->total_kredit ?? 0),
+                'total_qris' => (float) ($dashboardAggregate?->total_qris ?? 0),
+                'total_transactions' => (int) ($dashboardAggregate?->total_transactions ?? 0),
+            ],
+        ];
+    }
+
+    /**
+     * @return array{service_charge: float, tax: float}
+     */
+    private function calculateOrderChargeTotals(Order $order, GeneralSetting $settings): array
+    {
+        $serviceChargeBase = 0.0;
+        $taxBase = 0.0;
+        $taxAndServiceBase = 0.0;
+
+        $orderItems = $order->items
+            ->where('status', '!=', 'cancelled')
+            ->values();
+
+        $itemsSubtotal = (float) $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0));
+        $orderNetTotal = max((float) ($order->total ?? 0), 0);
+        $ratio = $itemsSubtotal > 0 ? $orderNetTotal / $itemsSubtotal : 0;
+
+        foreach ($orderItems as $orderItem) {
+            $itemNetSubtotal = (float) ($orderItem->subtotal ?? 0) * $ratio;
+            $includeTax = (bool) ($orderItem->inventoryItem?->include_tax ?? true);
+            $includeServiceCharge = (bool) ($orderItem->inventoryItem?->include_service_charge ?? true);
+
+            if ($includeServiceCharge) {
+                $serviceChargeBase += $itemNetSubtotal;
+            }
+
+            if ($includeTax) {
+                $taxBase += $itemNetSubtotal;
+            }
+
+            if ($includeTax && $includeServiceCharge) {
+                $taxAndServiceBase += $itemNetSubtotal;
+            }
+        }
+
+        $serviceCharge = round($serviceChargeBase * (((float) $settings->service_charge_percentage) / 100), 2);
+        $serviceChargeTaxableAmount = round($taxAndServiceBase * (((float) $settings->service_charge_percentage) / 100), 2);
+        $tax = round(($taxBase + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+
+        return [
+            'service_charge' => $serviceCharge,
+            'tax' => $tax,
         ];
     }
 
@@ -203,8 +286,35 @@ class RecapController extends Controller
             'cash' => 'Tunai',
             'debit' => 'Debit',
             'kredit' => 'Kredit',
+            'transfer' => 'Transfer',
+            'qris' => 'QRIS',
+            'credit-card' => 'Kredit',
+            'debit-card' => 'Debit',
             default => filled($paymentMethod) ? strtoupper((string) $paymentMethod) : '-',
         };
+    }
+
+    private function normalizePaymentMethod(?string $paymentMethod): ?string
+    {
+        return match (strtolower(trim((string) $paymentMethod))) {
+            'debit', 'debit-card' => 'debit',
+            'kredit', 'credit-card' => 'kredit',
+            'transfer' => 'transfer',
+            'qris' => 'qris',
+            default => null,
+        };
+    }
+
+    /**
+     * @param  array{transfer: float, debit: float, kredit: float, qris: float}  $paymentMethodTotals
+     */
+    private function addPaymentMethodAmount(array &$paymentMethodTotals, ?string $method, float $amount): void
+    {
+        if ($method === null || ! array_key_exists($method, $paymentMethodTotals)) {
+            return;
+        }
+
+        $paymentMethodTotals[$method] += $amount;
     }
 
     /**

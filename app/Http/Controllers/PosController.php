@@ -7,6 +7,7 @@ use App\Models\BarOrder;
 use App\Models\BarOrderItem;
 use App\Models\Billing;
 use App\Models\CustomerUser;
+use App\Models\DailyAuthCode;
 use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
@@ -22,6 +23,7 @@ use App\Models\Tier;
 use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\AccurateService;
+use App\Services\DashboardSyncService;
 use App\Services\PrinterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,12 +34,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class PosController extends Controller
 {
     public function __construct(
         protected PrinterService $printerService,
         protected AccurateService $accurateService,
+        protected DashboardSyncService $dashboardSyncService,
     ) {}
 
     public function index(Request $request)
@@ -463,8 +467,16 @@ class PosController extends Controller
             'customer_user_id' => 'required_if:customer_type,booking|nullable|exists:users,id',
             'table_id' => 'nullable|exists:tables,id',
             'discount_percentage' => 'nullable|integer|min:0|max:100',
-            'payment_method' => 'required_if:customer_type,walk-in|nullable|in:cash,debit,kredit',
+            'discount_type' => 'nullable|in:none,percentage,nominal',
+            'discount_nominal' => 'nullable|numeric|min:0',
+            'discount_auth_code' => 'nullable|digits:4',
+            'payment_method' => 'nullable|in:cash,debit,kredit,qris,transfer',
             'payment_mode' => 'nullable|in:normal,split',
+            'payment_reference_number' => 'nullable|string|max:100',
+            'split_cash_amount' => 'nullable|numeric|min:0',
+            'split_non_cash_amount' => 'nullable|numeric|min:0',
+            'split_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
+            'split_non_cash_reference_number' => 'nullable|string|max:100',
         ]);
 
         $cartNotes = $request->input('cart_notes', []);
@@ -544,6 +556,9 @@ class PosController extends Controller
                 $serviceChargeBase = 0;
                 $taxBase = 0;
                 $taxAndServiceBase = 0;
+                $generalSettings = GeneralSetting::instance();
+                $taxPercentage = (float) $generalSettings->tax_percentage;
+                $serviceChargePercentage = (float) $generalSettings->service_charge_percentage;
 
                 // Create Order Items from cart
                 foreach ($cart as $productId => $cartItem) {
@@ -578,6 +593,13 @@ class PosController extends Controller
                         $taxAndServiceBase += $subtotal;
                     }
 
+                    $itemServiceChargeAmount = $includeServiceCharge
+                        ? round($subtotal * ($serviceChargePercentage / 100), 2)
+                        : 0;
+                    $itemTaxAmount = $includeTax
+                        ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
+                        : 0;
+
                     // Create Order Item
                     OrderItem::create([
                         'order_id' => $order->id,
@@ -588,6 +610,8 @@ class PosController extends Controller
                         'price' => $price,
                         'subtotal' => $subtotal,
                         'discount_amount' => 0,
+                        'tax_amount' => $itemTaxAmount,
+                        'service_charge_amount' => $itemServiceChargeAmount,
                         'preparation_location' => $preparationLocation,
                         'status' => 'pending',
                         'notes' => $cartNotes[$productId] ?? null,
@@ -638,6 +662,15 @@ class PosController extends Controller
 
                 DB::commit();
 
+                try {
+                    $this->dashboardSyncService->sync();
+                } catch (\Throwable $e) {
+                    Log::warning('Dashboard sync failed after walk-in checkout', [
+                        'order_number' => $orderNumber,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
                 $receiptPrinted = $this->printOrderReceipt($order);
 
                 // Clear cart
@@ -678,7 +711,92 @@ class PosController extends Controller
                     STR_PAD_LEFT
                 );
 
-                $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
+                $paymentMode = $validated['payment_mode'] ?? 'normal';
+                $discountType = $validated['discount_type'] ?? 'none';
+                $discountPercentage = 0;
+                $discountNominal = 0;
+                $discountAuthCode = (string) ($validated['discount_auth_code'] ?? '');
+
+                if ($discountType === 'percentage') {
+                    $discountPercentage = (float) ($validated['discount_percentage'] ?? 0);
+
+                    if ($discountPercentage <= 0 || $discountPercentage > 100) {
+                        throw ValidationException::withMessages([
+                            'discount_percentage' => 'Diskon persentase harus lebih dari 0 dan maksimal 100.',
+                        ]);
+                    }
+                }
+
+                if ($discountType === 'nominal') {
+                    $discountNominal = (float) ($validated['discount_nominal'] ?? 0);
+
+                    if ($discountNominal <= 0) {
+                        throw ValidationException::withMessages([
+                            'discount_nominal' => 'Diskon nominal harus lebih dari 0.',
+                        ]);
+                    }
+                }
+
+                if ($discountType !== 'none') {
+                    if ($discountAuthCode === '') {
+                        throw ValidationException::withMessages([
+                            'discount_auth_code' => 'Auth code wajib diisi untuk memberikan diskon.',
+                        ]);
+                    }
+
+                    $today = now()->format('Y-m-d');
+                    $authRecord = DailyAuthCode::forDate($today);
+
+                    if ($discountAuthCode !== $authRecord->active_code) {
+                        throw ValidationException::withMessages([
+                            'discount_auth_code' => 'Auth code diskon tidak valid.',
+                        ]);
+                    }
+                }
+
+                $paymentMethod = $paymentMode === 'split'
+                    ? null
+                    : ($validated['payment_method'] ?? null);
+                $paymentReferenceNumber = $paymentMode === 'normal'
+                    ? (($paymentMethod ?? null) === 'cash' ? null : ($validated['payment_reference_number'] ?? null))
+                    : null;
+
+                if ($paymentMode === 'normal' && ($paymentMethod ?? null) !== 'cash' && blank($paymentReferenceNumber)) {
+                    throw ValidationException::withMessages([
+                        'payment_reference_number' => 'Nomor referensi pembayaran non-cash wajib diisi.',
+                    ]);
+                }
+
+                $splitCashAmount = null;
+                $splitNonCashAmount = null;
+                $splitNonCashMethod = null;
+                $splitNonCashReferenceNumber = null;
+
+                if ($paymentMode === 'split') {
+                    $splitCashAmount = (float) ($validated['split_cash_amount'] ?? 0);
+                    $splitNonCashAmount = (float) ($validated['split_non_cash_amount'] ?? 0);
+                    $splitNonCashMethod = $validated['split_non_cash_method'] ?? null;
+                    $splitNonCashReferenceNumber = $validated['split_non_cash_reference_number'] ?? null;
+
+                    if ($splitCashAmount <= 0 || $splitNonCashAmount <= 0) {
+                        throw ValidationException::withMessages([
+                            'split_total' => 'Untuk split bill, nominal cash dan non-cash harus lebih dari 0.',
+                        ]);
+                    }
+
+                    if (blank($splitNonCashMethod)) {
+                        throw ValidationException::withMessages([
+                            'split_non_cash_method' => 'Metode non-cash untuk split bill wajib dipilih.',
+                        ]);
+                    }
+
+                    if (blank($splitNonCashReferenceNumber)) {
+                        throw ValidationException::withMessages([
+                            'split_non_cash_reference_number' => 'Nomor referensi non-cash untuk split bill wajib diisi.',
+                        ]);
+                    }
+                }
+
                 $order = Order::create([
                     'table_session_id' => null,
                     'customer_user_id' => $customerUser?->id,
@@ -689,14 +807,17 @@ class PosController extends Controller
                     'discount_amount' => 0,
                     'total' => 0,
                     'ordered_at' => now(),
-                    'payment_method' => $validated['payment_method'] ?? null,
-                    'payment_mode' => $validated['payment_mode'] ?? 'normal',
+                    'payment_method' => $paymentMethod,
+                    'payment_mode' => $paymentMode,
                 ]);
 
                 $itemsTotal = 0;
                 $serviceChargeBase = 0;
                 $taxBase = 0;
                 $taxAndServiceBase = 0;
+                $generalSettings = GeneralSetting::instance();
+                $taxPercentage = (float) $generalSettings->tax_percentage;
+                $serviceChargePercentage = (float) $generalSettings->service_charge_percentage;
 
                 foreach ($cart as $productId => $cartItem) {
                     $itemId = str_replace('item_', '', $productId);
@@ -727,6 +848,13 @@ class PosController extends Controller
                         $taxAndServiceBase += $subtotal;
                     }
 
+                    $itemServiceChargeAmount = $includeServiceCharge
+                        ? round($subtotal * ($serviceChargePercentage / 100), 2)
+                        : 0;
+                    $itemTaxAmount = $includeTax
+                        ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
+                        : 0;
+
                     OrderItem::create([
                         'order_id' => $order->id,
                         'inventory_item_id' => $inventoryItemId,
@@ -736,6 +864,8 @@ class PosController extends Controller
                         'price' => $price,
                         'subtotal' => $subtotal,
                         'discount_amount' => 0,
+                        'tax_amount' => $itemTaxAmount,
+                        'service_charge_amount' => $itemServiceChargeAmount,
                         'preparation_location' => $preparationLocation,
                         'status' => 'pending',
                         'notes' => $cartNotes[$productId] ?? null,
@@ -744,11 +874,27 @@ class PosController extends Controller
                     $this->decrementInventoryStock($inventoryItem, $quantity);
                 }
 
-                $totals = $this->calculateWalkInTotals($itemsTotal, $discountPercentage, null, [
+                $requestedDiscountAmount = match ($discountType) {
+                    'percentage' => round($itemsTotal * ($discountPercentage / 100), 2),
+                    'nominal' => round($discountNominal, 2),
+                    default => 0,
+                };
+
+                $totals = $this->calculateWalkInTotals($itemsTotal, 0, $requestedDiscountAmount, [
                     'service_charge_base' => $serviceChargeBase,
                     'tax_base' => $taxBase,
                     'tax_and_service_base' => $taxAndServiceBase,
                 ]);
+
+                if ($paymentMode === 'split') {
+                    $splitTotal = round((float) ($splitCashAmount ?? 0) + (float) ($splitNonCashAmount ?? 0), 2);
+
+                    if (abs($splitTotal - (float) $totals['grand_total']) > 0.01) {
+                        throw ValidationException::withMessages([
+                            'split_total' => 'Total split (cash + non-cash) harus sama dengan grand total.',
+                        ]);
+                    }
+                }
 
                 $order->update([
                     'items_total' => $itemsTotal,
@@ -756,10 +902,46 @@ class PosController extends Controller
                     'total' => $totals['grand_total'],
                 ]);
 
+                $transactionCode = 'TRX-'.now()->timestamp.rand(100, 999);
+                Billing::create([
+                    'table_session_id' => null,
+                    'order_id' => $order->id,
+                    'is_walk_in' => true,
+                    'is_booking' => false,
+                    'minimum_charge' => 0,
+                    'orders_total' => (float) $itemsTotal,
+                    'subtotal' => (float) $totals['subtotal_after_discount'],
+                    'tax' => (float) $totals['tax'],
+                    'tax_percentage' => (float) $totals['tax_percentage'],
+                    'service_charge' => (float) $totals['service_charge'],
+                    'service_charge_percentage' => (float) $totals['service_charge_percentage'],
+                    'discount_amount' => (float) $totals['discount_amount'],
+                    'grand_total' => (float) $totals['grand_total'],
+                    'paid_amount' => (float) $totals['grand_total'],
+                    'billing_status' => 'paid',
+                    'transaction_code' => $transactionCode,
+                    'payment_method' => $paymentMethod,
+                    'payment_reference_number' => $paymentReferenceNumber,
+                    'payment_mode' => $paymentMode,
+                    'split_cash_amount' => $splitCashAmount,
+                    'split_debit_amount' => $splitNonCashAmount,
+                    'split_non_cash_method' => $splitNonCashMethod,
+                    'split_non_cash_reference_number' => $splitNonCashReferenceNumber,
+                ]);
+
                 // Route to kitchen/bar checkers (no table session)
                 $this->routeOrderToPreparation($order, null, $orderNumber, $customerUser?->id);
 
                 DB::commit();
+
+                try {
+                    $this->dashboardSyncService->sync();
+                } catch (\Throwable $e) {
+                    Log::warning('Dashboard sync failed after walk-in checkout', [
+                        'order_number' => $orderNumber,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
 
                 $receiptPrinted = $this->printOrderReceipt($order);
 
@@ -792,6 +974,14 @@ class PosController extends Controller
                 'message' => 'Jenis customer tidak valid.',
             ], 422);
 
+        } catch (ValidationException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Data checkout tidak valid.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
 

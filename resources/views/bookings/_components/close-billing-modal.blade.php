@@ -203,8 +203,8 @@
       <!-- Payment method (normal mode) -->
       <div id="cbNormalMethodBlock">
         <label class="block text-xs font-semibold text-gray-600 mb-2">Metode Pembayaran</label>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-          @foreach (['cash' => 'Tunai', 'kredit' => 'Kredit', 'debit' => 'Debit', 'qris' => 'QRIS'] as $val => $label)
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+          @foreach (['cash' => 'Tunai', 'kredit' => 'Kredit', 'debit' => 'Debit', 'qris' => 'QRIS', 'transfer' => 'Transfer'] as $val => $label)
             <label class="flex flex-col items-center gap-1.5 p-3 rounded-xl border cursor-pointer
                           has-[:checked]:border-green-500 has-[:checked]:bg-green-50 border-gray-200 hover:border-gray-300 transition">
               <input type="radio"

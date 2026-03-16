@@ -15,6 +15,8 @@ class OrderItem extends Model
         'price',
         'subtotal',
         'discount_amount',
+        'tax_amount',
+        'service_charge_amount',
         'preparation_location',
         'status',
         'prepared_at',
@@ -31,6 +33,8 @@ class OrderItem extends Model
         'price' => 'decimal:2',
         'subtotal' => 'decimal:2',
         'discount_amount' => 'decimal:2',
+        'tax_amount' => 'decimal:2',
+        'service_charge_amount' => 'decimal:2',
         'prepared_at' => 'datetime',
         'ready_at' => 'datetime',
         'served_at' => 'datetime',
@@ -107,4 +111,3 @@ class OrderItem extends Model
         return $query->whereIn('status', ['pending', 'preparing', 'ready']);
     }
 }
-
