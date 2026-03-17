@@ -99,6 +99,17 @@ class TableController extends Controller
     // UPDATE TABLE
     public function update(Request $request, Tabel $table)
     {
+        $hasActiveSession = TableSession::query()
+            ->where('table_id', $table->id)
+            ->where('status', 'active')
+            ->exists();
+
+        if ($hasActiveSession) {
+            return back()->withErrors([
+                'error' => 'Meja tidak bisa diedit atau dinonaktifkan karena masih memiliki sesi aktif.',
+            ])->withInput();
+        }
+
         $validated = $request->validate([
             'area_id' => 'required|exists:areas,id',
             'table_number' => 'required|string|max:50',

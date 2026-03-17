@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\BarOrderItem;
 use App\Models\Billing;
 use App\Models\Dashboard;
+use App\Models\KitchenOrderItem;
+use App\Models\RecapHistory;
 use Illuminate\Support\Carbon;
 
 class DashboardSyncService
@@ -11,6 +14,7 @@ class DashboardSyncService
     public function sync(): Dashboard
     {
         $today = Carbon::today();
+        $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
 
         $totals = [
             'total_amount' => 0.0,
@@ -21,8 +25,24 @@ class DashboardSyncService
             'total_debit' => 0.0,
             'total_kredit' => 0.0,
             'total_qris' => 0.0,
+            'total_kitchen_items' => 0,
+            'total_bar_items' => 0,
             'total_transactions' => 0,
         ];
+
+        $totals['total_kitchen_items'] = (int) KitchenOrderItem::query()
+            ->whereHas('kitchenOrder', function ($query) use ($today): void {
+                $query->whereDate('created_at', $today);
+            })
+            ->when($lastCloseAt, fn ($query) => $query->whereHas('kitchenOrder', fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt)))
+            ->sum('quantity');
+
+        $totals['total_bar_items'] = (int) BarOrderItem::query()
+            ->whereHas('barOrder', function ($query) use ($today): void {
+                $query->whereDate('created_at', $today);
+            })
+            ->when($lastCloseAt, fn ($query) => $query->whereHas('barOrder', fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt)))
+            ->sum('quantity');
 
         $paidBillings = Billing::query()
             ->where('billing_status', 'paid')
@@ -31,6 +51,7 @@ class DashboardSyncService
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
             })
+            ->when($lastCloseAt, fn ($query) => $query->where('updated_at', '>', $lastCloseAt))
             ->get();
 
         foreach ($paidBillings as $billing) {

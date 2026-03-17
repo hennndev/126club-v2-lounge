@@ -1499,10 +1499,10 @@
                x-text="'Minimum charge belum terpenuhi. Butuh tambahan Rp ' + new Intl.NumberFormat('id-ID').format((receiptData?.minimumCharge || 0) - (receiptData?.ordersTotal || 0))"></p>
           </div>
 
-          <!-- Quick Nav Buttons -->
+          <!-- Quick Nav Buttons — hanya muncul sesuai tipe printer yang relevan dengan items di order -->
           <div class="flex flex-wrap gap-2">
             <button type="button"
-                    x-show="receiptData?.items?.some(i => i.preparation_location === 'kitchen')"
+                    x-show="receiptData?.items?.some(i => Array.isArray(i.assigned_printer_types) && i.assigned_printer_types.includes('kitchen'))"
                     @click="printCheckerAndNavigate('kitchen', kitchenUrl)"
                     class="flex flex-1 flex-col items-center gap-1.5 p-3 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl transition">
               <svg class="w-5 h-5 text-orange-500"
@@ -1517,7 +1517,7 @@
               <span class="text-xs font-semibold text-orange-600">Kitchen</span>
             </button>
             <button type="button"
-                    x-show="receiptData?.items?.some(i => i.preparation_location === 'bar')"
+                    x-show="receiptData?.items?.some(i => Array.isArray(i.assigned_printer_types) && i.assigned_printer_types.includes('bar'))"
                     @click="printCheckerAndNavigate('bar', barUrl)"
                     class="flex flex-1 flex-col items-center gap-1.5 p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition">
               <svg class="w-5 h-5 text-blue-500"
@@ -1530,6 +1530,36 @@
                       d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
               <span class="text-xs font-semibold text-blue-600">Bar</span>
+            </button>
+            <button type="button"
+                    x-show="(receiptData?.items?.length ?? 0) > 0"
+                    @click="printCheckerAndNavigate('cashier', '')"
+                    class="flex flex-1 flex-col items-center gap-1.5 p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl transition">
+              <svg class="w-5 h-5 text-green-600"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              <span class="text-xs font-semibold text-green-700">Kasir</span>
+            </button>
+            <button type="button"
+                    x-show="(receiptData?.items?.length ?? 0) > 0"
+                    @click="printCheckerAndNavigate('checker', checkerUrl)"
+                    class="flex flex-1 flex-col items-center gap-1.5 p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition">
+              <svg class="w-5 h-5 text-purple-600"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              <span class="text-xs font-semibold text-purple-700">Checker</span>
             </button>
           </div>
         </div>
@@ -1663,6 +1693,7 @@
         clearCart: "{{ route('admin.pos.clear-cart') }}",
         previewCheckoutAvailability: "{{ route('admin.pos.preview-checkout-availability') }}",
         checkout: "{{ route('admin.pos.checkout') }}",
+        printReceiptBase: "{{ url('admin/pos/print-receipt') }}",
         verifyAuthCode: "{{ route('admin.settings.daily-auth-code.verify') }}",
         walkInSearchCustomers: "{{ route('admin.pos.walk-in.search-customers') }}",
         walkInCreateCustomer: "{{ route('admin.pos.walk-in.create-customer') }}",
@@ -1676,6 +1707,7 @@
         currentCounter: {!! json_encode($currentCounter ?? '') !!},
         kitchenUrl: "{{ route('admin.kitchen.index') }}",
         barUrl: "{{ route('admin.bar.index') }}",
+        checkerUrl: "{{ route('admin.transaction-checker.index') }}",
       };
       const posWaiters = @json($waiters);
       const posCharges = {
@@ -1815,7 +1847,9 @@
           receiptData: null,
           checkerPrinted: {
             kitchen: false,
-            bar: false
+            bar: false,
+            cashier: false,
+            checker: false,
           },
           showAuthModal: false,
           authCode: '',
@@ -1830,6 +1864,7 @@
           gridCols: parseInt(localStorage.getItem('posGridCols') ?? '4'),
           kitchenUrl: posInitialData.kitchenUrl,
           barUrl: posInitialData.barUrl,
+          checkerUrl: posInitialData.checkerUrl,
           posCharges,
           bookingStep: 'type',
           checkoutForm: {
@@ -2542,41 +2577,59 @@
               });
               const data = await response.json();
               if (data.success) {
-                this.receiptData = {
-                  orderId: data.order_id,
-                  orderNumber: data.order_number,
-                  formattedTotal: data.formatted_total,
-                  itemsTotal: data.items_total ?? this.cartTotal,
-                  discountAmount: data.discount_amount ?? this.discountAmount(),
-                  serviceChargePercentage: data.service_charge_percentage ?? 0,
-                  serviceCharge: data.service_charge ?? 0,
-                  taxPercentage: data.tax_percentage ?? 0,
-                  tax: data.tax ?? 0,
-                  customerName: this.checkoutForm.customerName,
-                  customerInitial: this.checkoutForm.customerInitial,
-                  customerType: this.checkoutForm.customer_type,
-                  tableDisplay: this.checkoutForm.table_display,
-                  minimumCharge: this.checkoutForm.minimumCharge,
-                  ordersTotal: this.checkoutForm.ordersTotal,
-                  printedAt: new Date().toLocaleString('id-ID', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }),
-                  items: this.cart.map(i => ({
-                    ...i,
-                    notes: this.cartNotes[i.id] || '',
-                  })),
+                const checkoutSnapshot = {
+                  ...this.checkoutForm,
                 };
+                const receiptItems = this.cart.map((item) => ({
+                  id: item.id,
+                  name: item.name,
+                  quantity: Number(item.quantity || 0),
+                  price: Number(item.price || 0),
+                  notes: this.cartNotes[item.id] || '',
+                  assigned_printer_types: Array.isArray(item.assigned_printer_types) ? item.assigned_printer_types : [],
+                }));
+
                 this.cart = [];
                 this.cartTotal = 0;
                 this.cartNotes = {};
                 this.menuAvailability = null;
                 this.showConfirmModal = false;
                 this.showCheckoutModal = false;
+                this.receiptData = {
+                  orderId: Number(data.order_id || 0),
+                  orderNumber: data.order_number || '-',
+                  customerType: checkoutSnapshot.customer_type || '-',
+                  customerName: checkoutSnapshot.customerName || '-',
+                  tableDisplay: checkoutSnapshot.table_display || '-',
+                  minimumCharge: Number(checkoutSnapshot.minimumCharge || 0),
+                  ordersTotal: Number(checkoutSnapshot.ordersTotal || 0),
+                  itemsTotal: Number(data.items_total || 0),
+                  discountAmount: Number(data.discount_amount || 0),
+                  serviceChargePercentage: Number(data.service_charge_percentage || 0),
+                  serviceCharge: Number(data.service_charge || 0),
+                  taxPercentage: Number(data.tax_percentage || 0),
+                  tax: Number(data.tax || 0),
+                  total: Number(data.total || 0),
+                  formattedTotal: data.formatted_total || this.formatCurrency(Number(data.total || 0)),
+                  receiptPrinted: Boolean(data.receipt_printed),
+                  printedAt: new Date().toLocaleString('id-ID', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                  items: receiptItems,
+                };
+                this.checkerPrinted = {
+                  kitchen: false,
+                  bar: false,
+                  cashier: false,
+                  checker: false,
+                };
                 this.showReceiptModal = true;
+                this.showToastMessage(data.message || 'Checkout berhasil.', 'success');
+
                 this.checkoutForm = {
                   customer_type: '',
                   customer_user_id: '',
@@ -2670,12 +2723,32 @@
 
           _doPrintChecker(type, isReprint) {
             const d = this.receiptData;
-            const items = d ? d.items.filter(i => i.preparation_location === type) : [];
+
+            // Kasir → delegate to full receipt print
+            if (type === 'cashier') {
+              this.checkerPrinted[type] = true;
+              this.printReceipt();
+              return;
+            }
+
+            // Checker → print ALL items; Kitchen/Bar → only assigned_printer_types
+            const items = d ?
+              (type === 'checker' ?
+                d.items :
+                d.items.filter(i =>
+                  Array.isArray(i.assigned_printer_types) && i.assigned_printer_types.includes(type),
+                )) : [];
+
             if (!d || items.length === 0) {
               return;
             }
             this.checkerPrinted[type] = true;
-            const title = type === 'kitchen' ? 'KITCHEN ORDER' : 'BAR ORDER';
+            const titleMap = {
+              kitchen: 'KITCHEN ORDER',
+              bar: 'BAR ORDER',
+              checker: 'ORDER CHECKER'
+            };
+            const title = titleMap[type] ?? type.toUpperCase();
             const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
               '&': '&amp;',
               '<': '&lt;',
@@ -2715,10 +2788,38 @@
             this._printHtml(html);
           },
 
-          printReceipt() {
+          async printReceipt() {
             if (!this.receiptData) {
               return;
             }
+
+            const orderId = Number(this.receiptData.orderId || 0);
+
+            if (orderId > 0) {
+              try {
+                const response = await fetch(`${posRoutes.printReceiptBase}/${orderId}`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                    Accept: 'application/json',
+                  },
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                  this.showToastMessage('Struk berhasil dikirim ke printer.', 'success');
+
+                  return;
+                }
+
+                this.showToastMessage(data.message || 'Gagal kirim ke printer server. Menampilkan print browser sebagai cadangan.', 'error');
+              } catch (error) {
+                this.showToastMessage('Gagal kirim ke printer server. Menampilkan print browser sebagai cadangan.', 'error');
+              }
+            }
+
             const d = this.receiptData;
             const rows = d.items.map(i =>
               '<tr><td style="padding:3px 0">' + i.name + '</td><td style="text-align:right;padding:3px 0">' + i.quantity + 'x</td><td style="text-align:right;padding:3px 0">Rp ' + new Intl.NumberFormat('id-ID').format(i.price * i.quantity) + '</td></tr>'

@@ -8,7 +8,10 @@ use App\Models\Dashboard;
 use App\Models\GeneralSetting;
 use App\Models\KitchenOrderItem;
 use App\Models\Order;
+use App\Models\RecapHistory;
+use App\Services\RecapClosingService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Concerns\FromArray;
@@ -41,72 +44,39 @@ class RecapController extends Controller
 
         [$startAt, $endAt] = $this->resolveRange($validated);
         $recapData = $this->buildRecapData($startAt, $endAt);
-        $rows = [
-            ['Rekapan End Day'],
-            ['Rentang', $recapData['selectedStartDatetime'].' - '.$recapData['selectedEndDatetime']],
-            [],
-            ['Ringkasan'],
-            ['Transaksi Kasir', $recapData['cashierCount']],
-            ['Total Penjualan Kasir', $recapData['cashierRevenue']],
-            ['Total Pajak', $recapData['totalTax']],
-            ['Total Service Charge', $recapData['totalServiceCharge']],
-            ['Total Pembayaran Transfer', $recapData['paymentMethodTotals']['transfer']],
-            ['Total Pembayaran Debit', $recapData['paymentMethodTotals']['debit']],
-            ['Total Pembayaran Kredit', $recapData['paymentMethodTotals']['kredit']],
-            ['Total Pembayaran QRIS', $recapData['paymentMethodTotals']['qris']],
-            ['Item Keluar Kitchen', $recapData['kitchenQtyTotal']],
-            ['Item Keluar Bar', $recapData['barQtyTotal']],
-            [],
-            ['Kasir (Harga Ditampilkan)'],
-            ['Tanggal & Jam', 'No. Transaksi', 'Customer', 'Metode Pembayaran', 'Qty Item', 'Total'],
-        ];
 
-        foreach ($recapData['cashierTransactions'] as $transaction) {
-            $rows[] = [
-                $transaction['datetime'],
-                $transaction['order_number'],
-                $transaction['customer_name'],
-                $transaction['payment_method'],
-                $transaction['items_count'],
-                $transaction['total'],
-            ];
+        return $this->downloadRows(
+            $this->buildLiveRecapExportRows($recapData),
+            'rekapan-'.$startAt->format('Ymd_Hi').'-'.$endAt->format('Ymd_Hi').'.xlsx'
+        );
+    }
+
+    public function closeAndExport(RecapClosingService $recapClosingService): BinaryFileResponse|RedirectResponse
+    {
+        $result = $recapClosingService->closeDay();
+
+        if ($result['status'] === 'no_data') {
+            return back()->with('error', 'Tidak ada data dashboard untuk ditutup.');
         }
 
-        $rows[] = [];
-        $rows[] = ['Item Keluar Kitchen'];
-        $rows[] = ['Tanggal & Jam', 'Order', 'Item', 'Qty'];
-        foreach ($recapData['kitchenItems'] as $item) {
-            $rows[] = [
-                $item['datetime'],
-                $item['order_number'],
-                $item['item_name'],
-                $item['qty'],
-            ];
+        $recapHistory = $result['recap_history'];
+
+        if (! $recapHistory) {
+            return back()->with('error', 'Gagal menyiapkan data end day.');
         }
 
-        $rows[] = [];
-        $rows[] = ['Item Keluar Bar'];
-        $rows[] = ['Tanggal & Jam', 'Order', 'Item', 'Qty'];
-        foreach ($recapData['barItems'] as $item) {
-            $rows[] = [
-                $item['datetime'],
-                $item['order_number'],
-                $item['item_name'],
-                $item['qty'],
-            ];
-        }
+        return $this->downloadRows(
+            $this->buildHistoryExportRows($recapHistory),
+            'rekapan-history-'.$recapHistory->end_day?->format('Ymd').'.xlsx'
+        );
+    }
 
-        $export = new class($rows) implements FromArray
-        {
-            public function __construct(private array $rows) {}
-
-            public function array(): array
-            {
-                return $this->rows;
-            }
-        };
-
-        return Excel::download($export, 'rekapan-'.$startAt->format('Ymd_Hi').'-'.$endAt->format('Ymd_Hi').'.xlsx');
+    public function exportHistory(RecapHistory $recapHistory): BinaryFileResponse
+    {
+        return $this->downloadRows(
+            $this->buildHistoryExportRows($recapHistory),
+            'rekapan-history-'.$recapHistory->end_day?->format('Ymd').'.xlsx'
+        );
     }
 
     private function buildRecapData(Carbon $startAt, Carbon $endAt): array
@@ -153,8 +123,13 @@ class RecapController extends Controller
             ->values();
 
         $dashboardAggregate = Dashboard::query()->find(1);
+        $recapHistories = RecapHistory::query()
+            ->latest('end_day')
+            ->limit(10)
+            ->get();
 
         $paymentMethodTotals = [
+            'cash' => (float) ($dashboardAggregate?->total_cash ?? 0),
             'transfer' => (float) ($dashboardAggregate?->total_transfer ?? 0),
             'debit' => (float) ($dashboardAggregate?->total_debit ?? 0),
             'kredit' => (float) ($dashboardAggregate?->total_kredit ?? 0),
@@ -214,6 +189,7 @@ class RecapController extends Controller
             'cashierRevenue' => (float) ($dashboardAggregate?->total_amount ?? 0),
             'totalTax' => (float) ($dashboardAggregate?->total_tax ?? 0),
             'totalServiceCharge' => (float) ($dashboardAggregate?->total_service_charge ?? 0),
+            'totalCash' => (float) ($dashboardAggregate?->total_cash ?? 0),
             'paymentMethodTotals' => $paymentMethodTotals,
             'kitchenItems' => $kitchenItems,
             'kitchenQtyTotal' => (int) $kitchenItems->sum('qty'),
@@ -222,13 +198,121 @@ class RecapController extends Controller
             'dashboardPreview' => [
                 'total_tax' => (float) ($dashboardAggregate?->total_tax ?? 0),
                 'total_service_charge' => (float) ($dashboardAggregate?->total_service_charge ?? 0),
+                'total_cash' => (float) ($dashboardAggregate?->total_cash ?? 0),
                 'total_transfer' => (float) ($dashboardAggregate?->total_transfer ?? 0),
                 'total_debit' => (float) ($dashboardAggregate?->total_debit ?? 0),
                 'total_kredit' => (float) ($dashboardAggregate?->total_kredit ?? 0),
                 'total_qris' => (float) ($dashboardAggregate?->total_qris ?? 0),
                 'total_transactions' => (int) ($dashboardAggregate?->total_transactions ?? 0),
             ],
+            'recapHistories' => $recapHistories,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $recapData
+     * @return array<int, array<int, string|int|float>>
+     */
+    private function buildLiveRecapExportRows(array $recapData): array
+    {
+        $rows = [
+            ['Rekapan End Day'],
+            ['Rentang', $recapData['selectedStartDatetime'].' - '.$recapData['selectedEndDatetime']],
+            [],
+            ['Ringkasan'],
+            ['Transaksi Kasir', $recapData['cashierCount']],
+            ['Total Penjualan Kasir', $recapData['cashierRevenue']],
+            ['Total Pajak', $recapData['totalTax']],
+            ['Total Service Charge', $recapData['totalServiceCharge']],
+            ['Total Pembayaran Tunai', $recapData['paymentMethodTotals']['cash']],
+            ['Total Pembayaran Transfer', $recapData['paymentMethodTotals']['transfer']],
+            ['Total Pembayaran Debit', $recapData['paymentMethodTotals']['debit']],
+            ['Total Pembayaran Kredit', $recapData['paymentMethodTotals']['kredit']],
+            ['Total Pembayaran QRIS', $recapData['paymentMethodTotals']['qris']],
+            ['Item Keluar Kitchen', $recapData['kitchenQtyTotal']],
+            ['Item Keluar Bar', $recapData['barQtyTotal']],
+            [],
+            ['Kasir (Harga Ditampilkan)'],
+            ['Tanggal & Jam', 'No. Transaksi', 'Customer', 'Metode Pembayaran', 'Qty Item', 'Total'],
+        ];
+
+        foreach ($recapData['cashierTransactions'] as $transaction) {
+            $rows[] = [
+                $transaction['datetime'],
+                $transaction['order_number'],
+                $transaction['customer_name'],
+                $transaction['payment_method'],
+                $transaction['items_count'],
+                $transaction['total'],
+            ];
+        }
+
+        $rows[] = [];
+        $rows[] = ['Item Keluar Kitchen'];
+        $rows[] = ['Tanggal & Jam', 'Order', 'Item', 'Qty'];
+        foreach ($recapData['kitchenItems'] as $item) {
+            $rows[] = [
+                $item['datetime'],
+                $item['order_number'],
+                $item['item_name'],
+                $item['qty'],
+            ];
+        }
+
+        $rows[] = [];
+        $rows[] = ['Item Keluar Bar'];
+        $rows[] = ['Tanggal & Jam', 'Order', 'Item', 'Qty'];
+        foreach ($recapData['barItems'] as $item) {
+            $rows[] = [
+                $item['datetime'],
+                $item['order_number'],
+                $item['item_name'],
+                $item['qty'],
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array<int, array<int, string|int|float>>
+     */
+    private function buildHistoryExportRows(RecapHistory $recapHistory): array
+    {
+        return [
+            ['History Rekapan End Day'],
+            ['Tanggal End Day', $recapHistory->end_day?->format('d/m/Y') ?? '-'],
+            ['Last Sync', $recapHistory->last_synced_at?->format('d/m/Y H:i') ?? '-'],
+            [],
+            ['Ringkasan Snapshot'],
+            ['Transaksi Kasir', (int) $recapHistory->total_transactions],
+            ['Total Penjualan Kasir', (float) $recapHistory->total_amount],
+            ['Total Pajak', (float) $recapHistory->total_tax],
+            ['Total Service Charge', (float) $recapHistory->total_service_charge],
+            ['Total Pembayaran Tunai', (float) $recapHistory->total_cash],
+            ['Total Pembayaran Transfer', (float) $recapHistory->total_transfer],
+            ['Total Pembayaran Debit', (float) $recapHistory->total_debit],
+            ['Total Pembayaran Kredit', (float) $recapHistory->total_kredit],
+            ['Total Pembayaran QRIS', (float) $recapHistory->total_qris],
+        ];
+    }
+
+    /**
+     * @param  array<int, array<int, string|int|float>>  $rows
+     */
+    private function downloadRows(array $rows, string $filename): BinaryFileResponse
+    {
+        $export = new class($rows) implements FromArray
+        {
+            public function __construct(private array $rows) {}
+
+            public function array(): array
+            {
+                return $this->rows;
+            }
+        };
+
+        return Excel::download($export, $filename);
     }
 
     /**

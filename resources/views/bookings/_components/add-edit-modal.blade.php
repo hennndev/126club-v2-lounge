@@ -74,7 +74,9 @@
              class="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
           @foreach ($tables as $table)
             @php
-              $isOccupied = in_array($table->status, ['reserved', 'occupied']);
+              $hasActiveBooking = collect($activeBookingsByTable ?? collect())->has($table->id);
+              $hasActiveSession = collect($activeSessions ?? collect())->contains(fn($session) => (int) $session->table_id === (int) $table->id && $session->status === 'active');
+              $isOccupied = $hasActiveBooking || $hasActiveSession;
             @endphp
             <button type="button"
                     @if (!$isOccupied) @click="selectTable({{ json_encode(['id' => $table->id, 'table_number' => $table->table_number, 'capacity' => $table->capacity, 'minimum_charge' => $table->minimum_charge, 'area_name' => $table->area->name ?? '']) }})" @endif
@@ -156,7 +158,10 @@
                 class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
           <option value="">Pilih customer</option>
           @foreach ($customers as $customer)
-            <option value="{{ $customer->id }}">{{ $customer->name }}{{ $customer->profile?->phone ? ' – ' . $customer->profile->phone : '' }}</option>
+            @php
+              $hasActiveSession = collect($activeSessionCustomerIds ?? [])->contains($customer->id);
+            @endphp
+            <option value="{{ $customer->id }}">{{ $customer->name }}{{ $customer->profile?->phone ? ' – ' . $customer->profile->phone : '' }}{{ $hasActiveSession ? ' (Sedang check-in)' : '' }}</option>
           @endforeach
         </select>
       </div>
@@ -272,6 +277,8 @@
 </div>
 
 <script>
+  const bookingActiveSessionCustomerIds = @json($activeSessionCustomerIds ?? []);
+
   const bookingCustomers = {!! json_encode(
       $customers->map(
               fn($c) => [
@@ -299,6 +306,22 @@
         document.addEventListener('table-selected', e => {
           this.selectTable(e.detail);
         });
+
+        const bookingForm = document.getElementById('bookingForm');
+
+        bookingForm?.addEventListener('submit', e => {
+          const selectedCustomerId = document.getElementById('customer_id')?.value;
+          const selectedId = Number(selectedCustomerId || 0);
+
+          if (this.isCreateMode() && selectedId > 0 && bookingActiveSessionCustomerIds.includes(selectedId)) {
+            e.preventDefault();
+            alert('Customer sedang check-in di meja lain dan tidak bisa dibuat booking baru.');
+          }
+        });
+      },
+
+      isCreateMode() {
+        return document.getElementById('formMethod')?.value === 'POST';
       },
 
       selectTable(table) {
@@ -316,6 +339,22 @@
       },
 
       selectCustomer(id) {
+        const selectedId = Number(id || 0);
+
+        if (this.isCreateMode() && selectedId > 0 && bookingActiveSessionCustomerIds.includes(selectedId)) {
+          const customerEl = document.getElementById('customer_id');
+
+          if (customerEl) {
+            customerEl.value = '';
+          }
+
+          this.phoneValue = '';
+          this.emailValue = '';
+          alert('Customer sedang check-in di meja lain dan tidak bisa dibuat booking baru.');
+
+          return;
+        }
+
         const customer = bookingCustomers.find(c => String(c.id) === String(id));
         if (customer) {
           this.phoneValue = customer.phone || '';

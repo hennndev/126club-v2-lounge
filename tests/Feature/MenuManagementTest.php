@@ -57,6 +57,54 @@ test('menus page uses categories marked as menu and shows grouped menu cards', f
         ->assertSee('Nasi Goreng Spesial');
 });
 
+test('menus page can search menu list by keyword', function () {
+    $admin = adminUser();
+
+    PosCategorySetting::create([
+        'category_type' => 'food-menu',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    InventoryItem::create([
+        'code' => 'MENU-SEA-001',
+        'accurate_id' => 2001,
+        'name' => 'Sate Ayam',
+        'pos_name' => 'Sate POS',
+        'category_type' => 'food-menu',
+        'price' => 35000,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'porsi',
+        'is_active' => true,
+    ]);
+
+    InventoryItem::create([
+        'code' => 'MENU-SEA-002',
+        'accurate_id' => 2002,
+        'name' => 'Mie Goreng',
+        'pos_name' => 'Mie POS',
+        'category_type' => 'food-menu',
+        'price' => 30000,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'porsi',
+        'is_active' => true,
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.menus.index', ['search' => 'sate']))
+        ->assertOk()
+        ->assertSee('Hasil pencarian untuk:')
+        ->assertSee('Sate Ayam')
+        ->assertViewHas('menusByCategory', function ($menusByCategory): bool {
+            $foodMenus = $menusByCategory->get('food-menu', collect());
+
+            return $foodMenus->pluck('name')->values()->all() === ['Sate Ayam'];
+        });
+});
+
 test('menu store can save printer targets for a menu item', function () {
     $admin = adminUser();
 

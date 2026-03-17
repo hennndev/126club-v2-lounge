@@ -1,8 +1,13 @@
 <?php
 
 use App\Models\Area;
+use App\Models\BarOrder;
+use App\Models\BarOrderItem;
 use App\Models\Billing;
 use App\Models\Dashboard;
+use App\Models\KitchenOrder;
+use App\Models\KitchenOrderItem;
+use App\Models\RecapHistory;
 use App\Models\Tabel;
 use App\Models\TableSession;
 use App\Services\DashboardSyncService;
@@ -35,8 +40,64 @@ function makeDashboardSession(int $customerId): TableSession
     ]);
 }
 
+function createDashboardKitchenAndBarItems(int $createdById, int $kitchenQty, int $barQty): void
+{
+    $order = \App\Models\Order::create([
+        'table_session_id' => null,
+        'customer_user_id' => null,
+        'created_by' => $createdById,
+        'order_number' => 'DSH-ORD-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 30000,
+        'discount_amount' => 0,
+        'total' => 30000,
+        'ordered_at' => now(),
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $kitchenOrder = KitchenOrder::create([
+        'order_id' => $order->id,
+        'order_number' => $order->order_number,
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 10000,
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+
+    KitchenOrderItem::create([
+        'kitchen_order_id' => $kitchenOrder->id,
+        'inventory_item_id' => null,
+        'quantity' => $kitchenQty,
+        'price' => 10000,
+        'is_completed' => true,
+    ]);
+
+    $barOrder = BarOrder::create([
+        'order_id' => $order->id,
+        'order_number' => $order->order_number,
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 10000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+
+    BarOrderItem::create([
+        'bar_order_id' => $barOrder->id,
+        'inventory_item_id' => null,
+        'quantity' => $barQty,
+        'price' => 10000,
+        'is_completed' => true,
+    ]);
+}
+
 test('dashboard sync aggregates totals from paid billings and walk-in orders', function () {
     $admin = adminUser();
+
+    createDashboardKitchenAndBarItems($admin->id, 7, 5);
 
     $sessionTransfer = makeDashboardSession($admin->id);
     Billing::create([
@@ -114,10 +175,16 @@ test('dashboard sync aggregates totals from paid billings and walk-in orders', f
         ->and((float) $dashboard->total_debit)->toBe(121000.0)
         ->and((float) $dashboard->total_qris)->toBe(20000.0)
         ->and((float) $dashboard->total_kredit)->toBe(0.0)
+        ->and((int) $dashboard->total_kitchen_items)->toBe(7)
+        ->and((int) $dashboard->total_bar_items)->toBe(5)
         ->and((int) $dashboard->total_transactions)->toBe(3);
 });
 
 test('dashboard sync includes walk-in split orders with null payment method', function () {
+    $admin = adminUser();
+
+    createDashboardKitchenAndBarItems($admin->id, 2, 1);
+
     Billing::create([
         'table_session_id' => null,
         'order_id' => null,
@@ -151,6 +218,8 @@ test('dashboard sync includes walk-in split orders with null payment method', fu
         ->and((float) $dashboard->total_service_charge)->toBe(10000.0)
         ->and((float) $dashboard->total_cash)->toBe(21000.0)
         ->and((float) $dashboard->total_qris)->toBe(100000.0)
+        ->and((int) $dashboard->total_kitchen_items)->toBe(2)
+        ->and((int) $dashboard->total_bar_items)->toBe(1)
         ->and((int) $dashboard->total_transactions)->toBe(1);
 });
 
@@ -228,6 +297,8 @@ test('dashboard sync aggregates only today transactions', function () {
         'payment_mode' => 'normal',
     ]);
 
+    createDashboardKitchenAndBarItems($admin->id, 4, 3);
+
     DB::table('billings')
         ->where('id', $walkInYesterdayBilling->id)
         ->update([
@@ -264,5 +335,151 @@ test('dashboard sync aggregates only today transactions', function () {
         ->and((float) $dashboard->total_service_charge)->toBe(12000.0)
         ->and((float) $dashboard->total_cash)->toBe(46000.0)
         ->and((float) $dashboard->total_debit)->toBe(121000.0)
+        ->and((int) $dashboard->total_kitchen_items)->toBe(4)
+        ->and((int) $dashboard->total_bar_items)->toBe(3)
         ->and((int) $dashboard->total_transactions)->toBe(2);
+});
+
+test('dashboard sync excludes billings and items already closed before latest recap close', function () {
+    $admin = adminUser();
+
+    $closedAt = now()->setTime(8, 0, 0);
+
+    $recapHistory = RecapHistory::query()->create([
+        'end_day' => now()->subDay()->toDateString(),
+        'total_amount' => 1000,
+        'total_tax' => 100,
+        'total_service_charge' => 100,
+        'total_cash' => 1000,
+        'total_transfer' => 0,
+        'total_debit' => 0,
+        'total_kredit' => 0,
+        'total_qris' => 0,
+        'total_transactions' => 1,
+        'last_synced_at' => $closedAt,
+    ]);
+
+    DB::table('recap_history')
+        ->where('id', $recapHistory->id)
+        ->update([
+            'created_at' => $closedAt,
+            'updated_at' => $closedAt,
+        ]);
+
+    $sessionBeforeClose = makeDashboardSession($admin->id);
+    $beforeCloseBilling = Billing::create([
+        'table_session_id' => $sessionBeforeClose->id,
+        'is_walk_in' => false,
+        'is_booking' => true,
+        'minimum_charge' => 0,
+        'orders_total' => 50000,
+        'subtotal' => 50000,
+        'tax' => 5000,
+        'tax_percentage' => 10,
+        'service_charge' => 5000,
+        'service_charge_percentage' => 10,
+        'discount_amount' => 0,
+        'grand_total' => 60000,
+        'paid_amount' => 60000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    DB::table('billings')
+        ->where('id', $beforeCloseBilling->id)
+        ->update([
+            'updated_at' => now()->setTime(7, 30, 0),
+        ]);
+
+    $sessionAfterClose = makeDashboardSession($admin->id);
+    $afterCloseBilling = Billing::create([
+        'table_session_id' => $sessionAfterClose->id,
+        'is_walk_in' => false,
+        'is_booking' => true,
+        'minimum_charge' => 0,
+        'orders_total' => 40000,
+        'subtotal' => 40000,
+        'tax' => 4000,
+        'tax_percentage' => 10,
+        'service_charge' => 2000,
+        'service_charge_percentage' => 10,
+        'discount_amount' => 0,
+        'grand_total' => 46000,
+        'paid_amount' => 46000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    DB::table('billings')
+        ->where('id', $afterCloseBilling->id)
+        ->update([
+            'updated_at' => now()->setTime(9, 15, 0),
+        ]);
+
+    $order = \App\Models\Order::create([
+        'table_session_id' => null,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'DSH-CUTOFF-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 30000,
+        'discount_amount' => 0,
+        'total' => 30000,
+        'ordered_at' => now(),
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $kitchenOrderBefore = KitchenOrder::create([
+        'order_id' => $order->id,
+        'order_number' => $order->order_number,
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 10000,
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+    $kitchenOrderBefore->forceFill(['created_at' => now()->setTime(7, 0, 0), 'updated_at' => now()->setTime(7, 0, 0)])->save();
+
+    KitchenOrderItem::create([
+        'kitchen_order_id' => $kitchenOrderBefore->id,
+        'inventory_item_id' => null,
+        'quantity' => 3,
+        'price' => 10000,
+        'is_completed' => true,
+    ]);
+
+    $barOrderAfter = BarOrder::create([
+        'order_id' => $order->id,
+        'order_number' => $order->order_number,
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 10000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+    $barOrderAfter->forceFill(['created_at' => now()->setTime(9, 30, 0), 'updated_at' => now()->setTime(9, 30, 0)])->save();
+
+    BarOrderItem::create([
+        'bar_order_id' => $barOrderAfter->id,
+        'inventory_item_id' => null,
+        'quantity' => 2,
+        'price' => 10000,
+        'is_completed' => true,
+    ]);
+
+    (new DashboardSyncService)->sync();
+
+    $dashboard = Dashboard::query()->findOrFail(1);
+
+    expect((float) $dashboard->total_amount)->toBe(46000.0)
+        ->and((float) $dashboard->total_tax)->toBe(4000.0)
+        ->and((float) $dashboard->total_service_charge)->toBe(2000.0)
+        ->and((float) $dashboard->total_cash)->toBe(46000.0)
+        ->and((int) $dashboard->total_kitchen_items)->toBe(0)
+        ->and((int) $dashboard->total_bar_items)->toBe(2)
+        ->and((int) $dashboard->total_transactions)->toBe(1);
 });

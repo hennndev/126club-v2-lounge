@@ -17,7 +17,7 @@ class TransactionHistoryController extends Controller
     public function index(Request $request)
     {
         $query = Order::with([
-            'items',
+            'items.inventoryItem.printers',
             'tableSession.table',
             'tableSession.reservation',
             'tableSession.customer.profile',
@@ -36,11 +36,13 @@ class TransactionHistoryController extends Controller
             });
         }
 
-        $orders = $query->latest('ordered_at')->paginate(25)->withQueryString();
+        $perPage = in_array((int) $request->get('per_page'), [10, 25, 50, 100]) ? (int) $request->get('per_page') : 25;
+        $orders = $query->latest('ordered_at')->paginate($perPage)->withQueryString();
 
         $orders->getCollection()->transform(function (Order $order) {
-            $hasKitchenItems = $order->items->contains(fn ($item) => $item->preparation_location === 'kitchen');
-            $hasBarItems = $order->items->contains(fn ($item) => $item->preparation_location === 'bar');
+            $assignedPrinterTypes = $this->resolveOrderAssignedPrinterTypes($order);
+            $hasKitchenItems = $assignedPrinterTypes->contains('kitchen');
+            $hasBarItems = $assignedPrinterTypes->contains('bar');
 
             $order->setAttribute('print_types', [
                 'resmi' => true,
@@ -56,6 +58,58 @@ class TransactionHistoryController extends Controller
 
             return $order;
         });
+
+        $orderPrintPayloads = $orders->getCollection()
+            ->mapWithKeys(function (Order $order) {
+                $isToday = $order->ordered_at && $order->ordered_at->isToday();
+                $displayId = $isToday ? 'TRX-TODAY-'.$order->id : 'TRX-'.$order->id;
+                $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
+
+                return [
+                    $order->id => [
+                        'id' => $order->id,
+                        'displayId' => $displayId,
+                        'total' => 'Rp '.number_format((float) $order->total, 0, ',', '.'),
+                        'customer' => $customerName ?? 'Walk-in',
+                        'time' => $order->ordered_at?->format('H:i') ?? '—',
+                        'printTypes' => $order->print_types,
+                        'printCounts' => $order->print_counts,
+                    ],
+                ];
+            })
+            ->toArray();
+
+        $orderDetailPayloads = $orders->getCollection()
+            ->mapWithKeys(function (Order $order) {
+                $isToday = $order->ordered_at && $order->ordered_at->isToday();
+                $displayId = $isToday ? 'TRX-TODAY-'.$order->id : 'TRX-'.$order->id;
+                $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
+                $tableName = $order->tableSession?->table?->table_number;
+                $areaName = $order->tableSession?->table?->area?->name;
+                $taxTotal = $order->items->sum(fn ($item) => (float) $item->tax_amount);
+                $serviceChargeTotal = $order->items->sum(fn ($item) => (float) $item->service_charge_amount);
+
+                return [
+                    $order->id => [
+                        'id' => $order->id,
+                        'displayId' => $displayId,
+                        'customer' => $customerName ?? 'Walk-in',
+                        'time' => $order->ordered_at?->format('d M Y H:i') ?? '—',
+                        'table' => $tableName ? trim(($areaName ? $areaName.' ' : '').$tableName) : 'Walk-in',
+                        'total' => 'Rp '.number_format((float) $order->total, 0, ',', '.'),
+                        'items' => $order->items->map(fn ($item) => [
+                            'name' => $item->item_name,
+                            'qty' => (int) $item->quantity,
+                            'subtotal' => 'Rp '.number_format((float) $item->subtotal, 0, ',', '.'),
+                        ])->values(),
+                        'taxTotal' => $taxTotal,
+                        'taxTotalFormatted' => 'Rp '.number_format($taxTotal, 0, ',', '.'),
+                        'serviceChargeTotal' => $serviceChargeTotal,
+                        'serviceChargeTotalFormatted' => 'Rp '.number_format($serviceChargeTotal, 0, ',', '.'),
+                    ],
+                ];
+            })
+            ->toArray();
 
         $totalOrders = Order::whereNotIn('status', ['cancelled'])->count();
         $todayOrders = Order::whereNotIn('status', ['cancelled'])
@@ -86,6 +140,9 @@ class TransactionHistoryController extends Controller
             'totalRevenue',
             'printerLocations',
             'hasAnyActivePrinter',
+            'orderPrintPayloads',
+            'orderDetailPayloads',
+            'perPage',
         ));
     }
 
@@ -96,7 +153,7 @@ class TransactionHistoryController extends Controller
 
         try {
             $order->load([
-                'items',
+                'items.inventoryItem.printers',
                 'tableSession.table',
                 'tableSession.customer',
                 'kitchenOrder.items.inventoryItem',
@@ -112,8 +169,9 @@ class TransactionHistoryController extends Controller
                 ], 422);
             }
 
-            $hasKitchenItems = $order->items->contains(fn ($item) => $item->preparation_location === 'kitchen');
-            $hasBarItems = $order->items->contains(fn ($item) => $item->preparation_location === 'bar');
+            $assignedPrinterTypes = $this->resolveOrderAssignedPrinterTypes($order);
+            $hasKitchenItems = $assignedPrinterTypes->contains('kitchen');
+            $hasBarItems = $assignedPrinterTypes->contains('bar');
 
             if ($type === 'kitchen' && ! $hasKitchenItems) {
                 return response()->json([
@@ -203,5 +261,30 @@ class TransactionHistoryController extends Controller
                 'message' => 'Gagal mencetak: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    protected function resolveOrderAssignedPrinterTypes(Order $order): \Illuminate\Support\Collection
+    {
+        return $order->items
+            ->flatMap(function ($item) {
+                return $item->inventoryItem?->printers
+                    ?->filter(fn (Printer $printer): bool => $printer->is_active)
+                    ->map(function (Printer $printer): ?string {
+                        $type = strtolower(trim((string) $printer->printer_type));
+
+                        if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker'], true)) {
+                            return $type;
+                        }
+
+                        $location = strtolower(trim((string) $printer->location));
+
+                        return in_array($location, ['kitchen', 'bar', 'cashier', 'checker'], true) ? $location : null;
+                    })
+                    ->filter()
+                    ->values()
+                    ?? collect();
+            })
+            ->unique()
+            ->values();
     }
 }

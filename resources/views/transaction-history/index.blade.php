@@ -114,7 +114,24 @@
       <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <h2 class="font-semibold text-gray-800">Daftar Transaksi</h2>
         <div class="flex items-center gap-3">
-          <!-- Search -->
+          <!-- Per Page + Search -->
+          <form method="GET"
+                action="{{ route('admin.transaction-history.index') }}"
+                class="flex items-center gap-2">
+            <select name="per_page"
+                    onchange="this.form.submit()"
+                    class="text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white text-gray-700">
+              @foreach ([10, 25, 50, 100] as $option)
+                <option value="{{ $option }}"
+                        {{ $perPage === $option ? 'selected' : '' }}>{{ $option }} per halaman</option>
+              @endforeach
+            </select>
+            @if (request('search'))
+              <input type="hidden"
+                     name="search"
+                     value="{{ request('search') }}">
+            @endif
+          </form>
           <form method="GET"
                 action="{{ route('admin.transaction-history.index') }}">
             <div class="relative">
@@ -123,6 +140,11 @@
                      value="{{ request('search') }}"
                      placeholder="Cari transaksi atau customer..."
                      class="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 w-64">
+              @if (request('per_page'))
+                <input type="hidden"
+                       name="per_page"
+                       value="{{ request('per_page') }}">
+              @endif
               <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5"
                    fill="none"
                    stroke="currentColor"
@@ -174,7 +196,8 @@
                   $tableName = $order->tableSession?->table?->table_number;
                   $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
                 @endphp
-                <tr class="hover:bg-gray-50 transition-colors">
+                <tr x-on:click="openOrderDetailById({{ $order->id }})"
+                    class="hover:bg-gray-50 transition-colors cursor-pointer">
                   <td class="px-5 py-3.5 whitespace-nowrap">
                     @if ($order->ordered_at)
                       <div class="font-medium text-gray-500 text-xs">{{ $order->ordered_at->format('d M') }}</div>
@@ -219,16 +242,9 @@
                     <span class="font-semibold text-gray-800">Rp {{ number_format($order->total, 0, ',', '.') }}</span>
                   </td>
 
-                  <td class="px-5 py-3.5 text-center">
-                    <button @click="openPrintModal({
-                               id: {{ $order->id }},
-                               displayId: '{{ $displayId }}',
-                               total: 'Rp {{ number_format($order->total, 0, ',', '.') }}',
-                               customer: '{{ $customerName ?? 'Walk-in' }}',
-                               time: '{{ $order->ordered_at?->format('H:i') ?? '—' }}',
-                               printTypes: @js($order->print_types),
-                               printCounts: @js($order->print_counts)
-                             })"
+                  <td x-on:click.stop
+                      class="px-5 py-3.5 text-center">
+                    <button x-on:click.stop="openPrintModalById({{ $order->id }})"
                             class="inline-flex items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 transition text-gray-400 hover:text-gray-700">
                       <svg class="w-5 h-5"
                            fill="none"
@@ -249,10 +265,164 @@
 
         @if ($orders->hasPages())
           <div class="px-5 py-4 border-t border-gray-100">
-            {{ $orders->links() }}
+            <div class="flex items-center justify-between gap-4 text-sm">
+              <p class="text-gray-500">
+                Menampilkan
+                <span class="font-semibold text-gray-700">{{ $orders->firstItem() }}</span>
+                -
+                <span class="font-semibold text-gray-700">{{ $orders->lastItem() }}</span>
+                dari
+                <span class="font-semibold text-gray-700">{{ $orders->total() }}</span>
+                transaksi
+              </p>
+
+              <div class="flex items-center gap-1.5">
+                @if ($orders->onFirstPage())
+                  <span class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed">Prev</span>
+                @else
+                  <a href="{{ $orders->previousPageUrl() }}"
+                     class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">Prev</a>
+                @endif
+
+                @foreach ($orders->getUrlRange(max(1, $orders->currentPage() - 2), min($orders->lastPage(), $orders->currentPage() + 2)) as $page => $url)
+                  @if ($page === $orders->currentPage())
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-800 text-white font-semibold">{{ $page }}</span>
+                  @else
+                    <a href="{{ $url }}"
+                       class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">{{ $page }}</a>
+                  @endif
+                @endforeach
+
+                @if ($orders->hasMorePages())
+                  <a href="{{ $orders->nextPageUrl() }}"
+                     class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">Next</a>
+                @else
+                  <span class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed">Next</span>
+                @endif
+              </div>
+            </div>
           </div>
         @endif
       @endif
+    </div>
+
+    <!-- Order Detail Modal (Row Click) -->
+    <div x-show="showOrderDetailModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 flex items-center justify-center"
+         style="display: none;">
+      <div class="absolute inset-0 bg-black/50"
+           @click="closeOrderDetailModal()"></div>
+
+      <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 class="font-semibold text-gray-900">Detail Pesanan</h3>
+          <button @click="closeOrderDetailModal()"
+                  class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+            <svg class="w-4 h-4"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="px-6 py-5 space-y-4">
+          <div class="grid grid-cols-2 gap-3 text-sm bg-gray-50 rounded-xl p-4">
+            <div>
+              <p class="text-xs text-gray-400 mb-0.5">No. Transaksi</p>
+              <p class="font-semibold text-gray-800"
+                 x-text="selectedDetailOrder?.displayId"></p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400 mb-0.5">Pelanggan</p>
+              <p class="font-semibold text-gray-800"
+                 x-text="selectedDetailOrder?.customer"></p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400 mb-0.5">Meja</p>
+              <p class="font-semibold text-gray-800"
+                 x-text="selectedDetailOrder?.table"></p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400 mb-0.5">Waktu</p>
+              <p class="font-semibold text-gray-800"
+                 x-text="selectedDetailOrder?.time"></p>
+            </div>
+          </div>
+
+          <div class="border border-gray-100 rounded-xl overflow-hidden">
+            <template x-if="!selectedDetailOrder?.items?.length">
+              <p class="text-sm text-gray-400 p-4">Tidak ada item.</p>
+            </template>
+            <template x-if="selectedDetailOrder?.items?.length">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Item</th>
+                    <th class="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Qty</th>
+                    <th class="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <template x-for="item in (selectedDetailOrder?.items ?? [])"
+                            :key="item.name + '-' + item.qty">
+                    <tr>
+                      <td class="px-4 py-2.5 text-gray-700"
+                          x-text="item.name"></td>
+                      <td class="px-4 py-2.5 text-center text-gray-600"
+                          x-text="item.qty"></td>
+                      <td class="px-4 py-2.5 text-right text-gray-700"
+                          x-text="item.subtotal"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </template>
+          </div>
+
+          <div class="space-y-2">
+            <template x-if="(selectedDetailOrder?.taxTotal ?? 0) > 0">
+              <div class="flex items-center justify-between">
+                <p class="text-sm text-gray-500">PPN</p>
+                <p class="text-sm font-semibold text-gray-700"
+                   x-text="selectedDetailOrder?.taxTotalFormatted"></p>
+              </div>
+            </template>
+
+            <template x-if="(selectedDetailOrder?.serviceChargeTotal ?? 0) > 0">
+              <div class="flex items-center justify-between">
+                <p class="text-sm text-gray-500">Service Charge</p>
+                <p class="text-sm font-semibold text-gray-700"
+                   x-text="selectedDetailOrder?.serviceChargeTotalFormatted"></p>
+              </div>
+            </template>
+
+          </div>
+
+          <div class="flex items-center justify-between">
+            <p class="text-sm text-gray-500">Total</p>
+            <p class="text-base font-bold text-gray-900"
+               x-text="selectedDetailOrder?.total"></p>
+          </div>
+
+          <div class="flex gap-3">
+            <button @click="closeOrderDetailModal()"
+                    class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
+              Tutup
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Print Modal -->
@@ -508,10 +678,15 @@
 
   </div>
   <script>
+    const transactionHistoryOrderPayloads = @js($orderPrintPayloads);
+    const transactionHistoryOrderDetailPayloads = @js($orderDetailPayloads);
+
     function transactionHistory() {
       return {
         showPrintModal: false,
+        showOrderDetailModal: false,
         selectedOrder: null,
+        selectedDetailOrder: null,
         printing: false,
         toastMessage: '',
         toastSuccess: false,
@@ -530,6 +705,45 @@
           this.selectedOrder = order;
           this.toastMessage = '';
           this.showPrintModal = true;
+        },
+
+        openOrderDetailById(orderId) {
+          const payload = transactionHistoryOrderDetailPayloads[String(orderId)] ?? transactionHistoryOrderDetailPayloads[orderId] ?? null;
+
+          if (!payload) {
+            return;
+          }
+
+          this.showPrintModal = false;
+          this.selectedOrder = null;
+          this.selectedDetailOrder = payload;
+          this.showOrderDetailModal = true;
+        },
+
+        closeOrderDetailModal() {
+          this.showOrderDetailModal = false;
+          this.selectedDetailOrder = null;
+        },
+
+        openPrintFromDetail() {
+          const orderId = this.selectedDetailOrder?.id;
+
+          if (!orderId) {
+            return;
+          }
+
+          this.closeOrderDetailModal();
+          this.openPrintModalById(orderId);
+        },
+
+        openPrintModalById(orderId) {
+          const payload = transactionHistoryOrderPayloads[String(orderId)] ?? transactionHistoryOrderPayloads[orderId] ?? null;
+
+          if (!payload) {
+            return;
+          }
+
+          this.openPrintModal(payload);
         },
 
         closePrintModal() {

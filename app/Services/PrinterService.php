@@ -116,33 +116,8 @@ class PrinterService
         Log::info('data', ['data' => $receiptTotals]);
 
         if ($printer->connection_type === 'log') {
-            $lines = [
-                "Order  : {$order->order_number}",
-                'Date   : '.$order->ordered_at->format('d/m/Y H:i'),
-                'Table  : '.($order->tableSession?->table?->table_number ?? 'N/A'),
-                "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
-                '',
-            ];
-            foreach ($order->items as $item) {
-                $lines[] = "  {$item->quantity}x {$item->item_name}  Rp ".number_format($item->subtotal, 0, ',', '.');
-            }
-            $lines[] = '';
-            if ($receiptTotals !== null) {
-                $lines[] = 'Subtotal: Rp '.number_format($receiptTotals['items_total'], 0, ',', '.');
-
-                if ($receiptTotals['discount_amount'] > 0) {
-                    $lines[] = 'Diskon  : Rp '.number_format($receiptTotals['discount_amount'], 0, ',', '.');
-                }
-
-                if ($receiptTotals['service_charge'] > 0) {
-                    $lines[] = 'Service : Rp '.number_format($receiptTotals['service_charge'], 0, ',', '.');
-                }
-
-                if ($receiptTotals['tax'] > 0) {
-                    $lines[] = 'PPN     : Rp '.number_format($receiptTotals['tax'], 0, ',', '.');
-                }
-            }
-            $lines[] = 'TOTAL  : Rp '.number_format($order->total, 0, ',', '.');
+            $lines = $this->buildReceiptSimulationLines($order, $printer, $receiptTotals);
+            $lines[] = 'Status : SUCCESS (LOG MODE)';
             $this->logPrint('RECEIPT', $lines);
 
             return true;
@@ -217,10 +192,55 @@ class PrinterService
             $escpos->feed(3);
             $escpos->cut();
 
+            $previewLines = $this->buildReceiptSimulationLines($order, $printer, $receiptTotals);
+            $previewLines[] = 'Status : SUCCESS (SENT TO PRINTER)';
+            $this->logPrint('RECEIPT PREVIEW', $previewLines);
+
             return true;
         } finally {
             $escpos->close();
         }
+    }
+
+    /**
+     * @param  array{items_total: float, discount_amount: float, service_charge: float, tax: float}|null  $receiptTotals
+     * @return array<int, string>
+     */
+    protected function buildReceiptSimulationLines(Order $order, Printer $printer, ?array $receiptTotals): array
+    {
+        $lines = [
+            "Order  : {$order->order_number}",
+            'Date   : '.$order->ordered_at->format('d/m/Y H:i'),
+            'Table  : '.($order->tableSession?->table?->table_number ?? 'N/A'),
+            "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
+            '',
+        ];
+
+        foreach ($order->items as $item) {
+            $lines[] = "  {$item->quantity}x {$item->item_name}  Rp ".number_format($item->subtotal, 0, ',', '.');
+        }
+
+        $lines[] = '';
+
+        if ($receiptTotals !== null) {
+            $lines[] = 'Subtotal: Rp '.number_format($receiptTotals['items_total'], 0, ',', '.');
+
+            if ($receiptTotals['discount_amount'] > 0) {
+                $lines[] = 'Diskon  : Rp '.number_format($receiptTotals['discount_amount'], 0, ',', '.');
+            }
+
+            if ($receiptTotals['service_charge'] > 0) {
+                $lines[] = 'Service : Rp '.number_format($receiptTotals['service_charge'], 0, ',', '.');
+            }
+
+            if ($receiptTotals['tax'] > 0) {
+                $lines[] = 'PPN     : Rp '.number_format($receiptTotals['tax'], 0, ',', '.');
+            }
+        }
+
+        $lines[] = 'TOTAL  : Rp '.number_format($order->total, 0, ',', '.');
+
+        return $lines;
     }
 
     /**

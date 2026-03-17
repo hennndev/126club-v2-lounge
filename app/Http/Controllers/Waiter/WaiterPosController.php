@@ -41,7 +41,7 @@ class WaiterPosController extends Controller
         $posSettings = PosCategorySetting::allKeyed();
 
         $itemId = str_replace('item_', '', $productId);
-        $inventoryItem = InventoryItem::find($itemId);
+        $inventoryItem = InventoryItem::with('printers')->find($itemId);
         $setting = $posSettings->get($inventoryItem?->category_type);
 
         if (! $inventoryItem || ! $setting || ! $setting->show_in_pos) {
@@ -71,7 +71,7 @@ class WaiterPosController extends Controller
                 'name' => $inventoryItem->name,
                 'price' => (float) $inventoryItem->price,
                 'quantity' => 1,
-                'preparation_location' => $setting->preparation_location ?? 'direct',
+                'preparation_location' => $this->resolvePreparationLocationFromPrinters($inventoryItem) ?? $setting->preparation_location ?? 'direct',
             ];
         }
 

@@ -86,6 +86,39 @@ test('creating a booking does not change table status to reserved', function () 
     expect($table->status)->toBe('available');
 });
 
+test('creating a booking is blocked when customer has an active table session', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area);
+    $otherTable = makeTable($area, ['table_number' => 'T-OTHER-'.uniqid()]);
+    $customer = makeBookingCustomer();
+
+    TableSession::create([
+        'table_id' => $otherTable->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'status' => 'active',
+        'checked_in_at' => now(),
+    ]);
+
+    $this->actingAs($admin)
+        ->from(route('admin.bookings.index'))
+        ->post(route('admin.bookings.store'), [
+            'table_id' => $table->id,
+            'customer_id' => $customer->id,
+            'reservation_date' => now()->addDays(1)->toDateString(),
+            'reservation_time' => '19:00',
+        ])
+        ->assertRedirect(route('admin.bookings.index'))
+        ->assertSessionHasErrors('customer_id');
+
+    $bookingCount = TableReservation::where('table_id', $table->id)
+        ->where('customer_id', $customer->id)
+        ->count();
+
+    expect($bookingCount)->toBe(0);
+});
+
 test('confirming a booking sets table status to reserved', function () {
     $admin = adminUser();
     $area = makeArea();
@@ -193,6 +226,30 @@ test('cancelling a booking sets table status back to available', function () {
 
     $table->refresh();
     expect($table->status)->toBe('available');
+});
+
+test('booking modal keeps table selectable when only cancelled booking exists', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'reserved']);
+    $customer = makeBookingCustomer();
+
+    TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->addDay()->toDateString(),
+        'reservation_time' => '19:00',
+        'status' => 'cancelled',
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.bookings.index'))
+        ->assertOk();
+
+    $response->assertSee($table->table_number)
+        ->assertSee('•Free')
+        ->assertDontSee('•Busy');
 });
 
 test('pending tab shows pending bookings and is accessible', function () {

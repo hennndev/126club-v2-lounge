@@ -20,6 +20,8 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         'total_debit' => 90000,
         'total_kredit' => 80000,
         'total_qris' => 110000,
+        'total_kitchen_items' => 25,
+        'total_bar_items' => 30,
         'total_transactions' => 10,
         'last_synced_at' => now(),
     ]);
@@ -30,16 +32,22 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Ringkasan Transaksi Dashboard')
         ->assertSeeText('Total Pajak')
         ->assertSeeText('Total Service Charge')
+        ->assertSeeText('Total Pembayaran Tunai')
         ->assertSeeText('Total Pembayaran Transfer')
         ->assertSeeText('Total Pembayaran Debit')
         ->assertSeeText('Total Pembayaran Kredit')
         ->assertSeeText('Total Pembayaran QRIS')
+        ->assertSeeText('Total Item Keluar Kitchen')
+        ->assertSeeText('Total Item Keluar Bar')
         ->assertSeeText('Rp 15.000')
         ->assertSeeText('Rp 12.000')
+        ->assertSeeText('Rp 100.000')
         ->assertSeeText('Rp 120.000')
         ->assertSeeText('Rp 90.000')
         ->assertSeeText('Rp 80.000')
         ->assertSeeText('Rp 110.000')
+        ->assertSeeText('25')
+        ->assertSeeText('30')
         ->assertSeeText('Sync Dashboard Hari Ini');
 });
 

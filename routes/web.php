@@ -154,6 +154,8 @@ Route::middleware('auth')->group(function () {
         // End-day Recap
         Route::get('recap', [RecapController::class, 'index'])->name('recap.index');
         Route::get('recap/export', [RecapController::class, 'export'])->name('recap.export');
+        Route::post('recap/close-export', [RecapController::class, 'closeAndExport'])->name('recap.close-export');
+        Route::get('recap/history/{recapHistory}/export', [RecapController::class, 'exportHistory'])->name('recap.history.export');
 
         // Waiter Performance
         Route::get('waiter-performance', [WaiterPerformanceController::class, 'index'])->name('waiter-performance.index');

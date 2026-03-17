@@ -293,16 +293,44 @@
     <div x-show="activeTab === 'list'">
 
       <div class="mt-2 space-y-4">
-        <div class="flex items-center justify-between gap-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 class="text-xl font-bold text-gray-900">Daftar Menu</h2>
             <p class="text-sm text-gray-500">Menu ditampilkan berdasarkan kategori yang ditandai sebagai menu.</p>
           </div>
+
+          <form method="GET"
+                action="{{ route('admin.menus.index') }}"
+                class="flex w-full gap-2">
+            <input type="text"
+                   name="search"
+                   value="{{ $search ?? '' }}"
+                   placeholder="Cari nama menu / nama POS / kode..."
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-500 focus:ring-slate-500 lg:w-[36rem]">
+            <button type="submit"
+                    class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-900">
+              Cari
+            </button>
+            @if (filled($search ?? null))
+              <a href="{{ route('admin.menus.index') }}"
+                 class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                Reset
+              </a>
+            @endif
+          </form>
         </div>
+
+        @if (filled($search ?? null))
+          <p class="text-sm text-gray-500">Hasil pencarian untuk: <span class="font-semibold text-gray-700">{{ $search }}</span></p>
+        @endif
 
         @if ($menuCategoryTypes->isEmpty())
           <div class="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-10 text-center text-sm text-gray-500">
-            Belum ada kategori menu aktif, jadi daftar menu belum dapat ditampilkan.
+            @if (filled($search ?? null))
+              Tidak ada menu yang cocok dengan pencarian.
+            @else
+              Belum ada kategori menu aktif, jadi daftar menu belum dapat ditampilkan.
+            @endif
           </div>
         @else
           <div class="space-y-5">

@@ -334,7 +334,8 @@
 
   {{-- ── Print Button (screen only) ── --}}
   <button class="print-btn no-print"
-          onclick="window.print()">
+          id="printReceiptButton"
+          onclick="triggerReceiptPrint()">
     <svg xmlns="http://www.w3.org/2000/svg"
          width="16"
          height="16"
@@ -349,10 +350,74 @@
     Cetak Struk
   </button>
 
+  <p id="printStatus"
+     class="no-print"
+     style="margin-top:10px;font-size:12px;color:#334155;"></p>
+
   <script>
+    const receiptOrderId = {{ (int) $order->id }};
+    const receiptPrintEndpoint = "{{ url('admin/pos/print-receipt') }}/" + receiptOrderId;
+    const csrfToken = "{{ csrf_token() }}";
+    let isPrintingRequestInProgress = false;
+
+    async function triggerReceiptPrint() {
+      if (isPrintingRequestInProgress) {
+        return;
+      }
+
+      isPrintingRequestInProgress = true;
+
+      const statusEl = document.getElementById('printStatus');
+      const printButton = document.getElementById('printReceiptButton');
+
+      if (statusEl) {
+        statusEl.textContent = 'Mengirim struk ke printer...';
+      }
+
+      if (printButton) {
+        printButton.disabled = true;
+        printButton.style.opacity = '0.7';
+      }
+
+      try {
+        const response = await fetch(receiptPrintEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': csrfToken,
+          },
+        });
+
+        const payload = await response.json();
+
+        if (response.ok && payload.success) {
+          if (statusEl) {
+            statusEl.textContent = 'Struk berhasil dikirim ke printer.';
+          }
+        } else {
+          if (statusEl) {
+            statusEl.textContent = payload.message || 'Gagal mengirim struk ke printer.';
+          }
+        }
+      } catch (error) {
+        if (statusEl) {
+          statusEl.textContent = 'Gagal mengirim struk ke printer.';
+        }
+      } finally {
+        if (printButton) {
+          printButton.disabled = false;
+          printButton.style.opacity = '1';
+        }
+
+        isPrintingRequestInProgress = false;
+        window.print();
+      }
+    }
+
     window.addEventListener('load', function() {
       setTimeout(function() {
-        window.print();
+        triggerReceiptPrint();
       }, 400);
     });
   </script>

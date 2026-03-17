@@ -150,6 +150,11 @@
           <p class="text-2xl font-bold text-orange-800 mt-1">Rp {{ number_format($dashboardTotalServiceCharge, 0, ',', '.') }}</p>
         </div>
 
+        <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <p class="text-sm font-medium text-gray-700">Total Pembayaran Tunai</p>
+          <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($dashboardTotalCash, 0, ',', '.') }}</p>
+        </div>
+
         <div class="p-4 bg-sky-50 border border-sky-200 rounded-lg">
           <p class="text-sm font-medium text-sky-700">Total Pembayaran Transfer</p>
           <p class="text-2xl font-bold text-sky-800 mt-1">Rp {{ number_format($dashboardTotalTransfer, 0, ',', '.') }}</p>
@@ -168,6 +173,16 @@
         <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
           <p class="text-sm font-medium text-emerald-700">Total Pembayaran QRIS</p>
           <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardTotalQris, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-rose-50 border border-rose-200 rounded-lg">
+          <p class="text-sm font-medium text-rose-700">Total Item Keluar Kitchen</p>
+          <p class="text-2xl font-bold text-rose-800 mt-1">{{ number_format($dashboardTotalKitchenItems, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-cyan-50 border border-cyan-200 rounded-lg">
+          <p class="text-sm font-medium text-cyan-700">Total Item Keluar Bar</p>
+          <p class="text-2xl font-bold text-cyan-800 mt-1">{{ number_format($dashboardTotalBarItems, 0, ',', '.') }}</p>
         </div>
       </div>
     </div>

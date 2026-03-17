@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\GeneralSetting;
+use App\Models\Printer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -13,8 +14,9 @@ class GeneralSettingController extends Controller
     public function index(): View
     {
         $settings = GeneralSetting::instance();
+        $printers = Printer::active()->orderBy('name')->get();
 
-        return view('settings.general-settings', compact('settings'));
+        return view('settings.general-settings', compact('settings', 'printers'));
     }
 
     public function update(Request $request): RedirectResponse
@@ -22,6 +24,8 @@ class GeneralSettingController extends Controller
         $validated = $request->validate([
             'tax_percentage' => ['required', 'integer', 'min:0', 'max:100'],
             'service_charge_percentage' => ['required', 'integer', 'min:0', 'max:100'],
+            'closed_billing_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
+            'walk_in_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
         ]);
 
         GeneralSetting::instance()->update($validated);

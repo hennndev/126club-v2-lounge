@@ -7,6 +7,7 @@ use App\Models\Billing;
 use App\Models\Dashboard;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrderItem;
+use App\Models\RecapHistory;
 use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Services\DashboardSyncService;
@@ -17,6 +18,7 @@ class DashboardController extends Controller
     public function index()
     {
         $today = today();
+        $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
 
         // --- Revenue & Transactions (paid billings today) ---
         $todayBillings = Billing::whereDate('updated_at', $today)
@@ -24,7 +26,8 @@ class DashboardController extends Controller
             ->where(function ($query) {
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
-            });
+            })
+            ->when($lastCloseAt, fn ($query) => $query->where('updated_at', '>', $lastCloseAt));
 
         $revenueToday = (clone $todayBillings)->sum('grand_total');
         $transactionsToday = (clone $todayBillings)->count();
@@ -33,11 +36,13 @@ class DashboardController extends Controller
         $barItemsSold = BarOrderItem::whereHas(
             'barOrder',
             fn ($q) => $q->whereDate('created_at', $today)
+                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
         $kitchenItemsSold = KitchenOrderItem::whereHas(
             'kitchenOrder',
             fn ($q) => $q->whereDate('created_at', $today)
+                ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
         $itemsSoldToday = $barItemsSold + $kitchenItemsSold;
@@ -60,10 +65,13 @@ class DashboardController extends Controller
         $dashboardAggregate = Dashboard::query()->find(1);
         $dashboardTotalTax = (float) ($dashboardAggregate?->total_tax ?? 0);
         $dashboardTotalServiceCharge = (float) ($dashboardAggregate?->total_service_charge ?? 0);
+        $dashboardTotalCash = (float) ($dashboardAggregate?->total_cash ?? 0);
         $dashboardTotalTransfer = (float) ($dashboardAggregate?->total_transfer ?? 0);
         $dashboardTotalDebit = (float) ($dashboardAggregate?->total_debit ?? 0);
         $dashboardTotalKredit = (float) ($dashboardAggregate?->total_kredit ?? 0);
         $dashboardTotalQris = (float) ($dashboardAggregate?->total_qris ?? 0);
+        $dashboardTotalKitchenItems = (int) ($dashboardAggregate?->total_kitchen_items ?? 0);
+        $dashboardTotalBarItems = (int) ($dashboardAggregate?->total_bar_items ?? 0);
 
         return view('dashboard', compact(
             'revenueToday',
@@ -79,10 +87,13 @@ class DashboardController extends Controller
             'outOfStockCount',
             'dashboardTotalTax',
             'dashboardTotalServiceCharge',
+            'dashboardTotalCash',
             'dashboardTotalTransfer',
             'dashboardTotalDebit',
             'dashboardTotalKredit',
             'dashboardTotalQris',
+            'dashboardTotalKitchenItems',
+            'dashboardTotalBarItems',
         ));
     }
 

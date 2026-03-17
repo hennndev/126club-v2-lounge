@@ -82,6 +82,50 @@
           @enderror
         </div>
 
+        <div class="p-6">
+          <label class="block text-sm font-semibold text-slate-700 mb-1"
+                 for="closed_billing_receipt_printer_id">
+            Printer Struk Closed Billing
+          </label>
+          <p class="text-xs text-slate-400 mb-3">Pilih printer default untuk cetak struk otomatis saat billing booking ditutup.</p>
+          <select id="closed_billing_receipt_printer_id"
+                  name="closed_billing_receipt_printer_id"
+                  class="w-full border @error('closed_billing_receipt_printer_id') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
+            <option value="">Kasir Default (otomatis)</option>
+            @foreach ($printers as $printer)
+              <option value="{{ $printer->id }}"
+                      {{ (string) old('closed_billing_receipt_printer_id', $settings->closed_billing_receipt_printer_id) === (string) $printer->id ? 'selected' : '' }}>
+                {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
+              </option>
+            @endforeach
+          </select>
+          @error('closed_billing_receipt_printer_id')
+            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+          @enderror
+        </div>
+
+        <div class="p-6">
+          <label class="block text-sm font-semibold text-slate-700 mb-1"
+                 for="walk_in_receipt_printer_id">
+            Printer Struk Walk-in
+          </label>
+          <p class="text-xs text-slate-400 mb-3">Pilih printer default untuk cetak struk otomatis transaksi walk-in.</p>
+          <select id="walk_in_receipt_printer_id"
+                  name="walk_in_receipt_printer_id"
+                  class="w-full border @error('walk_in_receipt_printer_id') border-red-400 @else border-slate-300 @enderror rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400 outline-none bg-white">
+            <option value="">Kasir Default (otomatis)</option>
+            @foreach ($printers as $printer)
+              <option value="{{ $printer->id }}"
+                      {{ (string) old('walk_in_receipt_printer_id', $settings->walk_in_receipt_printer_id) === (string) $printer->id ? 'selected' : '' }}>
+                {{ $printer->name }} ({{ strtoupper($printer->printer_type ?? $printer->location) }})
+              </option>
+            @endforeach
+          </select>
+          @error('walk_in_receipt_printer_id')
+            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+          @enderror
+        </div>
+
       </div>
 
       <!-- Info box -->
@@ -98,7 +142,7 @@
           </svg>
           Catatan
         </p>
-        <p>Pengaturan ini hanya menyimpan nilai persentase. Penerapan pada kalkulasi billing perlu diintegrasikan secara terpisah.</p>
+        <p>Pengaturan ini mengatur persentase charge dan printer default untuk cetak struk otomatis.</p>
       </div>
 
       <div class="mt-6 flex items-center gap-3">

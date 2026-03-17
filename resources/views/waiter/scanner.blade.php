@@ -383,12 +383,61 @@
             this.cameraActive = false;
           },
 
+          normalizeScannedCode(rawCode) {
+            const scannedValue = String(rawCode ?? '').trim();
+
+            if (!scannedValue) {
+              return '';
+            }
+
+            try {
+              const parsedJson = JSON.parse(scannedValue);
+
+              if (typeof parsedJson === 'string' && parsedJson.trim() !== '') {
+                return parsedJson.trim();
+              }
+
+              if (typeof parsedJson === 'object' && parsedJson !== null) {
+                const qrCodeFromObject = parsedJson.qr_code ?? parsedJson.qrCode ?? parsedJson.code;
+
+                if (typeof qrCodeFromObject === 'string' && qrCodeFromObject.trim() !== '') {
+                  return qrCodeFromObject.trim();
+                }
+              }
+            } catch (_) {}
+
+            try {
+              const parsedUrl = new URL(scannedValue);
+              const qrCodeFromUrl = parsedUrl.searchParams.get('qr_code') ??
+                parsedUrl.searchParams.get('code') ??
+                parsedUrl.searchParams.get('check_in_qr_code');
+
+              if (qrCodeFromUrl && qrCodeFromUrl.trim() !== '') {
+                return qrCodeFromUrl.trim();
+              }
+            } catch (_) {}
+
+            return scannedValue;
+          },
+
           async processCode(code) {
             if (!code) {
               return;
             }
+
+            const normalizedCode = this.normalizeScannedCode(code);
+
+            if (!normalizedCode) {
+              this.scanResult = {
+                success: false,
+                message: 'QR code tidak terbaca.'
+              };
+              return;
+            }
+
             this.scanResult = null;
             this.checkInSuccess = false;
+
             try {
               const res = await fetch('{{ route('waiter.table-scanner.scan') }}', {
                 method: 'POST',
@@ -397,13 +446,15 @@
                   'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                 },
                 body: JSON.stringify({
-                  qr_code: code
+                  qr_code: normalizedCode
                 }),
               });
+
               this.scanResult = await res.json();
-              if (!this.scanResult.success && this.scanResult.status !== 404) {
+
+              if (!this.scanResult.success && res.status !== 404) {
                 // also try as check-in QR
-                await this.processCheckInQr(code);
+                await this.processCheckInQr(normalizedCode);
               }
             } catch (e) {
               this.scanResult = {
@@ -435,8 +486,18 @@
                   this.checkInSuccess = false;
                   this.waiterAssigned = false;
                 }, 5000);
+              } else {
+                this.scanResult = {
+                  success: false,
+                  message: data.message ?? 'QR code check-in tidak valid.'
+                };
               }
-            } catch (_) {}
+            } catch (_) {
+              this.scanResult = {
+                success: false,
+                message: 'Gagal memproses check-in QR.'
+              };
+            }
           },
 
           async processCheckIn() {

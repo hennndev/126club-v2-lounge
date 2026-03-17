@@ -1,7 +1,7 @@
 <!-- Close Billing Modal -->
 <div id="closeBillingModal"
-     class="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 hidden">
-  <div class="bg-white w-full sm:max-w-md sm:mx-4 rounded-t-2xl sm:rounded-2xl shadow-xl"
+     class="fixed inset-0 z-50 hidden flex items-end justify-center overflow-y-auto bg-black/50 sm:items-center">
+  <div class="flex max-h-[90vh] w-full flex-col rounded-t-2xl bg-white shadow-xl sm:mx-4 sm:max-w-md sm:rounded-2xl"
        onclick="event.stopPropagation()">
 
     <!-- Header -->
@@ -39,7 +39,7 @@
     </div>
 
     <!-- Body -->
-    <div class="px-5 py-4 space-y-4">
+    <div class="overflow-y-auto px-5 py-4 space-y-4">
 
       <!-- Billing Summary -->
       <div class="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
@@ -682,6 +682,7 @@
     }
 
     const btn = document.getElementById('cbSubmitBtn');
+
     btn.disabled = true;
     btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Memproses...';
 
@@ -699,11 +700,21 @@
       const data = await res.json();
 
       if (data.success) {
-        closeCloseBillingModal();
-        // Open receipt in new tab
-        if (data.receipt_url) {
-          window.open(data.receipt_url, '_blank');
+        if (data.receipt_printed === false) {
+          if (data.receipt_url) {
+            const previewTab = window.open(data.receipt_url, '_blank');
+
+            if (previewTab) {
+              alert('Auto-print gagal. Preview struk dibuka untuk cetak manual.');
+            } else {
+              alert('Auto-print gagal dan popup preview terblokir browser. Silakan izinkan popup lalu coba lagi untuk cetak manual.');
+            }
+          } else {
+            alert('Auto-print gagal. URL preview struk tidak tersedia untuk cetak manual.');
+          }
         }
+
+        closeCloseBillingModal();
         // Reload page to update table map
         window.location.reload();
       } else {

@@ -158,6 +158,7 @@ class PosController extends Controller
 
         $customers = User::with(['profile', 'customerUser'])
             ->whereHas('customerUser')
+            ->whereDoesntHave('tableSessions', fn ($q) => $q->where('status', 'active'))
             ->where(function ($q) use ($query) {
                 $q->where('name', 'like', "%{$query}%")
                     ->orWhereHas('profile', fn ($pq) => $pq->where('phone', 'like', "%{$query}%"));
@@ -304,7 +305,7 @@ class PosController extends Controller
         $posSettings = PosCategorySetting::allKeyed();
 
         $itemId = str_replace('item_', '', $productId);
-        $inventoryItem = InventoryItem::find($itemId);
+        $inventoryItem = InventoryItem::with('printers')->find($itemId);
         $setting = $posSettings->get($inventoryItem?->category_type);
 
         if (! $inventoryItem || ! $setting || ! $setting->show_in_pos) {
@@ -319,7 +320,8 @@ class PosController extends Controller
             'name' => $inventoryItem->pos_name ?: $inventoryItem->name,
             'price' => $inventoryItem->price ?? 0,
             'type' => 'item',
-            'preparation_location' => $setting->preparation_location,
+            'preparation_location' => $this->resolvePreparationLocationFromPrinters($inventoryItem) ?? $setting->preparation_location,
+            'assigned_printer_types' => $this->resolveAssignedPrinterTypes($inventoryItem),
             'include_tax' => (bool) $inventoryItem->include_tax,
             'include_service_charge' => (bool) $inventoryItem->include_service_charge,
         ];
@@ -351,6 +353,7 @@ class PosController extends Controller
             $cart[$productId]['quantity']++;
             $cart[$productId]['include_tax'] = $product['include_tax'];
             $cart[$productId]['include_service_charge'] = $product['include_service_charge'];
+            $cart[$productId]['assigned_printer_types'] = $product['assigned_printer_types'];
         } else {
             $cart[$productId] = [
                 'id' => $product['id'],
@@ -358,6 +361,7 @@ class PosController extends Controller
                 'price' => $product['price'],
                 'quantity' => 1,
                 'preparation_location' => $product['preparation_location'],
+                'assigned_printer_types' => $product['assigned_printer_types'],
                 'include_tax' => $product['include_tax'],
                 'include_service_charge' => $product['include_service_charge'],
             ];
@@ -671,8 +675,6 @@ class PosController extends Controller
                     ]);
                 }
 
-                $receiptPrinted = $this->printOrderReceipt($order);
-
                 // Clear cart
                 session()->forget('pos_cart');
 
@@ -689,7 +691,7 @@ class PosController extends Controller
                     'tax' => (float) $orderTotals['tax'],
                     'total' => (float) $orderTotals['grand_total'],
                     'formatted_total' => 'Rp '.number_format((float) $orderTotals['grand_total'], 0, ',', '.'),
-                    'receipt_printed' => $receiptPrinted,
+                    'receipt_printed' => false,
                 ]);
             }
 
@@ -943,12 +945,12 @@ class PosController extends Controller
                     ]);
                 }
 
-                $receiptPrinted = $this->printOrderReceipt($order);
-
                 session()->forget('pos_cart');
 
                 // Push to Accurate: Sales Order + Sales Invoice (non-blocking)
                 $this->pushOrderToAccurate($order, $customerUser, $totals['grand_total']);
+
+                $receiptPrinted = $this->printOrderReceipt($order, 'walk_in');
 
                 return response()->json([
                     'success' => true,
@@ -998,6 +1000,9 @@ class PosController extends Controller
     public function orderReceipt(Order $order): \Illuminate\View\View
     {
         $order->load(['items.inventoryItem', 'customer.user', 'customer.profile']);
+
+        $receiptType = $order->table_session_id ? 'closed_billing' : 'walk_in';
+        $this->printOrderReceipt($order, $receiptType);
 
         $customerName = $order->customer?->user?->name
             ?? $order->customer?->profile?->name
@@ -1199,7 +1204,10 @@ class PosController extends Controller
             if ($request->filled('printer_id')) {
                 $printer = Printer::active()->find($request->input('printer_id'));
             }
-            $printer = $printer ?? Printer::getForService('cashier') ?? Printer::getDefault();
+            if (! $printer) {
+                $receiptType = $order->table_session_id ? 'closed_billing' : 'walk_in';
+                $printer = $this->resolveReceiptPrinter($receiptType);
+            }
 
             if (! $printer) {
                 return response()->json([
@@ -1243,7 +1251,7 @@ class PosController extends Controller
             if ($request->filled('printer_id')) {
                 $printer = Printer::active()->find($request->input('printer_id'));
             }
-            $printer = $printer ?? Printer::getForService('cashier') ?? Printer::getDefault();
+            $printer = $printer ?? $this->resolveReceiptPrinter('closed_billing');
 
             if (! $printer) {
                 return response()->json([
@@ -1282,15 +1290,16 @@ class PosController extends Controller
     /**
      * Print receipt for an order (internal method).
      */
-    protected function printOrderReceipt(Order $order): bool
+    protected function printOrderReceipt(Order $order, string $receiptType): bool
     {
         try {
-            $printer = Printer::getForService('cashier') ?? Printer::getDefault();
+            $printer = $this->resolveReceiptPrinter($receiptType);
 
             if (! $printer) {
                 Log::warning('POS receipt auto print skipped because no cashier printer is configured', [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
+                    'receipt_type' => $receiptType,
                 ]);
 
                 return false;
@@ -1301,6 +1310,7 @@ class PosController extends Controller
             Log::info('POS auto receipt print selected printer', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
+                'receipt_type' => $receiptType,
                 'selected_printer_id' => $printer->id,
                 'selected_printer_name' => $printer->name,
                 'selected_printer_type' => $printer->printer_type,
@@ -1315,11 +1325,32 @@ class PosController extends Controller
             Log::warning('POS receipt auto print failed', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
+                'receipt_type' => $receiptType,
                 'message' => $e->getMessage(),
             ]);
 
             return false;
         }
+    }
+
+    protected function resolveReceiptPrinter(string $receiptType): ?Printer
+    {
+        $settings = GeneralSetting::instance();
+
+        $configuredPrinterId = match ($receiptType) {
+            'walk_in' => (int) ($settings->walk_in_receipt_printer_id ?? 0),
+            default => (int) ($settings->closed_billing_receipt_printer_id ?? 0),
+        };
+
+        if ($configuredPrinterId > 0) {
+            $configuredPrinter = Printer::active()->find($configuredPrinterId);
+
+            if ($configuredPrinter) {
+                return $configuredPrinter;
+            }
+        }
+
+        return Printer::getForService('cashier') ?? Printer::getDefault();
     }
 
     /**
@@ -1607,21 +1638,7 @@ class PosController extends Controller
 
     protected function resolvePreparationLocationFromPrinters(InventoryItem $inventoryItem): ?string
     {
-        $assignedTypes = $inventoryItem->printers
-            ?->filter(fn (Printer $printer): bool => $printer->is_active)
-            ->map(function (Printer $printer): ?string {
-                $type = strtolower(trim((string) $printer->printer_type));
-
-                if (in_array($type, ['kitchen', 'bar'], true)) {
-                    return $type;
-                }
-
-                $location = strtolower(trim((string) $printer->location));
-
-                return in_array($location, ['kitchen', 'bar'], true) ? $location : null;
-            })
-            ->filter()
-            ->values() ?? collect();
+        $assignedTypes = $this->resolveAssignedPrinterTypes($inventoryItem);
 
         if ($assignedTypes->contains('bar')) {
             return 'bar';
@@ -1632,6 +1649,25 @@ class PosController extends Controller
         }
 
         return null;
+    }
+
+    protected function resolveAssignedPrinterTypes(InventoryItem $inventoryItem): \Illuminate\Support\Collection
+    {
+        return $inventoryItem->printers
+            ?->filter(fn (Printer $printer): bool => $printer->is_active)
+            ->map(function (Printer $printer): ?string {
+                $type = strtolower(trim((string) $printer->printer_type));
+
+                if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker'], true)) {
+                    return $type;
+                }
+
+                $location = strtolower(trim((string) $printer->location));
+
+                return in_array($location, ['kitchen', 'bar', 'cashier', 'checker'], true) ? $location : null;
+            })
+            ->filter()
+            ->values() ?? collect();
     }
 
     protected function decrementSingleItemStock(int $itemId, int $quantity): void
@@ -1970,6 +2006,7 @@ class PosController extends Controller
                 'quantity' => (int) $item['quantity'],
                 'subtotal' => (float) $item['price'] * (int) $item['quantity'],
                 'preparation_location' => $item['preparation_location'] ?? 'direct',
+                'assigned_printer_types' => collect($item['assigned_printer_types'] ?? [])->values()->all(),
                 'include_tax' => (bool) ($flags?->include_tax ?? $item['include_tax'] ?? true),
                 'include_service_charge' => (bool) ($flags?->include_service_charge ?? $item['include_service_charge'] ?? true),
             ];

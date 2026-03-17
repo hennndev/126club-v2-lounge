@@ -14,8 +14,10 @@ class MenuController extends Controller
 {
     public function __construct(protected AccurateService $accurateService) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        $search = trim((string) $request->string('search', ''));
+
         $inventoryItems = InventoryItem::where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'code', 'name', 'pos_name', 'unit']);
@@ -45,13 +47,28 @@ class MenuController extends Controller
                 return [$categoryType => $menus];
             });
 
+        if ($search !== '') {
+            $menusByCategory = $menusByCategory
+                ->map(function ($menus) use ($search) {
+                    return $menus->filter(function (InventoryItem $menu) use ($search): bool {
+                        return str_contains(strtolower((string) $menu->name), strtolower($search))
+                            || str_contains(strtolower((string) $menu->pos_name), strtolower($search))
+                            || str_contains(strtolower((string) $menu->code), strtolower($search));
+                    })->values();
+                });
+
+            $menuCategoryTypes = $menuCategoryTypes
+                ->filter(fn (string $categoryType): bool => $menusByCategory->get($categoryType, collect())->isNotEmpty())
+                ->values();
+        }
+
         $printers = Printer::query()
             ->active()
             ->orderBy('location')
             ->orderBy('name')
             ->get(['id', 'name', 'location']);
 
-        return view('menus.index', compact('inventoryItems', 'inventoryCategoryTypes', 'menuCategoryTypes', 'menusByCategory', 'printers'));
+        return view('menus.index', compact('inventoryItems', 'inventoryCategoryTypes', 'menuCategoryTypes', 'menusByCategory', 'printers', 'search'));
     }
 
     public function store(Request $request): JsonResponse

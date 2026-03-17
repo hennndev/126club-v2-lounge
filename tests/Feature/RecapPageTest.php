@@ -10,6 +10,7 @@ use App\Models\KitchenOrder;
 use App\Models\KitchenOrderItem;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\RecapHistory;
 use App\Models\Tabel;
 use App\Models\TableSession;
 use Spatie\Permission\Models\Permission;
@@ -130,6 +131,19 @@ test('admin can open recap page', function () {
     $start = now()->startOfDay()->addHours(8);
     $end = now()->startOfDay()->addHours(23)->addMinutes(59);
 
+    Dashboard::query()->create([
+        'total_amount' => 500000,
+        'total_tax' => 15000,
+        'total_service_charge' => 12000,
+        'total_cash' => 100000,
+        'total_transfer' => 120000,
+        'total_debit' => 90000,
+        'total_kredit' => 80000,
+        'total_qris' => 110000,
+        'total_transactions' => 10,
+        'last_synced_at' => now(),
+    ]);
+
     actingAs($admin)
         ->get(route('admin.recap.index', [
             'start_datetime' => $start->format('Y-m-d\TH:i'),
@@ -137,18 +151,20 @@ test('admin can open recap page', function () {
         ]))
         ->assertSuccessful()
         ->assertViewIs('recap.index')
-        ->assertSeeText('Filter Rekapan')
-        ->assertSeeText('Mulai')
-        ->assertSeeText('Sampai')
+        ->assertSeeText('Rekap End Day')
+        ->assertSeeText('Recap')
+        ->assertSeeText('History')
         ->assertSeeText('Export Excel (.xlsx)')
         ->assertSeeText('Transaksi Kasir')
         ->assertSeeText('Metode Pembayaran')
+        ->assertSeeText('Total Pembayaran Tunai')
+        ->assertSeeText('Total Tunai')
+        ->assertSeeText('Rp 100.000')
         ->assertSeeText('Item Keluar Kitchen')
         ->assertSeeText('Item Keluar Bar')
-        ->assertSee(route('admin.recap.export', [
-            'start_datetime' => $start->format('Y-m-d\TH:i'),
-            'end_datetime' => $end->format('Y-m-d\TH:i'),
-        ]))
+        ->assertSee(route('admin.recap.close-export'))
+        ->assertSeeText('Konfirmasi End Day')
+        ->assertDontSeeText('Filter Rekapan')
         ->assertDontSeeText('Timeline Kejadian');
 });
 
@@ -520,6 +536,42 @@ test('recap page shows dashboard preview aggregates', function () {
         ->assertSeeText('10');
 });
 
+test('recap page shows automatic closing history list and modal content shell', function () {
+    $admin = adminUser();
+    $start = now()->startOfDay()->addHours(8);
+    $end = now()->startOfDay()->addHours(23)->addMinutes(59);
+
+    RecapHistory::query()->create([
+        'end_day' => now()->subDay()->toDateString(),
+        'total_amount' => 120000,
+        'total_tax' => 12000,
+        'total_service_charge' => 8000,
+        'total_cash' => 50000,
+        'total_transfer' => 30000,
+        'total_debit' => 20000,
+        'total_kredit' => 10000,
+        'total_qris' => 10000,
+        'total_transactions' => 4,
+        'last_synced_at' => now()->subMinutes(10),
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.recap.index', [
+            'start_datetime' => $start->format('Y-m-d\TH:i'),
+            'end_datetime' => $end->format('Y-m-d\TH:i'),
+        ]))
+        ->assertSuccessful()
+        ->assertSeeText('History Closing')
+        ->assertSeeText('List snapshot dashboard yang otomatis tersimpan setiap jam 12 malam.')
+        ->assertSeeText('Detail History Closing')
+        ->assertSeeText('Export History (.xlsx)')
+        ->assertSeeText(now()->subDay()->format('d/m/Y'))
+        ->assertSeeText('Rp 120.000')
+        ->assertSeeText('Rp 12.000')
+        ->assertSeeText('Rp 8.000')
+        ->assertSeeText('Lihat Detail');
+});
+
 test('recap export returns native xlsx file', function () {
     $admin = adminUser();
     $start = now()->startOfDay()->addHours(8);
@@ -551,6 +603,32 @@ test('recap export returns native xlsx file', function () {
         ->assertSuccessful()
         ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         ->assertHeader('content-disposition', 'attachment; filename=rekapan-'.$start->format('Ymd_Hi').'-'.$end->format('Ymd_Hi').'.xlsx');
+});
+
+test('recap history export returns native xlsx file', function () {
+    $admin = adminUser();
+
+    $history = RecapHistory::query()->create([
+        'end_day' => now()->subDay()->toDateString(),
+        'total_amount' => 120000,
+        'total_tax' => 12000,
+        'total_service_charge' => 8000,
+        'total_cash' => 50000,
+        'total_transfer' => 30000,
+        'total_debit' => 20000,
+        'total_kredit' => 10000,
+        'total_qris' => 10000,
+        'total_transactions' => 4,
+        'last_synced_at' => now()->subMinutes(10),
+    ]);
+
+    $response = actingAs($admin)
+        ->get(route('admin.recap.history.export', $history));
+
+    $response
+        ->assertSuccessful()
+        ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        ->assertHeader('content-disposition', 'attachment; filename=rekapan-history-'.$history->end_day?->format('Ymd').'.xlsx');
 });
 
 test('user without recap permission cannot access recap route', function () {

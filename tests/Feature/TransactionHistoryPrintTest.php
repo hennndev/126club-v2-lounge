@@ -22,7 +22,7 @@ function makeTransactionHistoryInventoryItem(array $attributes = []): InventoryI
     ], $attributes));
 }
 
-function makeTransactionHistoryOrder(int $createdById, string $preparationLocation): Order
+function makeTransactionHistoryOrder(int $createdById, string $preparationLocation, array $assignedPrinterLocations = []): Order
 {
     $inventoryItem = makeTransactionHistoryInventoryItem();
 
@@ -50,6 +50,15 @@ function makeTransactionHistoryOrder(int $createdById, string $preparationLocati
         'preparation_location' => $preparationLocation,
         'status' => 'pending',
     ]);
+
+    if ($assignedPrinterLocations !== []) {
+        $printerIds = Printer::query()
+            ->whereIn('location', $assignedPrinterLocations)
+            ->pluck('id')
+            ->all();
+
+        $inventoryItem->printers()->sync($printerIds);
+    }
 
     return $order;
 }
@@ -79,7 +88,7 @@ test('transaction history print requires reprint flag after first print', functi
     makeTransactionHistoryPrinter('cashier', true);
     makeTransactionHistoryPrinter('kitchen');
 
-    $order = makeTransactionHistoryOrder($admin->id, 'kitchen');
+    $order = makeTransactionHistoryOrder($admin->id, 'kitchen', ['kitchen']);
 
     actingAs($admin)
         ->postJson(route('admin.transaction-history.print', $order), [
@@ -114,11 +123,27 @@ test('transaction history print rejects bar print for order without bar items', 
     makeTransactionHistoryPrinter('cashier', true);
     makeTransactionHistoryPrinter('bar');
 
-    $order = makeTransactionHistoryOrder($admin->id, 'kitchen');
+    $order = makeTransactionHistoryOrder($admin->id, 'kitchen', ['kitchen']);
 
     actingAs($admin)
         ->postJson(route('admin.transaction-history.print', $order), [
             'type' => 'bar',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('success', false);
+});
+
+test('transaction history print ignores preparation_location and follows assigned printer type', function () {
+    $admin = adminUser();
+
+    makeTransactionHistoryPrinter('cashier', true);
+    makeTransactionHistoryPrinter('checker');
+
+    $order = makeTransactionHistoryOrder($admin->id, 'kitchen', ['cashier', 'checker']);
+
+    actingAs($admin)
+        ->postJson(route('admin.transaction-history.print', $order), [
+            'type' => 'kitchen',
         ])
         ->assertStatus(422)
         ->assertJsonPath('success', false);

@@ -6,12 +6,15 @@ use App\Models\Billing;
 use App\Models\CustomerUser;
 use App\Models\DailyAuthCode;
 use App\Models\GeneralSetting;
+use App\Models\Order;
+use App\Models\Printer;
 use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Services\AccurateService;
 use App\Services\DashboardSyncService;
+use App\Services\PrinterService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +27,7 @@ class TableReservationController extends Controller
     public function __construct(
         protected AccurateService $accurateService,
         protected DashboardSyncService $dashboardSyncService,
+        protected PrinterService $printerService,
     ) {}
 
     public function index(Request $request)
@@ -171,6 +175,12 @@ class TableReservationController extends Controller
             ->orderBy('name')
             ->get();
 
+        $activeSessionCustomerIds = TableSession::query()
+            ->where('status', 'active')
+            ->pluck('customer_id')
+            ->unique()
+            ->values();
+
         // JSON response for waiter mobile scanner search
         if ($request->get('format') === 'json' || $request->wantsJson()) {
             return response()->json([
@@ -215,7 +225,8 @@ class TableReservationController extends Controller
             'historyCompletedCount',
             'historyForceClosedCount',
             'historyTotalRevenue',
-            'historyAvgSpending'
+            'historyAvgSpending',
+            'activeSessionCustomerIds'
         ));
     }
 
@@ -229,6 +240,17 @@ class TableReservationController extends Controller
             'reservation_time' => 'required',
             'note' => 'nullable|string|max:1000',
         ]);
+
+        $hasActiveSession = TableSession::query()
+            ->where('customer_id', $validated['customer_id'])
+            ->where('status', 'active')
+            ->exists();
+
+        if ($hasActiveSession) {
+            return back()->withErrors([
+                'customer_id' => 'Customer sedang check-in di meja lain dan tidak bisa dibuat booking baru.',
+            ])->withInput();
+        }
 
         // New bookings always start as pending — admin must confirm explicitly
         $validated['status'] = 'pending';
@@ -614,6 +636,8 @@ class TableReservationController extends Controller
                 ]);
             }
 
+            $receiptPrinted = $this->printClosedBillingReceipt($session, $billing);
+
             // Build items list from all orders in the session
             $allItems = $session->orders->flatMap(fn ($order) => $order->items)->groupBy('item_name')->map(function ($group) {
                 $first = $group->first();
@@ -634,6 +658,7 @@ class TableReservationController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Billing berhasil ditutup',
+                'receipt_printed' => $receiptPrinted,
                 'receipt' => [
                     'transaction_code' => $billing->transaction_code,
                     'date' => now()->format('d M Y H:i'),
@@ -927,5 +952,76 @@ class TableReservationController extends Controller
         }
 
         return $checkerItems->where('status', 'served')->count() < $checkerItems->count();
+    }
+
+    protected function printClosedBillingReceipt(TableSession $session, Billing $billing): bool
+    {
+        try {
+            $printer = $this->resolveClosedBillingReceiptPrinter();
+
+            if (! $printer) {
+                Log::warning('Close billing receipt auto print skipped because no printer is configured', [
+                    'table_session_id' => $session->id,
+                    'billing_id' => $billing->id,
+                ]);
+
+                return false;
+            }
+
+            $session->loadMissing(['table', 'orders.items.inventoryItem']);
+
+            $receiptItems = $session->orders
+                ->flatMap(fn (Order $order) => $order->items)
+                ->values();
+
+            $receiptOrder = new Order([
+                'order_number' => (string) ($billing->transaction_code ?: 'BILL-'.$billing->id),
+                'ordered_at' => $billing->updated_at ?? now(),
+                'items_total' => (float) $billing->orders_total,
+                'discount_amount' => (float) $billing->discount_amount,
+                'total' => (float) $billing->grand_total,
+            ]);
+
+            $receiptOrder->setRelation('items', $receiptItems);
+            $receiptOrder->setRelation('tableSession', $session);
+
+            Log::info('Close billing auto receipt print selected printer', [
+                'table_session_id' => $session->id,
+                'billing_id' => $billing->id,
+                'selected_printer_id' => $printer->id,
+                'selected_printer_name' => $printer->name,
+                'selected_printer_type' => $printer->printer_type,
+                'selected_printer_location' => $printer->location,
+                'connection_type' => $printer->connection_type,
+            ]);
+
+            $this->printerService->printReceipt($receiptOrder, $printer);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Close billing receipt auto print failed', [
+                'table_session_id' => $session->id,
+                'billing_id' => $billing->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    protected function resolveClosedBillingReceiptPrinter(): ?Printer
+    {
+        $settings = GeneralSetting::instance();
+        $configuredPrinterId = (int) ($settings->closed_billing_receipt_printer_id ?? 0);
+
+        if ($configuredPrinterId > 0) {
+            $configuredPrinter = Printer::active()->find($configuredPrinterId);
+
+            if ($configuredPrinter) {
+                return $configuredPrinter;
+            }
+        }
+
+        return Printer::getForService('cashier') ?? Printer::getDefault();
     }
 }
