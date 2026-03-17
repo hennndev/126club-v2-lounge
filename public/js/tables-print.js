@@ -61,7 +61,7 @@ function printQRCode() {
                 }
                 .qr-container {
                     margin: 14px auto;
-                    padding: 8px;
+                    padding: 10px;
                     border: 2px solid #1e293b;
                     border-radius: 8px;
                     display: inline-block;
@@ -118,7 +118,7 @@ function printQRCode() {
                 <div class="area-name">${table.area.name}</div>
 
                 <div class="qr-container">
-                    <img src="${qrImage}" alt="QR Code" width="120" height="120">
+                    <img src="${qrImage}" alt="QR Code" width="150" height="150">
                 </div>
 
                 <div class="info">

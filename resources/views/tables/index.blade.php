@@ -602,6 +602,6 @@
         document.getElementById('reservationModal').classList.add('hidden');
       }
     </script>
-    <script src="/js/tables-print.js"></script>
+    <script src="{{ asset('js/tables-print.js') }}?v={{ filemtime(public_path('js/tables-print.js')) }}"></script>
   @endpush
 </x-app-layout>
