@@ -566,6 +566,7 @@ class TableReservationController extends Controller
                     $splitDebitAmount = (float) $validated['split_non_cash_amount'];
                     $splitNonCashMethod = $validated['split_non_cash_method'];
                     $splitNonCashReferenceNumber = $validated['split_non_cash_reference_number'] ?? null;
+                    $grandTotal = round((float) $totals['grand_total'], 2);
                     $splitTotal = round($splitCashAmount + $splitDebitAmount, 2);
 
                     if ($splitCashAmount <= 0 || $splitDebitAmount <= 0) {
@@ -574,7 +575,22 @@ class TableReservationController extends Controller
                         ]);
                     }
 
-                    if (abs($splitTotal - (float) $totals['grand_total']) > 0.01) {
+                    if (abs($splitTotal - $grandTotal) > 0.01) {
+                        $isDiscountApplied = $requestedDiscountAmount > 0;
+
+                        if ($isDiscountApplied && $splitCashAmount > 0 && $splitCashAmount < $grandTotal) {
+                            $splitDebitAmount = round($grandTotal - $splitCashAmount, 2);
+                            $splitTotal = round($splitCashAmount + $splitDebitAmount, 2);
+                        }
+                    }
+
+                    if ($splitDebitAmount <= 0) {
+                        throw ValidationException::withMessages([
+                            'split_total' => 'Nominal non-cash pada split bill harus lebih dari 0.',
+                        ]);
+                    }
+
+                    if (abs($splitTotal - $grandTotal) > 0.01) {
                         throw ValidationException::withMessages([
                             'split_total' => 'Total pembayaran split (cash + non-cash) harus sama dengan grand total.',
                         ]);
