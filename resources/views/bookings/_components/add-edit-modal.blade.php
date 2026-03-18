@@ -291,9 +291,26 @@
 
   function bookingModal() {
     const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    const currentTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const dateParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now).reduce((parts, part) => {
+      if (part.type !== 'literal') {
+        parts[part.type] = part.value;
+      }
+
+      return parts;
+    }, {});
+
+    const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+    const currentTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(now);
 
     return {
       selectedTable: null,
