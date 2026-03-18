@@ -209,10 +209,14 @@ class TransactionHistoryController extends Controller
                 default => 'cashier',
             };
 
-            $printer = Printer::getByLocation($location);
+            if ($type === 'resmi') {
+                $printer = Printer::getForService('cashier');
+            } else {
+                $printer = Printer::getByLocation($location);
 
-            if (! $printer) {
-                $printer = Printer::getDefault();
+                if (! $printer) {
+                    $printer = Printer::getDefault();
+                }
             }
 
             if (! $printer) {

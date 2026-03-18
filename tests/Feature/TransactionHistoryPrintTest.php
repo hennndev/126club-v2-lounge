@@ -4,8 +4,11 @@ use App\Models\InventoryItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Printer;
+use App\Services\PrinterService;
+use Mockery\MockInterface;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\mock;
 
 function makeTransactionHistoryInventoryItem(array $attributes = []): InventoryItem
 {
@@ -147,4 +150,53 @@ test('transaction history print ignores preparation_location and follows assigne
         ])
         ->assertStatus(422)
         ->assertJsonPath('success', false);
+});
+
+test('transaction history resmi print always uses cashier type printer', function () {
+    $admin = adminUser();
+
+    $defaultKitchenPrinter = makeTransactionHistoryPrinter('kitchen', true);
+    $cashierPrinter = makeTransactionHistoryPrinter('cashier', false);
+
+    $order = makeTransactionHistoryOrder($admin->id, 'kitchen', ['kitchen']);
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($order, $cashierPrinter): void {
+        $mock->shouldReceive('printReceipt')
+            ->once()
+            ->withArgs(function ($printedOrder, $printer) use ($order, $cashierPrinter): bool {
+                return $printedOrder instanceof Order
+                    && $printedOrder->id === $order->id
+                    && $printer instanceof Printer
+                    && $printer->id === $cashierPrinter->id;
+            })
+            ->andReturn(true);
+
+        $mock->shouldReceive('printKitchenTicket')->never();
+        $mock->shouldReceive('printBarTicket')->never();
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.transaction-history.print', $order), [
+            'type' => 'resmi',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    expect($order->fresh()->receipt_print_count)->toBe(1)
+        ->and($defaultKitchenPrinter->id)->not()->toBe($cashierPrinter->id);
+});
+
+test('transaction history resmi print fails when cashier printer is unavailable', function () {
+    $admin = adminUser();
+
+    makeTransactionHistoryPrinter('kitchen', true);
+    $order = makeTransactionHistoryOrder($admin->id, 'kitchen', ['kitchen']);
+
+    actingAs($admin)
+        ->postJson(route('admin.transaction-history.print', $order), [
+            'type' => 'resmi',
+        ])
+        ->assertStatus(400)
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'Tidak ada printer aktif untuk lokasi Kasir.');
 });
