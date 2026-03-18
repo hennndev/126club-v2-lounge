@@ -142,7 +142,7 @@ test('close billing works with normal payment mode', function () {
         ->and($updatedTable?->status)->toBe('available');
 });
 
-test('close billing sends ROOM-BILLING sales order number and maps salesOrderNumber into invoice detail items', function () {
+test('close billing sends LOUNGE-BILLING sales order number and maps salesOrderNumber into invoice detail items', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
 
@@ -170,7 +170,7 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
                 $number = (string) ($payload['number'] ?? '');
                 $capturedSoNumber = $number;
 
-                return str_starts_with($number, 'ROOM-BILLING-')
+                return str_starts_with($number, 'LOUNGE-BILLING-')
                     && ! empty($payload['detailItem']);
             })
             ->andReturn(['r' => ['number' => 'IGNORED-BY-PREFIX-RULE']]);
@@ -206,7 +206,7 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
     expect((string) $updatedBilling->transaction_code)->toMatch('/^BILLING-\d{6}$/')
-        ->and((string) $updatedBilling->accurate_so_number)->toMatch('/^ROOM-BILLING-\d{6}$/')
+        ->and((string) $updatedBilling->accurate_so_number)->toMatch('/^LOUNGE-BILLING-\d{6}$/')
         ->and((string) $updatedBilling->accurate_inv_number)->toBe('INV-BOOKING-001');
 });
 

@@ -1973,8 +1973,8 @@ class PosController extends Controller
                 $soNumber_attempt = $attempt === 1
                   ? $order->order_number
                   : $order->order_number.'-'.$attempt;
-                // order_number already has WALKIN- prefix, just add ROOM-
-                $soNumberWithPrefix = 'ROOM-'.$soNumber_attempt;
+                // order_number already has WALKIN- prefix, just add LOUNGE-
+                $soNumberWithPrefix = 'LOUNGE-'.$soNumber_attempt;
                 try {
                     $soResult = $this->accurateService->saveSalesOrder(
                         array_merge($soBasePayload, ['number' => $soNumberWithPrefix])

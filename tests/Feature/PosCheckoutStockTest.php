@@ -580,7 +580,7 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
             ->once()
             ->andReturn([
                 'r' => [
-                    'number' => 'ROOM-WALKIN-20260318-0001',
+                    'number' => 'LOUNGE-WALKIN-20260318-0001',
                 ],
             ]);
 
@@ -588,7 +588,7 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
             ->once()
             ->andReturn([
                 'r' => [
-                    'number' => 'ROOM-WALKIN-20260318-0001',
+                    'number' => 'LOUNGE-WALKIN-20260318-0001',
                 ],
             ]);
     });
@@ -646,8 +646,8 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->and($order->payment_method)->toBe('transfer')
         ->and($order->payment_mode)->toBe('normal')
         ->and((string) $billing->transaction_code)->toMatch('/^WALKIN-\d{6}$/')
-        ->and((string) $order->accurate_so_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{4}$/')
-        ->and((string) $order->accurate_inv_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{4}$/');
+        ->and((string) $order->accurate_so_number)->toMatch('/^LOUNGE-WALKIN-\d{8}-\d{4}$/')
+        ->and((string) $order->accurate_inv_number)->toMatch('/^LOUNGE-WALKIN-\d{8}-\d{4}$/');
 });
 
 test('walk in checkout auto prints one menu to multiple assigned target printers', function () {

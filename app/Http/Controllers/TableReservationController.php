@@ -841,7 +841,7 @@ class TableReservationController extends Controller
             }
 
             // 1. Save Sales Order
-            $soNumberWithPrefix = 'ROOM-'.$reference;
+            $soNumberWithPrefix = 'LOUNGE-'.$reference;
             $soPayload = [
                 'customerNo' => $customerNo,
                 'transDate' => $transDate,
