@@ -441,6 +441,45 @@ test('close billing rejects split payment when non-cash reference is missing', f
         ->assertJsonPath('errors.split_non_cash_reference_number.0', 'Nomor referensi non-cash untuk split bill wajib diisi.');
 });
 
+test('close billing updates table status using session table even when booking table id differs', function () {
+    $admin = adminUser();
+    [$booking, $session] = makeBookingCloseBillingFixture($admin);
+
+    $originalSessionTable = $session->table;
+
+    $newArea = Area::create([
+        'code' => 'AREA-'.uniqid(),
+        'name' => 'Area '.uniqid(),
+        'is_active' => true,
+        'sort_order' => 99,
+    ]);
+
+    $newBookingTable = Tabel::create([
+        'area_id' => $newArea->id,
+        'table_number' => 'TBL-'.uniqid(),
+        'qr_code' => 'QR-'.uniqid(),
+        'capacity' => 4,
+        'minimum_charge' => 0,
+        'status' => 'occupied',
+        'is_active' => true,
+    ]);
+
+    $booking->update(['table_id' => $newBookingTable->id]);
+
+    actingAs($admin)
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    expect($originalSessionTable->fresh()->status)->toBe('available')
+        ->and($newBookingTable->fresh()->status)->toBe('available')
+        ->and($session->fresh()->status)->toBe('completed')
+        ->and($booking->fresh()->status)->toBe('completed');
+});
+
 test('close billing auto-adjusts split non-cash when discount changes final grand total', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);

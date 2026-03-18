@@ -116,10 +116,12 @@
                   default => 'bg-gray-100 text-gray-500',
               };
 
-              // Billing state
-              $canClose = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $billing->orders_total >= $billing->minimum_charge;
-              $belowMinCharge = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $billing->orders_total < $billing->minimum_charge;
               $chargePreview = $activeSessionChargePreviews[$session->id] ?? null;
+              $ordersForEligibility = (float) ($chargePreview['orders_total'] ?? ($billing?->orders_total ?? 0));
+
+              // Billing state
+              $canClose = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $ordersForEligibility >= (float) ($billing->minimum_charge ?? 0);
+              $belowMinCharge = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $ordersForEligibility < (float) ($billing->minimum_charge ?? 0);
 
               // Waiter
               $waiterDisplayName = $session->waiter?->profile?->name ?? ($session->waiter?->name ?? null);
@@ -244,7 +246,7 @@
               {{-- Orders total --}}
               <td class="px-5 py-4 whitespace-nowrap text-right">
                 <div class="text-base text-gray-700">
-                  Rp {{ number_format($billing?->orders_total ?? 0, 0, ',', '.') }}
+                  Rp {{ number_format($ordersForEligibility, 0, ',', '.') }}
                 </div>
               </td>
 
@@ -255,7 +257,7 @@
                 </div>
                 @if ($belowMinCharge)
                   <div class="text-sm text-amber-600 mt-0.5">
-                    Min. Rp {{ number_format($billing->minimum_charge, 0, ',', '.') }}
+                    Min. Rp {{ number_format((float) ($billing->minimum_charge ?? 0), 0, ',', '.') }}
                   </div>
                 @elseif ($billing?->billing_status === 'paid')
                   <div class="text-sm text-green-600 mt-0.5">Lunas</div>

@@ -553,6 +553,301 @@ test('billing cannot be closed while transaction checker is incomplete', functio
         ->and($table->fresh()->status)->toBe('occupied');
 });
 
+test('bookings page shows close billing button when live orders total meets minimum charge despite stale billing orders total', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, [
+        'status' => 'occupied',
+        'minimum_charge' => 100000,
+    ]);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => now()->format('H:i:s'),
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 100000,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 0,
+        'paid_amount' => 0,
+        'billing_status' => 'draft',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Close Billing Eligible Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 120000,
+        'stock_quantity' => 20,
+        'threshold' => 2,
+        'unit' => 'glass',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'ready',
+        'items_total' => 120000,
+        'discount_amount' => 0,
+        'total' => 120000,
+        'ordered_at' => now(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 120000,
+        'subtotal' => 120000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+        'served_at' => now(),
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertSee('Tutup Billing');
+});
+
+test('bookings page reconciles stale occupied table status after session already closed', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'occupied']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => now()->format('H:i:s'),
+        'status' => 'completed',
+    ]);
+
+    TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now()->subHours(2),
+        'checked_out_at' => now()->subHour(),
+        'status' => 'completed',
+    ]);
+
+    expect($table->fresh()->status)->toBe('occupied');
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index'))
+        ->assertOk();
+
+    expect($table->fresh()->status)->toBe('available');
+});
+
+test('bookings all tab still shows close billing button when booking is checked in but table status is reserved', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, [
+        'status' => 'reserved',
+        'minimum_charge' => 100000,
+    ]);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => now()->format('H:i:s'),
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 100000,
+        'orders_total' => 120000,
+        'subtotal' => 120000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 120000,
+        'paid_amount' => 0,
+        'billing_status' => 'draft',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'All Tab Eligible Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 120000,
+        'stock_quantity' => 20,
+        'threshold' => 2,
+        'unit' => 'glass',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'ready',
+        'items_total' => 120000,
+        'discount_amount' => 0,
+        'total' => 120000,
+        'ordered_at' => now(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 120000,
+        'subtotal' => 120000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+        'served_at' => now(),
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertSee('Tutup Billing');
+});
+
+test('bookings all tab shows close billing for checked in booking from previous date', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, [
+        'status' => 'occupied',
+        'minimum_charge' => 100000,
+    ]);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => now()->subDay()->format('H:i:s'),
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now()->subDay(),
+        'status' => 'active',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 100000,
+        'orders_total' => 120000,
+        'subtotal' => 120000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 120000,
+        'paid_amount' => 0,
+        'billing_status' => 'draft',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Previous Date Eligible Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 120000,
+        'stock_quantity' => 20,
+        'threshold' => 2,
+        'unit' => 'glass',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'ready',
+        'items_total' => 120000,
+        'discount_amount' => 0,
+        'total' => 120000,
+        'ordered_at' => now()->subDay(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 120000,
+        'subtotal' => 120000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+        'served_at' => now()->subDay(),
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertSee('Tutup Billing');
+});
+
 test('admin can unassign a waiter from an active session', function () {
     $admin = adminUser();
     $area = makeArea();
