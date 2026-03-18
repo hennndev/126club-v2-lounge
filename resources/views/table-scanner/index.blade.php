@@ -454,12 +454,18 @@
           document.getElementById('infoCustomerName').textContent = reservation.customer.name;
           document.getElementById('infoCustomerPhone').textContent = reservation.customer.profile?.phone || '-';
 
-          const resDate = new Date(reservation.reservation_date);
-          document.getElementById('infoResDate').textContent = resDate.toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
-          });
+          const reservationDateRaw = String(reservation.reservation_date || '').trim();
+          const resDate = /^\d{4}-\d{2}-\d{2}$/.test(reservationDateRaw)
+            ? new Date(`${reservationDateRaw}T00:00:00`)
+            : new Date(reservationDateRaw);
+          document.getElementById('infoResDate').textContent = Number.isNaN(resDate.getTime())
+            ? reservationDateRaw
+            : resDate.toLocaleDateString('id-ID', {
+                timeZone: 'Asia/Jakarta',
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+              });
           document.getElementById('infoResTime').textContent = reservation.reservation_time.substring(0, 5);
 
           const statusText = reservation.status === 'confirmed' ? 'Confirmed' : 'Checked-in';

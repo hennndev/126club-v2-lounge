@@ -962,11 +962,13 @@
                   formattedTotal: data.formatted_total || this.formatCurrency(Number(data.total || 0)),
                   receiptPrinted: Boolean(data.receipt_printed),
                   printedAt: new Date().toLocaleString('id-ID', {
+                    timeZone: 'Asia/Jakarta',
                     day: '2-digit',
                     month: '2-digit',
                     year: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit',
+                    hour12: false,
                   }),
                   items: receiptItems,
                 };

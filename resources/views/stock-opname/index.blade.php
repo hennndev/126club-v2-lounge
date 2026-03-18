@@ -233,7 +233,7 @@
                 <span x-text="form.notes || '_______________'"></span>
               </div>
             </div>
-            <p class="text-xs text-gray-500 mt-1">Waktu Cetak: <span x-text="new Date().toLocaleString('id-ID')"></span></p>
+            <p class="text-xs text-gray-500 mt-1">Waktu Cetak: <span x-text="new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date())"></span></p>
           </div>
 
           <!-- Print Table grouped by category -->
