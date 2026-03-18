@@ -15,7 +15,7 @@
 
 ---
 
-## 1. Overview
+## 1. Overviewww
 
 Integrasi dengan **Accurate Online** menggunakan **API Token** (bukan OAuth) yang cocok digunakan di background job / queue worker karena tidak bergantung pada session pengguna.
 
