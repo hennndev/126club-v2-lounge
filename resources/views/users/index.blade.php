@@ -35,19 +35,39 @@
           <p class="text-sm text-gray-500">Kelola akun pengguna sistem</p>
         </div>
       </div>
-      <button onclick="openModal('add')"
-              class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2">
-        <svg class="w-5 h-5"
-             fill="none"
-             stroke="currentColor"
-             viewBox="0 0 24 24">
-          <path stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 4v16m8-8H4" />
-        </svg>
-        Tambah User
-      </button>
+      <div class="flex items-center gap-2">
+        <button data-sync-btn
+                onclick="syncFromAccurate()"
+                class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
+          <span data-sync-icon
+                class="flex items-center">
+            <svg class="w-5 h-5"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </span>
+          <span data-sync-text>Sync dari Accurate</span>
+        </button>
+
+        <button onclick="openModal('add')"
+                class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2">
+          <svg class="w-5 h-5"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 4v16m8-8H4" />
+          </svg>
+          Tambah User
+        </button>
+      </div>
     </div>
 
     <!-- Stats Cards -->
@@ -238,12 +258,104 @@
   <!-- Add/Edit Modal -->
   @include('users._components.add-edit-modal')
 
+  <div id="syncResultModal"
+       class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div class="p-6">
+        <div id="syncResultIcon"
+             class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4">
+        </div>
+        <h3 id="syncResultTitle"
+            class="text-lg font-bold text-gray-900 text-center mb-1"></h3>
+        <p id="syncResultMessage"
+           class="text-sm text-gray-500 text-center mb-4"></p>
+        <pre id="syncResultOutput"
+             class="hidden bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 max-h-40 overflow-y-auto whitespace-pre-wrap mb-4"></pre>
+        <button onclick="document.getElementById('syncResultModal').classList.add('hidden'); window.location.reload();"
+                class="w-full px-4 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 font-semibold transition">
+          Tutup &amp; Refresh
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Delete Modal -->
   @include('users._components.delete-confirmation-modal')
 
   @push('scripts')
     <script>
       const users = @json($users);
+      const userSyncUrl = "{{ route('admin.users.sync-accurate') }}";
+      const SYNC_ICON_HTML = document.querySelector('[data-sync-icon]').innerHTML;
+
+      function syncFromAccurate() {
+        const btn = document.querySelector('[data-sync-btn]');
+        const icon = document.querySelector('[data-sync-icon]');
+        const text = document.querySelector('[data-sync-text]');
+
+        btn.disabled = true;
+        icon.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>`;
+        text.textContent = 'Syncing...';
+
+        fetch(userSyncUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            }
+          })
+          .then(async res => {
+            const data = await res.json();
+
+            if (!res.ok) {
+              throw new Error(data.message || 'Sync gagal diproses.');
+            }
+
+            return data;
+          })
+          .then(data => {
+            btn.disabled = false;
+            icon.innerHTML = SYNC_ICON_HTML;
+            text.textContent = 'Sync dari Accurate';
+            showSyncResult(data.success, data.message, data.output ?? null);
+          })
+          .catch(err => {
+            btn.disabled = false;
+            icon.innerHTML = SYNC_ICON_HTML;
+            text.textContent = 'Sync dari Accurate';
+            showSyncResult(false, 'Koneksi gagal: ' + err.message, null);
+          });
+      }
+
+      function showSyncResult(success, message, output) {
+        const modal = document.getElementById('syncResultModal');
+        const icon = document.getElementById('syncResultIcon');
+        const title = document.getElementById('syncResultTitle');
+        const msg = document.getElementById('syncResultMessage');
+        const pre = document.getElementById('syncResultOutput');
+
+        if (success) {
+          icon.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-green-100';
+          icon.innerHTML = `<svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`;
+          title.textContent = 'Sync Berhasil!';
+        } else {
+          icon.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 bg-red-100';
+          icon.innerHTML = `<svg class="w-7 h-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`;
+          title.textContent = 'Sync Gagal';
+        }
+
+        msg.textContent = message;
+
+        if (output && output.trim()) {
+          pre.textContent = output.trim();
+          pre.classList.remove('hidden');
+        } else {
+          pre.classList.add('hidden');
+        }
+
+        modal.classList.remove('hidden');
+      }
 
       function openModal(mode, userId = null) {
         const modal = document.getElementById('userModal');

@@ -94,6 +94,7 @@ Route::middleware('auth')->group(function () {
 
         // User Management
         Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
+        Route::post('users/sync-accurate', [UserController::class, 'syncAccurateEmployees'])->name('users.sync-accurate');
 
         // Table Management
         require __DIR__.'/tables.php';

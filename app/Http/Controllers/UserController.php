@@ -172,6 +172,203 @@ class UserController extends Controller
         }
     }
 
+    public function syncAccurateEmployees(Request $request)
+    {
+        try {
+            $employees = $this->accurateService->getEmployees($request);
+
+            if ($employees->isEmpty()) {
+                return $this->respondSyncAccurateEmployees(
+                    $request,
+                    true,
+                    'Tidak ada data employee dari Accurate untuk disinkronkan.'
+                );
+            }
+
+            $created = 0;
+            $updated = 0;
+            $skipped = 0;
+
+            DB::transaction(function () use ($employees, &$created, &$updated, &$skipped): void {
+                foreach ($employees as $employee) {
+                    $employeeData = is_array($employee) ? $employee : (array) $employee;
+                    $accurateId = (int) ($employeeData['id'] ?? 0);
+
+                    if ($accurateId <= 0) {
+                        $skipped++;
+
+                        continue;
+                    }
+
+                    $name = trim((string) ($employeeData['name'] ?? $employeeData['fullName'] ?? "Employee {$accurateId}"));
+                    $rawEmail = trim((string) ($employeeData['email'] ?? ''));
+                    $baseEmail = $rawEmail !== '' ? $rawEmail : "accurate.employee.{$accurateId}@local.invalid";
+
+                    $internalUser = InternalUser::query()->where('accurate_id', $accurateId)->first();
+
+                    if ($internalUser) {
+                        $user = $internalUser->user;
+
+                        if (! $user) {
+                            $skipped++;
+
+                            continue;
+                        }
+
+                        $resolvedEmail = $this->resolveUniqueEmail($baseEmail, $user->id);
+                        $user->update([
+                            'name' => $name,
+                            'email' => $resolvedEmail,
+                        ]);
+
+                        if ($user->profile) {
+                            $phone = $employeeData['mobilePhone'] ?? $employeeData['phone'] ?? null;
+
+                            if (filled($phone)) {
+                                $user->profile->update(['phone' => (string) $phone]);
+                            }
+                        }
+
+                        $role = $this->resolveRoleFromEmployee($employeeData);
+                        if ($role) {
+                            $user->syncRoles([$role->name]);
+                        }
+
+                        $updated++;
+
+                        continue;
+                    }
+
+                    $resolvedEmail = $this->resolveUniqueEmail($baseEmail);
+                    $user = User::query()->where('email', $resolvedEmail)->first();
+
+                    if (! $user) {
+                        $user = User::create([
+                            'name' => $name,
+                            'email' => $resolvedEmail,
+                            'password' => Hash::make('AccurateSync#'.bin2hex(random_bytes(8))),
+                        ]);
+                        $created++;
+                    } else {
+                        $user->update([
+                            'name' => $name,
+                            'email' => $resolvedEmail,
+                        ]);
+                        $updated++;
+                    }
+
+                    $phone = $employeeData['mobilePhone'] ?? $employeeData['phone'] ?? null;
+                    $profile = $user->profile;
+
+                    if (! $profile) {
+                        $profile = UserProfile::create([
+                            'user_id' => $user->id,
+                            'phone' => filled($phone) ? (string) $phone : null,
+                        ]);
+                    } elseif (filled($phone)) {
+                        $profile->update(['phone' => (string) $phone]);
+                    }
+
+                    InternalUser::query()->updateOrCreate(
+                        ['user_id' => $user->id],
+                        [
+                            'accurate_id' => $accurateId,
+                            'user_profile_id' => $profile->id,
+                            'is_active' => true,
+                        ]
+                    );
+
+                    $role = $this->resolveRoleFromEmployee($employeeData);
+                    if ($role) {
+                        $user->syncRoles([$role->name]);
+                    }
+                }
+            });
+
+            $message = "Sync employee Accurate berhasil. Baru: {$created}, Update: {$updated}, Lewati: {$skipped}.";
+            $output = "Baru: {$created}\nUpdate: {$updated}\nLewati: {$skipped}";
+
+            return $this->respondSyncAccurateEmployees($request, true, $message, $output);
+        } catch (\Exception $e) {
+            return $this->respondSyncAccurateEmployees(
+                $request,
+                false,
+                'Gagal sync employee Accurate: '.$e->getMessage(),
+                null,
+                500
+            );
+        }
+    }
+
+    private function respondSyncAccurateEmployees(Request $request, bool $success, string $message, ?string $output = null, int $status = 200)
+    {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => $success,
+                'message' => $message,
+                'output' => $output,
+            ], $status);
+        }
+
+        if ($success) {
+            return redirect()->route('admin.users.index')->with('success', $message);
+        }
+
+        return back()->withErrors(['error' => $message]);
+    }
+
+    private function resolveRoleFromEmployee(array $employeeData): ?Role
+    {
+        $position = trim((string) ($employeeData['position'] ?? $employeeData['positionName'] ?? $employeeData['jobTitle'] ?? ''));
+
+        if ($position === '') {
+            return Role::query()->where('name', 'Cashier')->first()
+                ?? Role::query()->first();
+        }
+
+        $normalizedPosition = strtolower($position);
+
+        $exactRole = Role::query()->get()->first(function (Role $role) use ($normalizedPosition) {
+            return strtolower((string) $role->name) === $normalizedPosition;
+        });
+
+        return $exactRole
+            ?? Role::query()->where('name', 'Cashier')->first()
+            ?? Role::query()->first();
+    }
+
+    private function resolveUniqueEmail(string $email, ?int $ignoreUserId = null): string
+    {
+        $normalized = strtolower(trim($email));
+
+        if ($normalized === '' || ! str_contains($normalized, '@')) {
+            $normalized = 'accurate.sync@local.invalid';
+        }
+
+        [$localPart, $domainPart] = explode('@', $normalized, 2);
+        $candidate = $localPart.'@'.$domainPart;
+        $counter = 1;
+
+        while (true) {
+            $query = User::query()->where('email', $candidate);
+
+            if ($ignoreUserId !== null) {
+                $query->where('id', '!=', $ignoreUserId);
+            }
+
+            if (! $query->exists()) {
+                return $candidate;
+            }
+
+            $candidate = $localPart.'+'.$counter.'@'.$domainPart;
+            $counter++;
+
+            if ($counter > 100) {
+                return 'accurate.sync.'.uniqid().'@local.invalid';
+            }
+        }
+    }
+
     // HAPUS USER/STAF INTERNAL
     public function destroy(User $user)
     {

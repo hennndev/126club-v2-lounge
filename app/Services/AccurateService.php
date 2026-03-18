@@ -730,9 +730,71 @@ class AccurateService
     }
 
     // ===EMPLOYEE SCOPED===
+    public function getEmployees(Request $request, int $pageSize = 200): Collection
+    {
+        try {
+            $allEmployees = collect();
+            $page = 1;
+            $perPage = (int) $request->get('pageSize', $pageSize);
+
+            do {
+                $params = [
+                    'fields' => 'id,name,email,position,phone,mobilePhone,suspended',
+                    'sort' => 'name asc',
+                    'sp.page' => $page,
+                    'sp.pageSize' => $perPage,
+                ];
+
+                if ($request->filled('search')) {
+                    $params['filter.keywords.op'] = 'CONTAIN';
+                    $params['filter.keywords.val'] = $request->search;
+                }
+
+                $response = $this->dataClient()->get('/api/employee/list.do', $params);
+
+                if ($response->failed()) {
+                    Log::error('Gagal mengambil daftar employee dari Accurate', ['response' => $response->json()]);
+
+                    return collect([]);
+                }
+
+                $employees = collect($response->json()['d'] ?? []);
+
+                $employeesWithDetail = $employees
+                    ->map(function ($employee) {
+                        $employeeData = is_array($employee) ? $employee : (array) $employee;
+                        $employeeId = (int) ($employeeData['id'] ?? 0);
+
+                        if ($employeeId <= 0) {
+                            return $employeeData;
+                        }
+
+                        $employeeDetail = $this->getDetailEmployee($employeeId);
+
+                        return is_array($employeeDetail) ? $employeeDetail : $employeeData;
+                    })
+                    ->values();
+
+                $allEmployees = $allEmployees->merge($employeesWithDetail);
+                $page++;
+            } while ($employees->count() >= $perPage);
+
+            return $allEmployees;
+        } catch (\Throwable $e) {
+            Log::error('Exception saat mengambil daftar employee', ['message' => $e->getMessage()]);
+
+            return collect([]);
+        }
+    }
+
     public function saveEmployee(array $data)
     {
         return $this->saveData('employee', $data, 'save');
+    }
+
+    public function getDetailEmployee(int $id): ?array
+    {
+        return $this->getDetail('employee', $id);
     }
 
     public function deleteEmployee(int $id)
