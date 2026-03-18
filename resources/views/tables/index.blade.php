@@ -564,17 +564,17 @@
 
         // Date and time
         const reservationDateRaw = String(reservation.reservation_date || '').trim();
-        const resDate = /^\d{4}-\d{2}-\d{2}$/.test(reservationDateRaw)
-          ? new Date(`${reservationDateRaw}T00:00:00`)
-          : new Date(reservationDateRaw);
-        document.getElementById('resDate').textContent = Number.isNaN(resDate.getTime())
-          ? reservationDateRaw
-          : resDate.toLocaleDateString('id-ID', {
-              timeZone: 'Asia/Jakarta',
-              day: '2-digit',
-              month: 'long',
-              year: 'numeric'
-            });
+        const resDate = /^\d{4}-\d{2}-\d{2}$/.test(reservationDateRaw) ?
+          new Date(`${reservationDateRaw}T00:00:00`) :
+          new Date(reservationDateRaw);
+        document.getElementById('resDate').textContent = Number.isNaN(resDate.getTime()) ?
+          reservationDateRaw :
+          resDate.toLocaleDateString('id-ID', {
+            timeZone: 'Asia/Jakarta',
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+          });
         document.getElementById('resTime').textContent = reservation.reservation_time.substring(0, 5);
 
         // Customer info

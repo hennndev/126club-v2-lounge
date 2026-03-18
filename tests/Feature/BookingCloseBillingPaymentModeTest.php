@@ -441,6 +441,43 @@ test('close billing rejects split payment when non-cash reference is missing', f
         ->assertJsonPath('errors.split_non_cash_reference_number.0', 'Nomor referensi non-cash untuk split bill wajib diisi.');
 });
 
+test('close billing auto-adjusts split non-cash when discount changes final grand total', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    DailyAuthCode::query()->updateOrCreate(
+        ['date' => now()->format('Y-m-d')],
+        [
+            'code' => '2468',
+            'override_code' => null,
+            'generated_at' => now(),
+        ],
+    );
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'split',
+        'split_cash_amount' => 70000,
+        'split_non_cash_amount' => 50000,
+        'split_non_cash_method' => 'debit',
+        'split_non_cash_reference_number' => 'DB-2468',
+        'discount_type' => 'percentage',
+        'discount_percentage' => 10,
+        'discount_auth_code' => '2468',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect((float) $updatedBilling->discount_amount)->toBe(12000.0)
+        ->and((float) $updatedBilling->grand_total)->toBe(108000.0)
+        ->and((float) $updatedBilling->split_cash_amount)->toBe(70000.0)
+        ->and((float) $updatedBilling->split_debit_amount)->toBe(38000.0)
+        ->and((float) $updatedBilling->paid_amount)->toBe(108000.0);
+});
+
 test('close billing prioritizes active session when booking has multiple sessions', function () {
     $admin = adminUser();
     [$booking, $activeSession] = makeBookingCloseBillingFixture($admin);
