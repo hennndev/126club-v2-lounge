@@ -20,6 +20,7 @@ class TransactionHistoryController extends Controller
             'items.inventoryItem.printers',
             'tableSession.table',
             'tableSession.reservation',
+            'tableSession.billing',
             'tableSession.customer.profile',
             'customer.user',
         ])->whereNotIn('status', ['cancelled']);

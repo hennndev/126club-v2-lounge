@@ -536,7 +536,11 @@ class TableReservationController extends Controller
                     (float) $billing->minimum_charge,
                 );
 
-                $transactionCode = 'TRX-'.now()->timestamp.rand(100, 999);
+                $billingSequence = Billing::query()
+                    ->where('is_booking', true)
+                    ->whereDate('created_at', today())
+                    ->count() + 1;
+                $transactionCode = 'BILLING-'.str_pad((string) $billingSequence, 6, '0', STR_PAD_LEFT);
 
                 $paymentMode = $validated['payment_mode'];
                 $paymentMethod = $paymentMode === 'split'
@@ -859,7 +863,10 @@ class TableReservationController extends Controller
             ];
 
             if ($soNumber) {
-                $invPayload['salesOrderNumber'] = $soNumber;
+                $invPayload['detailItem'] = array_map(
+                    fn (array $item): array => array_merge($item, ['salesOrderNumber' => $soNumber]),
+                    $detailItem
+                );
             }
 
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);

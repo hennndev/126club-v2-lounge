@@ -2,6 +2,7 @@
 
 use App\Models\Area;
 use App\Models\Billing;
+use App\Models\CustomerUser;
 use App\Models\DailyAuthCode;
 use App\Models\InventoryItem;
 use App\Models\Order;
@@ -10,8 +11,12 @@ use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
+use App\Models\UserProfile;
+use App\Services\AccurateService;
+use Mockery\MockInterface;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\mock;
 
 function makeBookingCloseBillingFixture(User $admin): array
 {
@@ -129,11 +134,80 @@ test('close billing works with normal payment mode', function () {
     expect($updatedBilling->billing_status)->toBe('paid')
         ->and($updatedBilling->payment_mode)->toBe('normal')
         ->and($updatedBilling->payment_method)->toBe('cash')
+        ->and((string) $updatedBilling->transaction_code)->toMatch('/^BILLING-\d{6}$/')
         ->and((float) $updatedBilling->split_cash_amount)->toBe(0.0)
         ->and((float) $updatedBilling->split_debit_amount)->toBe(0.0)
         ->and($updatedBooking->status)->toBe('completed')
         ->and($updatedSession?->status)->toBe('completed')
         ->and($updatedTable?->status)->toBe('available');
+});
+
+test('close billing sends ROOM-BILLING sales order number and maps salesOrderNumber into invoice detail items', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $customer = $booking->customer;
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '08123456780',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => 12345,
+        'customer_code' => 'CUST-BOOKING-001',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    $capturedSoNumber = null;
+
+    mock(AccurateService::class, function (MockInterface $mock) use (&$capturedSoNumber): void {
+        $mock->shouldReceive('saveSalesOrder')
+            ->once()
+            ->withArgs(function (array $payload) use (&$capturedSoNumber): bool {
+                $number = (string) ($payload['number'] ?? '');
+                $capturedSoNumber = $number;
+
+                return str_starts_with($number, 'ROOM-BILLING-')
+                    && ! empty($payload['detailItem']);
+            })
+            ->andReturn(['r' => ['number' => 'IGNORED-BY-PREFIX-RULE']]);
+
+        $mock->shouldReceive('saveSalesInvoice')
+            ->once()
+            ->withArgs(function (array $payload) use (&$capturedSoNumber): bool {
+                $detailItems = $payload['detailItem'] ?? [];
+
+                if ($capturedSoNumber === null || $detailItems === []) {
+                    return false;
+                }
+
+                foreach ($detailItems as $detailItem) {
+                    if (($detailItem['salesOrderNumber'] ?? null) !== $capturedSoNumber) {
+                        return false;
+                    }
+                }
+
+                return true;
+            })
+            ->andReturn(['r' => ['number' => 'INV-BOOKING-001']]);
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect((string) $updatedBilling->transaction_code)->toMatch('/^BILLING-\d{6}$/')
+        ->and((string) $updatedBilling->accurate_so_number)->toMatch('/^ROOM-BILLING-\d{6}$/')
+        ->and((string) $updatedBilling->accurate_inv_number)->toBe('INV-BOOKING-001');
 });
 
 test('close billing rejects discount without valid auth code', function () {
