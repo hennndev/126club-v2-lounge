@@ -106,8 +106,13 @@ class TableReservationController extends Controller
 
         // Earliest upcoming confirmed/checked-in booking per table (today or future)
         $activeBookingsByTable = TableReservation::with(['customer.profile', 'customer.customerUser', 'tableSession.billing', 'tableSession.orders.items'])
-            ->whereIn('status', ['confirmed', 'checked_in'])
-            ->where('reservation_date', '>=', now()->toDateString())
+            ->where(function ($query): void {
+                $query->where('status', 'checked_in')
+                    ->orWhere(function ($subQuery): void {
+                        $subQuery->where('status', 'confirmed')
+                            ->where('reservation_date', '>=', now()->toDateString());
+                    });
+            })
             ->get()
             ->sortBy('reservation_date')
             ->unique('table_id')

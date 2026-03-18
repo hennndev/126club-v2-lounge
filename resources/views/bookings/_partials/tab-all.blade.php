@@ -127,7 +127,7 @@
       $tableBooking = $activeBookingsByTable[$table->id] ?? null;
       $bookingStatus = (string) ($tableBooking?->status ?? '');
       $isCheckedIn = $bookingStatus === 'checked_in' || $table->status === 'occupied';
-      $isBooked = ! $isCheckedIn && ($bookingStatus === 'confirmed' || $table->status === 'reserved');
+      $isBooked = !$isCheckedIn && ($bookingStatus === 'confirmed' || $table->status === 'reserved');
     @endphp
     <div x-show="selectedCategory === null || selectedCategory === {{ $table->area_id }}"
          class="rounded-xl p-4 border transition-all cursor-pointer hover:shadow-md
