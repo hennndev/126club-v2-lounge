@@ -288,6 +288,10 @@ test('booking checkout auto prints one menu to multiple assigned target printers
         'is_active' => true,
     ]);
 
+    GeneralSetting::instance()->update([
+        'walk_in_receipt_printer_id' => $cashierPrinter->id,
+    ]);
+
     $inventoryItem = makePosInventoryItem(['stock_quantity' => 10, 'category_type' => 'main-course']);
     $inventoryItem->printers()->sync([$targetPrinterOne->id, $targetPrinterTwo->id]);
 
@@ -576,7 +580,7 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
             ->once()
             ->andReturn([
                 'r' => [
-                    'number' => 'SO-WALKIN-001',
+                    'number' => 'ROOM-WALKIN-20260318-0001',
                 ],
             ]);
 
@@ -584,7 +588,7 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
             ->once()
             ->andReturn([
                 'r' => [
-                    'number' => 'INV-WALKIN-001',
+                    'number' => 'ROOM-WALKIN-20260318-0001',
                 ],
             ]);
     });
@@ -641,8 +645,9 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->and((float) $order->items()->latest('id')->first()->tax_amount)->toBe(6050.0)
         ->and($order->payment_method)->toBe('transfer')
         ->and($order->payment_mode)->toBe('normal')
-        ->and($order->accurate_so_number)->toBe('SO-WALKIN-001')
-        ->and($order->accurate_inv_number)->toBe('INV-WALKIN-001');
+        ->and((string) $billing->transaction_code)->toMatch('/^WALKIN-\d{6}$/')
+        ->and((string) $order->accurate_so_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{4}$/')
+        ->and((string) $order->accurate_inv_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{4}$/');
 });
 
 test('walk in checkout auto prints one menu to multiple assigned target printers', function () {
@@ -733,7 +738,11 @@ test('walk in checkout auto prints one menu to multiple assigned target printers
             })
             ->andReturnTrue();
 
-        $mock->shouldReceive('printReceipt')->once();
+        $mock->shouldReceive('printWalkInBillingReceipt')
+            ->once()
+            ->andReturnTrue();
+
+        $mock->shouldReceive('printReceipt')->never();
         $mock->shouldReceive('printBarTicket')->never();
     });
 

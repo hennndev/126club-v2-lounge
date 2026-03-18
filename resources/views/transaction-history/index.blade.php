@@ -190,8 +190,8 @@
             <tbody class="divide-y divide-gray-100">
               @foreach ($orders as $order)
                 @php
-                  $isToday = $order->ordered_at && $order->ordered_at->isToday();
-                  $displayId = $isToday ? 'TRX-TODAY-' . $order->id : 'TRX-' . $order->id;
+                  // Use order_number directly (already has prefix)
+                  $displayId = $order->order_number;
                   $isBooking = $order->tableSession?->reservation !== null;
                   $tableName = $order->tableSession?->table?->table_number;
                   $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;

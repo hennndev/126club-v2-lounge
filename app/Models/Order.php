@@ -23,6 +23,7 @@ class Order extends Model
         'cancelled_by',
         'payment_method',
         'payment_mode',
+        'payment_reference_number',
         'accurate_so_number',
         'accurate_inv_number',
         'receipt_print_count',

@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Models\BarOrder;
+use App\Models\Billing;
 use App\Models\GeneralSetting;
 use App\Models\KitchenOrder;
 use App\Models\Order;
 use App\Models\Printer;
+use App\Models\TableSession;
 use Illuminate\Support\Facades\Log;
 use Mike42\Escpos\EscposImage;
 use Mike42\Escpos\PrintConnectors\FilePrintConnector;
@@ -16,6 +18,145 @@ use Mike42\Escpos\Printer as EscposPrinter;
 
 class PrinterService
 {
+    /**
+     * Print closed billing receipt in booking template style.
+     */
+    public function printClosedBillingReceipt(Billing $billing, TableSession $session, Printer $printer): bool
+    {
+        $session->loadMissing(['table', 'customer', 'reservation', 'orders.items']);
+
+        $payload = $this->buildClosedBillingPayload($billing, $session);
+
+        return $this->printBillingTemplatePayload($payload, $printer, 'CLOSED BILLING RECEIPT', 'CLOSED BILLING RECEIPT PREVIEW');
+    }
+
+    /**
+     * Print walk-in receipt in booking template style.
+     */
+    public function printWalkInBillingReceipt(Order $order, Billing $billing, Printer $printer): bool
+    {
+        $order->loadMissing(['items', 'customer.user', 'customer.profile', 'createdBy']);
+
+        $payload = $this->buildWalkInBillingPayload($order, $billing);
+
+        return $this->printBillingTemplatePayload($payload, $printer, 'WALK-IN RECEIPT', 'WALK-IN RECEIPT PREVIEW');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function printBillingTemplatePayload(array $payload, Printer $printer, string $logTitle, string $previewTitle): bool
+    {
+        $width = max((int) ($printer->width ?: 42), 42);
+
+        if ($printer->connection_type === 'log') {
+            $lines = $this->buildClosedBillingSimulationLines($payload, $width, $printer);
+            $lines[] = 'Status : SUCCESS (LOG MODE)';
+            $this->logPrint($logTitle, $lines);
+
+            return true;
+        }
+
+        $connector = $this->createConnector($printer);
+        $escpos = new EscposPrinter($connector);
+
+        try {
+            $separator = str_repeat('-', $width);
+
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->setEmphasis(true);
+            $escpos->setTextSize(2, 2);
+            $escpos->text("126 CLUB\n");
+            $escpos->setTextSize(1, 1);
+            $escpos->text("Premium Nightclub & Lounge\n");
+            $escpos->text("Jl. Premium No. 126, Jakarta\n");
+            $escpos->text("Telp: (021) 1234-5678\n");
+            $escpos->setEmphasis(false);
+            $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+
+            $escpos->text($separator."\n");
+            $escpos->text($this->formatClosedBillingPair('No. Transaksi', $payload['transaction_code'], $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Tanggal', $payload['date'], $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Kasir', $payload['cashier'], $width)."\n");
+            $escpos->text($separator."\n");
+
+            $escpos->text($this->formatClosedBillingPair('Pelanggan', $payload['customer_name'], $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Tipe', $payload['type'], $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Meja', $payload['table'], $width)."\n");
+            $escpos->text($separator."\n");
+
+            foreach ($payload['items'] as $item) {
+                $escpos->setEmphasis(true);
+                $escpos->text("{$item['name']} {$item['qty']}x\n");
+                $escpos->setEmphasis(false);
+                $escpos->text($this->formatClosedBillingPair('Harga: Rp '.number_format((float) $item['price'], 0, ',', '.'), 'Total: Rp '.number_format((float) $item['subtotal'], 0, ',', '.'), $width)."\n");
+                $escpos->text(str_repeat('-', $width)."\n");
+            }
+
+            if ($payload['minimum_charge'] > 0) {
+                $escpos->text($this->formatClosedBillingPair('Minimum Charge', 'Rp '.number_format((float) $payload['minimum_charge'], 0, ',', '.'), $width)."\n");
+            }
+
+            $escpos->text($this->formatClosedBillingPair('Subtotal', 'Rp '.number_format((float) $payload['subtotal'], 0, ',', '.'), $width)."\n");
+
+            if ($payload['service_charge'] > 0) {
+                $escpos->text($this->formatClosedBillingPair('Service Charge ('.(int) $payload['service_charge_percentage'].'%)', 'Rp '.number_format((float) $payload['service_charge'], 0, ',', '.'), $width)."\n");
+            }
+
+            if ($payload['tax'] > 0) {
+                $escpos->text($this->formatClosedBillingPair('PPN ('.(int) $payload['tax_percentage'].'%)', 'Rp '.number_format((float) $payload['tax'], 0, ',', '.'), $width)."\n");
+            }
+
+            $escpos->setEmphasis(true);
+            $escpos->text($this->formatClosedBillingPair('TOTAL', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width)."\n");
+            $escpos->setEmphasis(false);
+
+            $escpos->text($separator."\n");
+            $escpos->text($this->formatClosedBillingPair('Metode Pembayaran', $payload['payment_method'], $width)."\n");
+
+            if ($payload['payment_mode'] !== 'split' && filled($payload['payment_reference_number'])) {
+                $escpos->text($this->formatClosedBillingPair('No. Referensi', (string) $payload['payment_reference_number'], $width)."\n");
+            }
+
+            if ($payload['payment_mode'] === 'split') {
+                $escpos->text($this->formatClosedBillingPair('Mode Pembayaran', 'SPLIT BILL', $width)."\n");
+                $escpos->text($this->formatClosedBillingPair('Cash', 'Rp '.number_format((float) $payload['split_cash_amount'], 0, ',', '.'), $width)."\n");
+                $escpos->text($this->formatClosedBillingPair((string) $payload['split_non_cash_method'], 'Rp '.number_format((float) $payload['split_non_cash_amount'], 0, ',', '.'), $width)."\n");
+
+                if (filled($payload['split_non_cash_reference_number'])) {
+                    $escpos->text($this->formatClosedBillingPair('No. Referensi Non-Cash', (string) $payload['split_non_cash_reference_number'], $width)."\n");
+                }
+            }
+
+            $escpos->text($separator."\n");
+
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->setEmphasis(true);
+            $escpos->text("Terima Kasih Atas Kunjungan\nAnda!\n");
+            $escpos->setEmphasis(false);
+            $escpos->text("Barang yang sudah dibeli tidak dapat\n");
+            $escpos->text("ditukar/dikembalikan\n");
+            $escpos->text("Simpan struk ini sebagai bukti\n");
+            $escpos->text("pembayaran yang sah\n\n");
+            $escpos->setEmphasis(true);
+            $escpos->text("FOLLOW US\n");
+            $escpos->setEmphasis(false);
+            $escpos->text("@126club | www.126club.com\n");
+            $escpos->text("Powered by 126 Club POS System\n");
+
+            $escpos->feed(3);
+            $escpos->cut();
+
+            $previewLines = $this->buildClosedBillingSimulationLines($payload, $width, $printer);
+            $previewLines[] = 'Status : SUCCESS (SENT TO PRINTER)';
+            $this->logPrint($previewTitle, $previewLines);
+
+            return true;
+        } finally {
+            $escpos->close();
+        }
+    }
+
     /**
      * Check if a network printer is reachable before attempting to connect.
      *
@@ -436,6 +577,202 @@ class PrinterService
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    protected function buildClosedBillingPayload(Billing $billing, TableSession $session): array
+    {
+        $items = $session->orders
+            ->flatMap(fn (Order $order) => $order->items)
+            ->groupBy('item_name')
+            ->map(function ($group): array {
+                $first = $group->first();
+
+                return [
+                    'name' => (string) $first->item_name,
+                    'qty' => (int) $group->sum('quantity'),
+                    'price' => (float) $first->price,
+                    'subtotal' => (float) $group->sum('subtotal'),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $customerName = $session->customer?->name
+            ?? $session->reservation?->customer?->name
+            ?? '-';
+
+        $paymentMethod = strtoupper((string) ($billing->payment_method ?: (($billing->payment_mode ?? 'normal') === 'split' ? 'split' : '-')));
+        $paymentMode = (string) ($billing->payment_mode ?? 'normal');
+        $splitNonCashMethod = strtoupper((string) ($billing->split_non_cash_method ?? 'NON-CASH'));
+
+        return [
+            'transaction_code' => (string) ($billing->transaction_code ?? '-'),
+            'date' => ($billing->updated_at ?? now())->format('d M Y H:i'),
+            'cashier' => auth()->user()?->name ?? 'System Administrator',
+            'customer_name' => $customerName,
+            'type' => 'BOOKING',
+            'table' => $session->table?->table_number ?? '-',
+            'items' => $items,
+            'minimum_charge' => (float) ($billing->minimum_charge ?? 0),
+            'subtotal' => (float) ($billing->subtotal ?? 0),
+            'service_charge' => (float) ($billing->service_charge ?? 0),
+            'service_charge_percentage' => (float) ($billing->service_charge_percentage ?? 0),
+            'tax' => (float) ($billing->tax ?? 0),
+            'tax_percentage' => (float) ($billing->tax_percentage ?? 0),
+            'grand_total' => (float) ($billing->grand_total ?? 0),
+            'payment_mode' => $paymentMode,
+            'payment_method' => $paymentMethod,
+            'payment_reference_number' => $billing->payment_reference_number,
+            'split_cash_amount' => (float) ($billing->split_cash_amount ?? 0),
+            'split_non_cash_amount' => (float) ($billing->split_debit_amount ?? 0),
+            'split_non_cash_method' => $splitNonCashMethod,
+            'split_non_cash_reference_number' => $billing->split_non_cash_reference_number,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function buildWalkInBillingPayload(Order $order, Billing $billing): array
+    {
+        $items = $order->items
+            ->groupBy('item_name')
+            ->map(function ($group): array {
+                $first = $group->first();
+
+                return [
+                    'name' => (string) $first->item_name,
+                    'qty' => (int) $group->sum('quantity'),
+                    'price' => (float) $first->price,
+                    'subtotal' => (float) $group->sum('subtotal'),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $customerName = $order->customer?->user?->name
+            ?? $order->customer?->profile?->name
+            ?? 'Walk-in';
+
+        $paymentMethod = strtoupper((string) ($billing->payment_method ?: (($billing->payment_mode ?? 'normal') === 'split' ? 'split' : '-')));
+        $paymentMode = (string) ($billing->payment_mode ?? 'normal');
+        $splitNonCashMethod = strtoupper((string) ($billing->split_non_cash_method ?? 'NON-CASH'));
+
+        return [
+            'transaction_code' => (string) ($billing->transaction_code ?? $order->order_number ?? '-'),
+            'date' => ($billing->updated_at ?? $order->ordered_at ?? now())->format('d M Y H:i'),
+            'cashier' => $order->createdBy?->name ?? auth()->user()?->name ?? 'System Administrator',
+            'customer_name' => $customerName,
+            'type' => 'WALK-IN',
+            'table' => '-',
+            'items' => $items,
+            'minimum_charge' => (float) ($billing->minimum_charge ?? 0),
+            'subtotal' => (float) ($billing->subtotal ?? 0),
+            'service_charge' => (float) ($billing->service_charge ?? 0),
+            'service_charge_percentage' => (float) ($billing->service_charge_percentage ?? 0),
+            'tax' => (float) ($billing->tax ?? 0),
+            'tax_percentage' => (float) ($billing->tax_percentage ?? 0),
+            'grand_total' => (float) ($billing->grand_total ?? 0),
+            'payment_mode' => $paymentMode,
+            'payment_method' => $paymentMethod,
+            'payment_reference_number' => $billing->payment_reference_number,
+            'split_cash_amount' => (float) ($billing->split_cash_amount ?? 0),
+            'split_non_cash_amount' => (float) ($billing->split_debit_amount ?? 0),
+            'split_non_cash_method' => $splitNonCashMethod,
+            'split_non_cash_reference_number' => $billing->split_non_cash_reference_number,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<int, string>
+     */
+    protected function buildClosedBillingSimulationLines(array $payload, int $width, Printer $printer): array
+    {
+        $separator = str_repeat('-', $width);
+        $lines = [
+            '126 CLUB',
+            'Premium Nightclub & Lounge',
+            'Jl. Premium No. 126, Jakarta',
+            'Telp: (021) 1234-5678',
+            $separator,
+            $this->formatClosedBillingPair('No. Transaksi', (string) $payload['transaction_code'], $width),
+            $this->formatClosedBillingPair('Tanggal', (string) $payload['date'], $width),
+            $this->formatClosedBillingPair('Kasir', (string) $payload['cashier'], $width),
+            $separator,
+            $this->formatClosedBillingPair('Pelanggan', (string) $payload['customer_name'], $width),
+            $this->formatClosedBillingPair('Tipe', (string) $payload['type'], $width),
+            $this->formatClosedBillingPair('Meja', (string) $payload['table'], $width),
+            $separator,
+        ];
+
+        foreach ($payload['items'] as $item) {
+            $lines[] = "{$item['name']} {$item['qty']}x";
+            $lines[] = $this->formatClosedBillingPair(
+                'Harga: Rp '.number_format((float) $item['price'], 0, ',', '.'),
+                'Total: Rp '.number_format((float) $item['subtotal'], 0, ',', '.'),
+                $width
+            );
+            $lines[] = str_repeat('-', $width);
+        }
+
+        if ((float) $payload['minimum_charge'] > 0) {
+            $lines[] = $this->formatClosedBillingPair('Minimum Charge', 'Rp '.number_format((float) $payload['minimum_charge'], 0, ',', '.'), $width);
+        }
+
+        $lines[] = $this->formatClosedBillingPair('Subtotal', 'Rp '.number_format((float) $payload['subtotal'], 0, ',', '.'), $width);
+
+        if ((float) $payload['service_charge'] > 0) {
+            $lines[] = $this->formatClosedBillingPair(
+                'Service Charge ('.(int) $payload['service_charge_percentage'].'%)',
+                'Rp '.number_format((float) $payload['service_charge'], 0, ',', '.'),
+                $width
+            );
+        }
+
+        if ((float) $payload['tax'] > 0) {
+            $lines[] = $this->formatClosedBillingPair(
+                'PPN ('.(int) $payload['tax_percentage'].'%)',
+                'Rp '.number_format((float) $payload['tax'], 0, ',', '.'),
+                $width
+            );
+        }
+
+        $lines[] = $this->formatClosedBillingPair('TOTAL', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width);
+        $lines[] = $separator;
+        $lines[] = $this->formatClosedBillingPair('Metode Pembayaran', (string) $payload['payment_method'], $width);
+
+        if ($payload['payment_mode'] !== 'split' && filled($payload['payment_reference_number'])) {
+            $lines[] = $this->formatClosedBillingPair('No. Referensi', (string) $payload['payment_reference_number'], $width);
+        }
+
+        if ($payload['payment_mode'] === 'split') {
+            $lines[] = $this->formatClosedBillingPair('Mode Pembayaran', 'SPLIT BILL', $width);
+            $lines[] = $this->formatClosedBillingPair('Cash', 'Rp '.number_format((float) $payload['split_cash_amount'], 0, ',', '.'), $width);
+            $lines[] = $this->formatClosedBillingPair((string) $payload['split_non_cash_method'], 'Rp '.number_format((float) $payload['split_non_cash_amount'], 0, ',', '.'), $width);
+
+            if (filled($payload['split_non_cash_reference_number'])) {
+                $lines[] = $this->formatClosedBillingPair('No. Referensi Non-Cash', (string) $payload['split_non_cash_reference_number'], $width);
+            }
+        }
+
+        $lines[] = $separator;
+        $lines[] = 'Terima Kasih Atas Kunjungan Anda!';
+        $lines[] = "Printer: {$printer->name} ({$printer->location}) #{$printer->id}";
+
+        return $lines;
+    }
+
+    protected function formatClosedBillingPair(string $label, string $value, int $width): string
+    {
+        $labelText = $this->truncate($label, (int) floor($width * 0.48));
+        $valueText = $this->truncate($value, (int) floor($width * 0.48));
+        $spaces = max($width - strlen($labelText) - strlen($valueText), 1);
+
+        return $labelText.str_repeat(' ', $spaces).$valueText;
+    }
+
+    /**
      * Print a kitchen order ticket.
      */
     public function printKitchenTicket(KitchenOrder|BarOrder $kitchenOrder, Printer $printer): bool
@@ -536,5 +873,173 @@ class PrinterService
     public function printCashierTicket(KitchenOrder|BarOrder $order, Printer $printer): bool
     {
         return $this->printCheckerTicket($order, $printer);
+    }
+
+    /**
+     * @param  array<string, mixed>  $recapData
+     */
+    public function printEndDayRecap(array $recapData, Printer $printer): bool
+    {
+        $width = max((int) ($printer->width ?: 42), 32);
+        $lines = $this->buildEndDayRecapLines($recapData, $printer, $width);
+        $dashboardPreview = (array) ($recapData['dashboardPreview'] ?? []);
+        $kitchenItemsOut = (int) ($dashboardPreview['total_kitchen_items'] ?? $recapData['kitchenQtyTotal'] ?? 0);
+        $barItemsOut = (int) ($dashboardPreview['total_bar_items'] ?? $recapData['barQtyTotal'] ?? 0);
+
+        if ($printer->connection_type === 'log') {
+            $logLines = [...$lines, 'Status : SUCCESS (LOG MODE)'];
+            $this->logPrint('END DAY RECAP', $logLines);
+
+            return true;
+        }
+
+        $connector = $this->createConnector($printer);
+        $escpos = new EscposPrinter($connector);
+
+        try {
+            $separator = str_repeat('-', $width);
+
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->setEmphasis(true);
+            $escpos->text("REKAP END DAY\n");
+            $escpos->setEmphasis(false);
+            $escpos->text(($recapData['selectedStartDatetime'] ?? '-').' - '.($recapData['selectedEndDatetime'] ?? '-')."\n");
+            $escpos->text(now()->format('d/m/Y H:i:s')."\n");
+            $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+            $escpos->text($separator."\n");
+
+            $escpos->text($this->formatClosedBillingPair('Transaksi Kasir', number_format((float) ($recapData['cashierCount'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Total Penjualan', 'Rp '.number_format((float) ($recapData['cashierRevenue'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Total Pajak', 'Rp '.number_format((float) ($recapData['totalTax'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Total Service', 'Rp '.number_format((float) ($recapData['totalServiceCharge'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Item Keluar Kitchen', number_format($kitchenItemsOut, 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Item Keluar Bar', number_format($barItemsOut, 0, ',', '.'), $width)."\n");
+
+            $escpos->text($separator."\n");
+            $escpos->setEmphasis(true);
+            $escpos->text("RINGKASAN PEMBAYARAN\n");
+            $escpos->setEmphasis(false);
+
+            $paymentMethodTotals = (array) ($recapData['paymentMethodTotals'] ?? []);
+            $escpos->text($this->formatClosedBillingPair('Tunai', 'Rp '.number_format((float) ($paymentMethodTotals['cash'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Transfer', 'Rp '.number_format((float) ($paymentMethodTotals['transfer'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Debit', 'Rp '.number_format((float) ($paymentMethodTotals['debit'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Kredit', 'Rp '.number_format((float) ($paymentMethodTotals['kredit'] ?? 0), 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('QRIS', 'Rp '.number_format((float) ($paymentMethodTotals['qris'] ?? 0), 0, ',', '.'), $width)."\n");
+
+            $escpos->text($separator."\n");
+            $escpos->setEmphasis(true);
+            $escpos->text("DAFTAR TRANSAKSI\n");
+            $escpos->setEmphasis(false);
+
+            $cashierTransactions = collect($recapData['cashierTransactions'] ?? []);
+            foreach ($cashierTransactions as $transaction) {
+                $escpos->setEmphasis(true);
+                $escpos->text(((string) ($transaction['order_number'] ?? '-'))."\n");
+                $escpos->setEmphasis(false);
+                $escpos->text('Waktu: '.((string) ($transaction['datetime'] ?? '-'))."\n");
+                $escpos->text('Metode: '.((string) ($transaction['payment_method'] ?? '-'))."\n");
+                $escpos->text('Ref: '.((string) (($transaction['payment_reference_number'] ?? '-') ?: '-'))."\n");
+
+                $items = collect($transaction['items'] ?? []);
+                foreach ($items as $item) {
+                    $escpos->text('  '.((int) ($item['quantity'] ?? 0)).'x '.((string) ($item['name'] ?? '-'))."\n");
+                    $escpos->text('  Subtotal: Rp '.number_format((float) ($item['subtotal'] ?? 0), 0, ',', '.')."\n");
+
+                    if ((float) ($item['tax_amount'] ?? 0) > 0) {
+                        $escpos->text('  PPN: Rp '.number_format((float) $item['tax_amount'], 0, ',', '.')."\n");
+                    }
+
+                    if ((float) ($item['service_charge_amount'] ?? 0) > 0) {
+                        $escpos->text('  Service: Rp '.number_format((float) $item['service_charge_amount'], 0, ',', '.')."\n");
+                    }
+                }
+
+                $escpos->text($this->formatClosedBillingPair('Qty', (string) ($transaction['items_count'] ?? 0), $width)."\n");
+                $escpos->setEmphasis(true);
+                $escpos->text($this->formatClosedBillingPair('TOTAL', 'Rp '.number_format((float) ($transaction['total'] ?? 0), 0, ',', '.'), $width)."\n");
+                $escpos->setEmphasis(false);
+                $escpos->text($separator."\n");
+            }
+
+            $escpos->feed(3);
+            $escpos->cut();
+
+            $previewLines = [...$lines, 'Status : SUCCESS (SENT TO PRINTER)'];
+            $this->logPrint('END DAY RECAP PREVIEW', $previewLines);
+
+            return true;
+        } finally {
+            $escpos->close();
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $recapData
+     * @return array<int, string>
+     */
+    protected function buildEndDayRecapLines(array $recapData, Printer $printer, int $width): array
+    {
+        $separator = str_repeat('-', $width);
+        $paymentMethodTotals = (array) ($recapData['paymentMethodTotals'] ?? []);
+        $dashboardPreview = (array) ($recapData['dashboardPreview'] ?? []);
+        $kitchenItemsOut = (int) ($dashboardPreview['total_kitchen_items'] ?? $recapData['kitchenQtyTotal'] ?? 0);
+        $barItemsOut = (int) ($dashboardPreview['total_bar_items'] ?? $recapData['barQtyTotal'] ?? 0);
+
+        $lines = [
+            'REKAP END DAY',
+            ($recapData['selectedStartDatetime'] ?? '-').' - '.($recapData['selectedEndDatetime'] ?? '-'),
+            'Dicetak: '.now()->format('d/m/Y H:i:s'),
+            "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
+            $separator,
+            $this->formatClosedBillingPair('Transaksi Kasir', number_format((float) ($recapData['cashierCount'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Total Penjualan', 'Rp '.number_format((float) ($recapData['cashierRevenue'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Total Pajak', 'Rp '.number_format((float) ($recapData['totalTax'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Total Service', 'Rp '.number_format((float) ($recapData['totalServiceCharge'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Item Keluar Kitchen', number_format($kitchenItemsOut, 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Item Keluar Bar', number_format($barItemsOut, 0, ',', '.'), $width),
+            $separator,
+            'RINGKASAN PEMBAYARAN',
+            $this->formatClosedBillingPair('Tunai', 'Rp '.number_format((float) ($paymentMethodTotals['cash'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Transfer', 'Rp '.number_format((float) ($paymentMethodTotals['transfer'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Debit', 'Rp '.number_format((float) ($paymentMethodTotals['debit'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Kredit', 'Rp '.number_format((float) ($paymentMethodTotals['kredit'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('QRIS', 'Rp '.number_format((float) ($paymentMethodTotals['qris'] ?? 0), 0, ',', '.'), $width),
+            $separator,
+            'DAFTAR TRANSAKSI',
+        ];
+
+        $cashierTransactions = collect($recapData['cashierTransactions'] ?? []);
+
+        foreach ($cashierTransactions as $transaction) {
+            $transactionData = is_array($transaction) ? $transaction : (array) $transaction;
+
+            $lines[] = (string) ($transactionData['order_number'] ?? '-');
+            $lines[] = 'Waktu: '.((string) ($transactionData['datetime'] ?? '-'));
+            $lines[] = 'Metode: '.((string) ($transactionData['payment_method'] ?? '-'));
+            $lines[] = 'Ref: '.((string) (($transactionData['payment_reference_number'] ?? '-') ?: '-'));
+
+            $items = collect($transactionData['items'] ?? []);
+            foreach ($items as $item) {
+                $itemData = is_array($item) ? $item : (array) $item;
+
+                $lines[] = '  '.((int) ($itemData['quantity'] ?? 0)).'x '.((string) ($itemData['name'] ?? '-'));
+                $lines[] = '  Subtotal: Rp '.number_format((float) ($itemData['subtotal'] ?? 0), 0, ',', '.');
+
+                if ((float) ($itemData['tax_amount'] ?? 0) > 0) {
+                    $lines[] = '  PPN: Rp '.number_format((float) $itemData['tax_amount'], 0, ',', '.');
+                }
+
+                if ((float) ($itemData['service_charge_amount'] ?? 0) > 0) {
+                    $lines[] = '  Service: Rp '.number_format((float) $itemData['service_charge_amount'], 0, ',', '.');
+                }
+            }
+
+            $lines[] = $this->formatClosedBillingPair('Qty', (string) ($transactionData['items_count'] ?? 0), $width);
+            $lines[] = $this->formatClosedBillingPair('TOTAL', 'Rp '.number_format((float) ($transactionData['total'] ?? 0), 0, ',', '.'), $width);
+            $lines[] = $separator;
+        }
+
+        return $lines;
     }
 }

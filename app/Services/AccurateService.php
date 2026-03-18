@@ -28,7 +28,7 @@ class AccurateService
     ): Collection {
         try {
             $params = [
-                'fields' => implode(',', $defaultFields),
+                'fields' => 'id,name,no,unitPrice,itemCategory,notes,detailGroup,itemUnit,suspended,availableToSellInAllUnit,allQuantity',
                 'sort' => $sortBy,
                 'sp.page' => $request->get('page', 1),
                 'sp.pageSize' => $request->get('pageSize', $pageSize),
@@ -143,6 +143,8 @@ class AccurateService
     {
         try {
             $response = $this->dataClient()->get("/api/{$endpoint}/detail.do", ['id' => $id]);
+
+            Log::info('response', ['response' => $response->json(), 'endpoint' => $endpoint, 'id' => $id]);
 
             if ($response->failed()) {
                 return null;
@@ -695,6 +697,8 @@ class AccurateService
 
     public function saveSalesInvoice(array $data): array
     {
+        Log::info('data', ['data' => $data]);
+
         return $this->saveData('sales-invoice', $data, 'save');
     }
 

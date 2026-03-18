@@ -26,6 +26,7 @@ class GeneralSettingController extends Controller
             'service_charge_percentage' => ['required', 'integer', 'min:0', 'max:100'],
             'closed_billing_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'walk_in_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
+            'end_day_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
         ]);
 
         GeneralSetting::instance()->update($validated);

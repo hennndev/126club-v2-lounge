@@ -10,6 +10,7 @@ use App\Models\KitchenOrder;
 use App\Models\KitchenOrderItem;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Printer;
 use App\Models\RecapHistory;
 use App\Models\Tabel;
 use App\Models\TableSession;
@@ -154,7 +155,7 @@ test('admin can open recap page', function () {
         ->assertSeeText('Rekap End Day')
         ->assertSeeText('Recap')
         ->assertSeeText('History')
-        ->assertSeeText('Export Excel (.xlsx)')
+        ->assertSeeText('Preview Print Struk')
         ->assertSeeText('Transaksi Kasir')
         ->assertSeeText('Metode Pembayaran')
         ->assertSeeText('Total Pembayaran Tunai')
@@ -162,10 +163,256 @@ test('admin can open recap page', function () {
         ->assertSeeText('Rp 100.000')
         ->assertSeeText('Item Keluar Kitchen')
         ->assertSeeText('Item Keluar Bar')
-        ->assertSee(route('admin.recap.close-export'))
-        ->assertSeeText('Konfirmasi End Day')
+        ->assertSee(route('admin.recap.close-preview', [
+            'start_datetime' => $start->format('Y-m-d\TH:i'),
+            'end_datetime' => $end->format('Y-m-d\TH:i'),
+        ]))
         ->assertDontSeeText('Filter Rekapan')
         ->assertDontSeeText('Timeline Kejadian');
+});
+
+test('recap close preview page shows printable a4 summary', function () {
+    $admin = adminUser();
+    $start = now()->startOfDay()->addHours(8);
+    $end = now()->startOfDay()->addHours(23)->addMinutes(59);
+
+    $order = makeRecapOrder($admin->id, now()->startOfDay()->addHours(10), 'RCP-PRV-001', [
+        'payment_method' => 'qris',
+        'payment_reference_number' => 'QR-9988',
+        'items_total' => 30000,
+        'total' => 30000,
+    ]);
+
+    $item = makeRecapInventoryItem([
+        'name' => 'Preview Item Recap',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $item->id,
+        'item_name' => $item->name,
+        'item_code' => $item->code,
+        'quantity' => 2,
+        'price' => 15000,
+        'subtotal' => 30000,
+        'discount_amount' => 0,
+        'tax_amount' => 3000,
+        'service_charge_amount' => 2000,
+        'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 500000,
+            'total_tax' => 15000,
+            'total_service_charge' => 12000,
+            'total_cash' => 100000,
+            'total_transfer' => 120000,
+            'total_debit' => 90000,
+            'total_kredit' => 80000,
+            'total_qris' => 110000,
+            'total_kitchen_items' => 2,
+            'total_bar_items' => 0,
+            'total_transactions' => 10,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    actingAs($admin)
+        ->get(route('admin.recap.close-preview', [
+            'start_datetime' => $start->format('Y-m-d\TH:i'),
+            'end_datetime' => $end->format('Y-m-d\TH:i'),
+        ]))
+        ->assertSuccessful()
+        ->assertViewIs('recap.close-preview')
+        ->assertSeeText('Preview Print Struk - End Day')
+        ->assertSeeText('Preview Cetak Struk')
+        ->assertSeeText('Cetak Otomatis')
+        ->assertSeeText('Save PDF')
+        ->assertSeeText('Item Keluar Kitchen')
+        ->assertSeeText('Item Keluar Bar')
+        ->assertSeeText('Tutup End Day')
+        ->assertSeeText('Preview Item Recap')
+        ->assertSeeText('2x')
+        ->assertSeeText('Subtotal: Rp 30.000')
+        ->assertSeeText('PPN: Rp 3.000')
+        ->assertSeeText('Service: Rp 2.000')
+        ->assertSee(route('admin.recap.close-export'));
+});
+
+test('recap close preview print endpoint triggers server print and returns log path for log printer', function () {
+    $admin = adminUser();
+    $start = now()->startOfDay()->addHours(8);
+    $end = now()->startOfDay()->addHours(23)->addMinutes(59);
+    $logPath = storage_path('logs/printer.log');
+
+    file_put_contents($logPath, '');
+
+    $logPrinter = Printer::create([
+        'name' => 'End Day Log Printer',
+        'location' => 'cashier',
+        'printer_type' => 'cashier',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
+    ]);
+
+    \App\Models\GeneralSetting::instance()->update([
+        'end_day_receipt_printer_id' => $logPrinter->id,
+    ]);
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 500000,
+            'total_tax' => 15000,
+            'total_service_charge' => 12000,
+            'total_cash' => 100000,
+            'total_transfer' => 120000,
+            'total_debit' => 90000,
+            'total_kredit' => 80000,
+            'total_qris' => 110000,
+            'total_kitchen_items' => 2,
+            'total_bar_items' => 1,
+            'total_transactions' => 10,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    $order = makeRecapOrder(
+        $admin->id,
+        $start->copy()->addHour(),
+        'RCP-PRINT-001',
+        [
+            'payment_method' => 'qris',
+            'payment_mode' => 'normal',
+            'payment_reference_number' => 'REF-PRINT-001',
+            'total' => 15000,
+        ]
+    );
+
+    $inventoryItem = makeRecapInventoryItem(['name' => 'Print Test Item']);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 15000,
+        'subtotal' => 15000,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    actingAs($admin)
+        ->postJson(route('admin.recap.close-preview.print'), [
+            'start_datetime' => $start->format('Y-m-d\TH:i'),
+            'end_datetime' => $end->format('Y-m-d\TH:i'),
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('connection_type', 'log')
+        ->assertJsonPath('printer_name', 'End Day Log Printer')
+        ->assertJsonPath('log_path', $logPath);
+
+    $printedLog = file_get_contents($logPath);
+
+    expect($printedLog)
+        ->toContain('RCP-PRINT-001')
+        ->toContain('Metode:')
+        ->toContain('Ref: REF-PRINT-001')
+        ->toContain('Item Keluar Kitchen')
+        ->toContain('Item Keluar Bar')
+        ->toContain('1x Print Test Item')
+        ->not->toContain("Waktu: -\n  Metode: -\n  Ref: -");
+});
+
+test('recap close preview excludes incomplete empty transactions', function () {
+    $admin = adminUser();
+    $start = now()->startOfDay();
+    $end = now()->endOfDay();
+
+    $validOrder = makeRecapOrder(
+        $admin->id,
+        $start->copy()->addHours(12),
+        'RCP-VALID-001',
+        [
+            'payment_method' => 'transfer',
+            'payment_mode' => 'normal',
+            'payment_reference_number' => 'REF-VALID-001',
+            'total' => 30000,
+        ]
+    );
+
+    $inventoryItem = makeRecapInventoryItem(['name' => 'Valid Item']);
+
+    OrderItem::create([
+        'order_id' => $validOrder->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 2,
+        'price' => 15000,
+        'subtotal' => 30000,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    Order::create([
+        'table_session_id' => null,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'RCP-PENDING-001',
+        'status' => 'pending',
+        'items_total' => 0,
+        'discount_amount' => 0,
+        'total' => 0,
+        'ordered_at' => $start->copy()->addHours(13),
+        'payment_method' => null,
+        'payment_mode' => null,
+    ]);
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 30000,
+            'total_tax' => 0,
+            'total_service_charge' => 0,
+            'total_cash' => 0,
+            'total_transfer' => 30000,
+            'total_debit' => 0,
+            'total_kredit' => 0,
+            'total_qris' => 0,
+            'total_kitchen_items' => 2,
+            'total_bar_items' => 0,
+            'total_transactions' => 1,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    actingAs($admin)
+        ->get(route('admin.recap.close-preview', [
+            'start_datetime' => $start->format('Y-m-d\TH:i'),
+            'end_datetime' => $end->format('Y-m-d\TH:i'),
+        ]))
+        ->assertSuccessful()
+        ->assertSeeText('RCP-VALID-001')
+        ->assertSeeText('Metode: Transfer')
+        ->assertSeeText('Ref: REF-VALID-001')
+        ->assertDontSeeText('Metode: -')
+        ->assertDontSeeText('Tidak ada item.');
 });
 
 test('recap page filters cashier kitchen and bar events by selected datetime range', function () {
@@ -536,6 +783,70 @@ test('recap page shows dashboard preview aggregates', function () {
         ->assertSeeText('10');
 });
 
+test('recap cashier table shows payment reference and order item details', function () {
+    $admin = adminUser();
+    $start = now()->startOfDay()->addHours(8);
+    $end = now()->startOfDay()->addHours(23)->addMinutes(59);
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 45000,
+            'total_tax' => 0,
+            'total_service_charge' => 0,
+            'total_cash' => 0,
+            'total_transfer' => 45000,
+            'total_debit' => 0,
+            'total_kredit' => 0,
+            'total_qris' => 0,
+            'total_transactions' => 1,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    $order = makeRecapOrder($admin->id, now()->startOfDay()->addHours(12), 'RCP-REF-001', [
+        'payment_method' => 'transfer',
+        'payment_reference_number' => 'REF-TRF-9988',
+        'items_total' => 45000,
+        'total' => 45000,
+    ]);
+
+    $item = makeRecapInventoryItem([
+        'name' => 'Teh Tarik Rekap',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $item->id,
+        'item_name' => $item->name,
+        'item_code' => $item->code,
+        'quantity' => 2,
+        'price' => 22500,
+        'subtotal' => 45000,
+        'discount_amount' => 0,
+        'tax_amount' => 4500,
+        'service_charge_amount' => 3000,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.recap.index', [
+            'start_datetime' => $start->format('Y-m-d\TH:i'),
+            'end_datetime' => $end->format('Y-m-d\TH:i'),
+        ]))
+        ->assertSuccessful()
+        ->assertSeeText('No. Referensi')
+        ->assertSeeText('REF-TRF-9988')
+        ->assertSeeText('Lihat Item')
+        ->assertSeeText('Teh Tarik Rekap')
+        ->assertSeeText('2x')
+        ->assertSeeText('Harga: Rp 22.500')
+        ->assertSeeText('Subtotal: Rp 45.000')
+        ->assertSeeText('PPN: Rp 4.500')
+        ->assertSeeText('Service: Rp 3.000');
+});
+
 test('recap page shows automatic closing history list and modal content shell', function () {
     $admin = adminUser();
     $start = now()->startOfDay()->addHours(8);
@@ -551,6 +862,8 @@ test('recap page shows automatic closing history list and modal content shell', 
         'total_debit' => 20000,
         'total_kredit' => 10000,
         'total_qris' => 10000,
+        'total_kitchen_items' => 6,
+        'total_bar_items' => 4,
         'total_transactions' => 4,
         'last_synced_at' => now()->subMinutes(10),
     ]);
@@ -569,6 +882,10 @@ test('recap page shows automatic closing history list and modal content shell', 
         ->assertSeeText('Rp 120.000')
         ->assertSeeText('Rp 12.000')
         ->assertSeeText('Rp 8.000')
+        ->assertSeeText('Item Kitchen')
+        ->assertSeeText('Item Bar')
+        ->assertSeeText('6')
+        ->assertSeeText('4')
         ->assertSeeText('Lihat Detail');
 });
 

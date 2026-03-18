@@ -155,7 +155,15 @@
   </style>
 </head>
 
-<body class="booking-receipt">
+@php
+  $receiptTypeLabel = strtoupper((string) ($receiptType ?? 'BOOKING'));
+  $isBookingReceipt = $receiptTypeLabel === 'BOOKING';
+  $tableLabel = $tableDisplay ?? ($booking?->table?->table_number ?? '-');
+  $cashierLabel = $cashierName ?? (auth()->user()?->name ?? 'Admin');
+  $printedAtLabel = $printedAt ?? ($billing?->updated_at?->format('d M Y H:i') ?? now()->format('d M Y H:i'));
+@endphp
+
+<body class="{{ $isBookingReceipt ? 'booking-receipt' : '' }}">
   <!-- Header -->
   <div class="center">
     <div style="font-size:18px;font-weight:bold;letter-spacing:1px;">126 CLUB</div>
@@ -174,11 +182,11 @@
   </div>
   <div class="two-col">
     <span class="label">Tanggal</span>
-    <span class="value">{{ $billing?->updated_at?->format('d M Y H:i') ?? now()->format('d M Y H:i') }}</span>
+    <span class="value">{{ $printedAtLabel }}</span>
   </div>
   <div class="two-col">
     <span class="label">Kasir</span>
-    <span class="value">{{ auth()->user()?->name ?? 'Admin' }}</span>
+    <span class="value">{{ $cashierLabel }}</span>
   </div>
 
   <hr class="sep">
@@ -190,11 +198,11 @@
   </div>
   <div class="two-col">
     <span class="label">Tipe</span>
-    <span class="value">BOOKING</span>
+    <span class="value">{{ $receiptTypeLabel }}</span>
   </div>
   <div class="two-col">
     <span class="label">Meja</span>
-    <span class="value">{{ $booking->table?->table_number ?? '-' }}</span>
+    <span class="value">{{ $tableLabel }}</span>
   </div>
 
   <hr class="sep">
@@ -307,7 +315,7 @@
   <script>
     // Auto-print when opened in a new tab
     window.addEventListener('load', function() {
-      if (window.opener || document.referrer.includes('/bookings')) {
+      if (window.opener || document.referrer.includes('/bookings') || document.referrer.includes('/pos')) {
         setTimeout(function() {
           window.print();
         }, 300);

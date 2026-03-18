@@ -153,6 +153,8 @@ Route::middleware('auth')->group(function () {
 
         // End-day Recap
         Route::get('recap', [RecapController::class, 'index'])->name('recap.index');
+        Route::get('recap/close-preview', [RecapController::class, 'closePreview'])->name('recap.close-preview');
+        Route::post('recap/close-preview/print', [RecapController::class, 'printClosePreview'])->name('recap.close-preview.print');
         Route::get('recap/export', [RecapController::class, 'export'])->name('recap.export');
         Route::post('recap/close-export', [RecapController::class, 'closeAndExport'])->name('recap.close-export');
         Route::get('recap/history/{recapHistory}/export', [RecapController::class, 'exportHistory'])->name('recap.history.export');

@@ -837,16 +837,18 @@ class TableReservationController extends Controller
             }
 
             // 1. Save Sales Order
+            $soNumberWithPrefix = 'ROOM-'.$reference;
             $soPayload = [
                 'customerNo' => $customerNo,
                 'transDate' => $transDate,
-                'number' => $reference,
+                'number' => $soNumberWithPrefix,
                 'memo' => 'Booking POS — '.$reference,
                 'detailItem' => $detailItem,
             ];
 
             $soResult = $this->accurateService->saveSalesOrder($soPayload);
-            $soNumber = $soResult['r']['number'] ?? $soResult['d']['number'] ?? null;
+            // Use the same prefixed number we sent; Accurate may return different format
+            $soNumber = $soNumberWithPrefix;
 
             // 2. Save Sales Invoice
             $invPayload = [
@@ -861,7 +863,7 @@ class TableReservationController extends Controller
             }
 
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);
-            $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? null;
+            $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? $soNumber;
 
             // 3. Persist Accurate numbers on the billing record
             $billing->update([
@@ -968,22 +970,7 @@ class TableReservationController extends Controller
                 return false;
             }
 
-            $session->loadMissing(['table', 'orders.items.inventoryItem']);
-
-            $receiptItems = $session->orders
-                ->flatMap(fn (Order $order) => $order->items)
-                ->values();
-
-            $receiptOrder = new Order([
-                'order_number' => (string) ($billing->transaction_code ?: 'BILL-'.$billing->id),
-                'ordered_at' => $billing->updated_at ?? now(),
-                'items_total' => (float) $billing->orders_total,
-                'discount_amount' => (float) $billing->discount_amount,
-                'total' => (float) $billing->grand_total,
-            ]);
-
-            $receiptOrder->setRelation('items', $receiptItems);
-            $receiptOrder->setRelation('tableSession', $session);
+            $session->loadMissing(['table', 'customer', 'reservation', 'orders.items.inventoryItem']);
 
             Log::info('Close billing auto receipt print selected printer', [
                 'table_session_id' => $session->id,
@@ -995,7 +982,7 @@ class TableReservationController extends Controller
                 'connection_type' => $printer->connection_type,
             ]);
 
-            $this->printerService->printReceipt($receiptOrder, $printer);
+            $this->printerService->printClosedBillingReceipt($billing, $session, $printer);
 
             return true;
         } catch (\Throwable $e) {

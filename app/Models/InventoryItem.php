@@ -18,6 +18,7 @@ class InventoryItem extends Model
         'is_active' => 'boolean',
         'include_tax' => 'boolean',
         'include_service_charge' => 'boolean',
+        'detail_group' => 'array',
     ];
 
     public function category(): BelongsTo

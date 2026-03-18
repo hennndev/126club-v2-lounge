@@ -77,8 +77,19 @@ class InventoryController extends Controller
     public function toggleActive(InventoryItem $inventory)
     {
         try {
+            if (! $inventory->accurate_id) {
+                return back()->withErrors(['error' => 'Gagal mengubah status item: Accurate ID tidak ditemukan.']);
+            }
+
+            $nextIsActive = ! $inventory->is_active;
+
+            $this->accurateService->saveItem([
+                'id' => $inventory->accurate_id,
+                'suspended' => ! $nextIsActive,
+            ]);
+
             $inventory->update([
-                'is_active' => ! $inventory->is_active,
+                'is_active' => $nextIsActive,
             ]);
 
             $status = $inventory->fresh()->is_active ? 'aktif' : 'nonaktif';

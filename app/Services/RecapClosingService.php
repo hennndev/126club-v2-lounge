@@ -56,6 +56,8 @@ class RecapClosingService
                 'total_debit' => (float) $dashboard->total_debit,
                 'total_kredit' => (float) $dashboard->total_kredit,
                 'total_qris' => (float) $dashboard->total_qris,
+                'total_kitchen_items' => (int) $dashboard->total_kitchen_items,
+                'total_bar_items' => (int) $dashboard->total_bar_items,
                 'total_transactions' => (int) $dashboard->total_transactions,
                 'last_synced_at' => $dashboard->last_synced_at,
             ]);

@@ -6,16 +6,13 @@
   </x-slot>
 
   <div class="py-6"
-       x-data="{ activeTab: 'recap', showHistoryModal: false, selectedHistory: null, showCloseConfirmModal: false }">
+       x-data="{ activeTab: 'recap', showHistoryModal: false, selectedHistory: null }">
     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
       @if (session('error'))
         <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {{ session('error') }}
         </div>
       @endif
-
-      <iframe name="recapCloseExportFrame"
-              class="hidden"></iframe>
 
       <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -24,11 +21,12 @@
             <p class="text-sm text-gray-500 mt-1">Pantau recap hari ini dan lihat history closing otomatis dari dashboard.</p>
           </div>
 
-          <button type="button"
-                  @click="showCloseConfirmModal = true"
-                  class="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 text-sm font-medium min-h-[42px] whitespace-nowrap">
-            Export Excel (.xlsx)
-          </button>
+          <a href="{{ route('admin.recap.close-preview', ['start_datetime' => $selectedStartDatetime, 'end_datetime' => $selectedEndDatetime]) }}"
+             target="_blank"
+             rel="noopener noreferrer"
+             class="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 text-sm font-medium min-h-[42px] whitespace-nowrap">
+            Preview Print Struk
+          </a>
         </div>
 
         <div class="flex flex-col gap-4">
@@ -171,6 +169,8 @@
                   <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">No. Transaksi</th>
                   <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
                   <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Metode Pembayaran</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">No. Referensi</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Detail Item</th>
                   <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Qty Item</th>
                   <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th>
                 </tr>
@@ -182,12 +182,38 @@
                     <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ $transaction['order_number'] }}</td>
                     <td class="px-4 py-3 text-sm text-gray-700">{{ $transaction['customer_name'] }}</td>
                     <td class="px-4 py-3 text-sm text-gray-700">{{ $transaction['payment_method'] }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700">{{ $transaction['payment_reference_number'] ?: '-' }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700">
+                      <details class="group">
+                        <summary class="cursor-pointer text-slate-700 hover:text-slate-900 font-medium">Lihat Item</summary>
+                        <div class="mt-2 space-y-2 rounded-md border border-gray-200 bg-gray-50 p-2">
+                          @forelse ($transaction['items'] as $orderItem)
+                            <div class="rounded border border-gray-200 bg-white p-2">
+                              <p class="text-xs text-gray-800">
+                                <span class="font-semibold">{{ $orderItem['quantity'] }}x</span>
+                                {{ $orderItem['name'] }}
+                              </p>
+                              <p class="mt-1 text-[11px] text-gray-600">Harga: Rp {{ number_format($orderItem['price'], 0, ',', '.') }}</p>
+                              <p class="text-[11px] text-gray-600">Subtotal: Rp {{ number_format($orderItem['subtotal'], 0, ',', '.') }}</p>
+                              @if (($orderItem['tax_amount'] ?? 0) > 0)
+                                <p class="text-[11px] text-amber-700">PPN: Rp {{ number_format($orderItem['tax_amount'], 0, ',', '.') }}</p>
+                              @endif
+                              @if (($orderItem['service_charge_amount'] ?? 0) > 0)
+                                <p class="text-[11px] text-orange-700">Service: Rp {{ number_format($orderItem['service_charge_amount'], 0, ',', '.') }}</p>
+                              @endif
+                            </div>
+                          @empty
+                            <p class="text-xs text-gray-500">Tidak ada item.</p>
+                          @endforelse
+                        </div>
+                      </details>
+                    </td>
                     <td class="px-4 py-3 text-sm text-gray-700 text-right">{{ $transaction['items_count'] }}</td>
                     <td class="px-4 py-3 text-sm font-semibold text-gray-900 text-right">Rp {{ number_format($transaction['total'], 0, ',', '.') }}</td>
                   </tr>
                 @empty
                   <tr>
-                    <td colspan="6"
+                    <td colspan="8"
                         class="px-4 py-6 text-sm text-center text-gray-500">Tidak ada transaksi kasir pada tanggal ini.</td>
                   </tr>
                 @endforelse
@@ -284,6 +310,8 @@
                     'end_day' => $history->end_day?->format('d/m/Y') ?? '-',
                     'last_synced_at' => $history->last_synced_at?->format('d/m/Y H:i') ?? '-',
                     'total_transactions' => number_format($history->total_transactions, 0, ',', '.'),
+                    'total_kitchen_items' => number_format($history->total_kitchen_items, 0, ',', '.'),
+                    'total_bar_items' => number_format($history->total_bar_items, 0, ',', '.'),
                     'total_amount' => 'Rp ' . number_format($history->total_amount, 0, ',', '.'),
                     'total_tax' => 'Rp ' . number_format($history->total_tax, 0, ',', '.'),
                     'total_service_charge' => 'Rp ' . number_format($history->total_service_charge, 0, ',', '.'),
@@ -305,10 +333,18 @@
                     <p class="text-xs text-gray-500 mt-1">Last sync: {{ $history->last_synced_at?->format('d/m/Y H:i') ?? '-' }}</p>
                   </div>
 
-                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:min-w-[720px]">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 lg:min-w-[920px]">
                     <div>
                       <p class="text-xs uppercase tracking-wide text-gray-400">Transaksi</p>
                       <p class="text-sm font-semibold text-gray-900">{{ number_format($history->total_transactions, 0, ',', '.') }}</p>
+                    </div>
+                    <div>
+                      <p class="text-xs uppercase tracking-wide text-gray-400">Item Kitchen</p>
+                      <p class="text-sm font-semibold text-gray-900">{{ number_format($history->total_kitchen_items, 0, ',', '.') }}</p>
+                    </div>
+                    <div>
+                      <p class="text-xs uppercase tracking-wide text-gray-400">Item Bar</p>
+                      <p class="text-sm font-semibold text-gray-900">{{ number_format($history->total_bar_items, 0, ',', '.') }}</p>
                     </div>
                     <div>
                       <p class="text-xs uppercase tracking-wide text-gray-400">Total</p>
@@ -387,6 +423,18 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <p class="text-sm font-medium text-gray-500">Item Keluar Kitchen</p>
+                  <p class="text-2xl font-bold text-gray-900 mt-1"
+                     x-text="selectedHistory?.total_kitchen_items ?? '0'"></p>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <p class="text-sm font-medium text-gray-500">Item Keluar Bar</p>
+                  <p class="text-2xl font-bold text-gray-900 mt-1"
+                     x-text="selectedHistory?.total_bar_items ?? '0'"></p>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                   <p class="text-sm font-medium text-gray-500">Total Penjualan Kasir</p>
                   <p class="text-2xl font-bold text-emerald-700 mt-1"
                      x-text="selectedHistory?.total_amount ?? 'Rp 0'"></p>
@@ -456,49 +504,6 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div x-show="showCloseConfirmModal"
-           x-transition:enter="ease-out duration-300"
-           x-transition:enter-start="opacity-0"
-           x-transition:enter-end="opacity-100"
-           x-transition:leave="ease-in duration-200"
-           x-transition:leave-start="opacity-100"
-           x-transition:leave-end="opacity-0"
-           class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-           @click.self="showCloseConfirmModal = false"
-           style="display: none;">
-        <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
-          <div class="px-5 py-4 border-b border-gray-100">
-            <h3 class="text-base font-semibold text-gray-900">Konfirmasi End Day</h3>
-            <p class="mt-1 text-sm text-gray-500">Dashboard akan di-reset setelah end day ditutup dan file export dibuat.</p>
-          </div>
-
-          <div class="px-5 py-4 text-sm text-gray-700 space-y-2">
-            <p>- Jika close di pagi hari, tanggal end day mengikuti kemarin.</p>
-            <p>- Jika close di siang/malam hari, tanggal end day mengikuti hari ini.</p>
-          </div>
-
-          <div class="flex gap-3 px-5 py-4 border-t border-gray-100">
-            <button type="button"
-                    @click="showCloseConfirmModal = false"
-                    class="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-              Batal
-            </button>
-
-            <form method="POST"
-                  action="{{ route('admin.recap.close-export') }}"
-                  target="recapCloseExportFrame"
-                  @submit="showCloseConfirmModal = false; setTimeout(() => window.location.reload(), 1200)"
-                  class="flex-1">
-              @csrf
-              <button type="submit"
-                      class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
-                Ya, Tutup End Day
-              </button>
-            </form>
           </div>
         </div>
       </div>

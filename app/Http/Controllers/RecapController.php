@@ -8,9 +8,12 @@ use App\Models\Dashboard;
 use App\Models\GeneralSetting;
 use App\Models\KitchenOrderItem;
 use App\Models\Order;
+use App\Models\Printer;
 use App\Models\RecapHistory;
+use App\Services\PrinterService;
 use App\Services\RecapClosingService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -49,6 +52,66 @@ class RecapController extends Controller
             $this->buildLiveRecapExportRows($recapData),
             'rekapan-'.$startAt->format('Ymd_Hi').'-'.$endAt->format('Ymd_Hi').'.xlsx'
         );
+    }
+
+    public function closePreview(Request $request): View
+    {
+        $validated = $request->validate([
+            'date' => ['nullable', 'date'],
+            'start_datetime' => ['nullable', 'date'],
+            'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
+        ]);
+
+        [$startAt, $endAt] = $this->resolveRange($validated);
+        $recapData = $this->buildRecapData($startAt, $endAt);
+
+        return view('recap.close-preview', array_merge($recapData, [
+            'printedAt' => now(),
+        ]));
+    }
+
+    public function printClosePreview(Request $request, PrinterService $printerService): JsonResponse
+    {
+        $validated = $request->validate([
+            'date' => ['nullable', 'date'],
+            'start_datetime' => ['nullable', 'date'],
+            'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
+        ]);
+
+        [$startAt, $endAt] = $this->resolveRange($validated);
+        $recapData = $this->buildRecapData($startAt, $endAt);
+
+        $printer = $this->resolveEndDayPrinter();
+
+        if (! $printer) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Printer End Day belum dikonfigurasi atau tidak aktif.',
+            ], 422);
+        }
+
+        try {
+            $printerService->printEndDayRecap($recapData, $printer);
+
+            $message = "Print End Day berhasil dikirim ke printer {$printer->name}.";
+
+            if ($printer->connection_type === 'log') {
+                $message .= ' (LOG MODE)';
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'printer_name' => $printer->name,
+                'connection_type' => $printer->connection_type,
+                'log_path' => $printer->connection_type === 'log' ? storage_path('logs/printer.log') : null,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal print End Day: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     public function closeAndExport(RecapClosingService $recapClosingService): BinaryFileResponse|RedirectResponse
@@ -99,26 +162,72 @@ class RecapController extends Controller
             ->get()
             ->keyBy('table_session_id');
 
+        $billingsByOrderId = Billing::query()
+            ->whereIn('order_id', $orders->pluck('id')->filter()->unique()->values())
+            ->get()
+            ->keyBy('order_id');
+
         $cashierTransactions = $orders
-            ->map(function (Order $order) use ($billingsBySessionId): array {
+            ->map(function (Order $order) use ($billingsBySessionId, $billingsByOrderId): array {
                 $eventTime = $order->ordered_at ?? $order->created_at;
                 $customerName = $order->tableSession?->customer?->profile?->name
                     ?? $order->tableSession?->customer?->name
                     ?? $order->customer?->user?->name
                     ?? 'Walk-in';
-                $billing = $billingsBySessionId->get($order->table_session_id);
+                $billing = $billingsByOrderId->get($order->id)
+                    ?? ($order->table_session_id ? $billingsBySessionId->get($order->table_session_id) : null);
                 $paymentMode = $order->payment_mode ?? $billing?->payment_mode;
                 $paymentMethod = $order->payment_method ?? $billing?->payment_method;
+                $orderItems = $order->items
+                    ->where('status', '!=', 'cancelled')
+                    ->values();
+                $paymentReferenceNumber = $order->payment_reference_number
+                    ?? $billing?->payment_reference_number
+                    ?? $billing?->split_non_cash_reference_number;
 
                 return [
                     'timestamp' => $eventTime,
                     'datetime' => $eventTime?->format('d/m/Y H:i') ?? '-',
-                    'order_number' => $order->order_number,
+                    'order_number' => $order->order_number
+                        ?? $billing?->transaction_code
+                        ?? ('TRX-'.$order->id),
                     'customer_name' => $customerName,
                     'payment_method' => $this->formatPaymentMethod($paymentMethod, $paymentMode),
-                    'items_count' => $order->items->count(),
+                    'payment_reference_number' => $paymentReferenceNumber,
+                    'items_count' => $orderItems->count(),
+                    'order_status' => (string) $order->status,
+                    'billing_status' => (string) ($billing?->billing_status ?? ''),
+                    'items' => $orderItems
+                        ->map(fn ($item): array => [
+                            'name' => (string) ($item->item_name ?? '-'),
+                            'quantity' => (int) ($item->quantity ?? 0),
+                            'price' => (float) ($item->price ?? 0),
+                            'subtotal' => (float) ($item->subtotal ?? 0),
+                            'tax_amount' => (float) ($item->tax_amount ?? 0),
+                            'service_charge_amount' => (float) ($item->service_charge_amount ?? 0),
+                        ])
+                        ->values()
+                        ->all(),
                     'total' => (float) $order->total,
                 ];
+            })
+            ->filter(function (array $transaction): bool {
+                $isPaidByBilling = $transaction['billing_status'] === 'paid';
+                $isCompletedOrder = $transaction['order_status'] === 'completed';
+
+                if (! $isPaidByBilling && ! $isCompletedOrder) {
+                    return false;
+                }
+
+                return $transaction['items_count'] > 0
+                    || (float) $transaction['total'] > 0
+                    || filled($transaction['payment_reference_number'])
+                    || ($transaction['payment_method'] ?? '-') !== '-';
+            })
+            ->map(function (array $transaction): array {
+                unset($transaction['order_status'], $transaction['billing_status']);
+
+                return $transaction;
             })
             ->values();
 
@@ -203,10 +312,30 @@ class RecapController extends Controller
                 'total_debit' => (float) ($dashboardAggregate?->total_debit ?? 0),
                 'total_kredit' => (float) ($dashboardAggregate?->total_kredit ?? 0),
                 'total_qris' => (float) ($dashboardAggregate?->total_qris ?? 0),
+                'total_kitchen_items' => (int) ($dashboardAggregate?->total_kitchen_items ?? 0),
+                'total_bar_items' => (int) ($dashboardAggregate?->total_bar_items ?? 0),
                 'total_transactions' => (int) ($dashboardAggregate?->total_transactions ?? 0),
             ],
             'recapHistories' => $recapHistories,
         ];
+    }
+
+    private function resolveEndDayPrinter(): ?Printer
+    {
+        $settings = GeneralSetting::instance();
+        $configuredPrinterId = (int) ($settings->end_day_receipt_printer_id ?? 0);
+
+        if ($configuredPrinterId > 0) {
+            $configuredPrinter = Printer::active()->where('id', $configuredPrinterId)->first();
+
+            if ($configuredPrinter) {
+                return $configuredPrinter;
+            }
+        }
+
+        return Printer::active()->byType('cashier')->first()
+            ?? Printer::active()->default()->first()
+            ?? Printer::active()->first();
     }
 
     /**
@@ -294,6 +423,8 @@ class RecapController extends Controller
             ['Total Pembayaran Debit', (float) $recapHistory->total_debit],
             ['Total Pembayaran Kredit', (float) $recapHistory->total_kredit],
             ['Total Pembayaran QRIS', (float) $recapHistory->total_qris],
+            ['Item Keluar Kitchen', (int) $recapHistory->total_kitchen_items],
+            ['Item Keluar Bar', (int) $recapHistory->total_bar_items],
         ];
     }
 

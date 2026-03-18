@@ -43,6 +43,8 @@ test('manual close export uses today as end day when closed at night', function 
 
     expect($history)->not->toBeNull()
         ->and($history->end_day?->toDateString())->toBe('2026-03-18')
+        ->and((int) $history->total_kitchen_items)->toBe(4)
+        ->and((int) $history->total_bar_items)->toBe(2)
         ->and((float) $dashboard->total_amount)->toBe(0.0)
         ->and((int) $dashboard->total_transactions)->toBe(0);
 });
@@ -80,6 +82,8 @@ test('manual close export uses yesterday as end day when closed in morning', fun
 
     expect($history)->not->toBeNull()
         ->and($history->end_day?->toDateString())->toBe('2026-03-17')
+        ->and((int) $history->total_kitchen_items)->toBe(5)
+        ->and((int) $history->total_bar_items)->toBe(3)
         ->and((float) $dashboard->total_amount)->toBe(0.0)
         ->and((int) $dashboard->total_transactions)->toBe(0);
 });

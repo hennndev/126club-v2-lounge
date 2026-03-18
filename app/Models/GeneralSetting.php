@@ -11,6 +11,7 @@ class GeneralSetting extends Model
         'service_charge_percentage',
         'closed_billing_receipt_printer_id',
         'walk_in_receipt_printer_id',
+        'end_day_receipt_printer_id',
     ];
 
     protected function casts(): array
@@ -20,6 +21,7 @@ class GeneralSetting extends Model
             'service_charge_percentage' => 'integer',
             'closed_billing_receipt_printer_id' => 'integer',
             'walk_in_receipt_printer_id' => 'integer',
+            'end_day_receipt_printer_id' => 'integer',
         ];
     }
 
@@ -33,6 +35,7 @@ class GeneralSetting extends Model
             'service_charge_percentage' => 0,
             'closed_billing_receipt_printer_id' => null,
             'walk_in_receipt_printer_id' => null,
+            'end_day_receipt_printer_id' => null,
         ]);
     }
 }

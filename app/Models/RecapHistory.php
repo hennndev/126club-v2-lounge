@@ -18,6 +18,8 @@ class RecapHistory extends Model
         'total_debit',
         'total_kredit',
         'total_qris',
+        'total_kitchen_items',
+        'total_bar_items',
         'total_transactions',
         'last_synced_at',
     ];
@@ -32,6 +34,8 @@ class RecapHistory extends Model
         'total_debit' => 'decimal:2',
         'total_kredit' => 'decimal:2',
         'total_qris' => 'decimal:2',
+        'total_kitchen_items' => 'integer',
+        'total_bar_items' => 'integer',
         'total_transactions' => 'integer',
         'last_synced_at' => 'datetime',
     ];

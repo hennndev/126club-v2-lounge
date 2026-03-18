@@ -18,7 +18,6 @@ class StockOpnameController extends Controller
             ->get();
 
         $categoryTypes = $items->pluck('category_type')->unique()->sort()->values();
-
         $itemsData = $items->map(fn ($item) => [
             'inventory_item_id' => $item->id,
             'name' => $item->name,
@@ -108,8 +107,6 @@ class StockOpnameController extends Controller
         if ($stockOpname->status === 'completed') {
             return response()->json(['success' => false, 'message' => 'Stock opname sudah diselesaikan.'], 422);
         }
-
-        // First save/update everything
         $validated = $request->validate([
             'opname_date' => ['required', 'date'],
             'officer_name' => ['required', 'string', 'max:255'],

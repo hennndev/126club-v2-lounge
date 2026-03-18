@@ -130,10 +130,12 @@ test('close billing auto prints receipt using configured closed billing printer'
         'closed_billing_receipt_printer_id' => $closedBillingPrinter->id,
     ]);
 
-    mock(PrinterService::class, function (MockInterface $mock) use ($closedBillingPrinter): void {
-        $mock->shouldReceive('printReceipt')
+    mock(PrinterService::class, function (MockInterface $mock) use ($billing, $session, $closedBillingPrinter): void {
+        $mock->shouldReceive('printClosedBillingReceipt')
             ->once()
-            ->withArgs(fn ($orderArg, Printer $printerArg): bool => (int) $printerArg->id === (int) $closedBillingPrinter->id)
+            ->withArgs(fn ($billingArg, $sessionArg, Printer $printerArg): bool => (int) $billingArg->id === (int) $billing->id
+                && (int) $sessionArg->id === (int) $session->id
+                && (int) $printerArg->id === (int) $closedBillingPrinter->id)
             ->andReturnTrue();
     });
 
@@ -144,5 +146,6 @@ test('close billing auto prints receipt using configured closed billing printer'
         ])
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('receipt_printed', true);
+        ->assertJsonPath('receipt_printed', true)
+        ->assertJsonPath('receipt_url', route('admin.bookings.receipt', $booking));
 });

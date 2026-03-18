@@ -61,8 +61,8 @@ class TransactionHistoryController extends Controller
 
         $orderPrintPayloads = $orders->getCollection()
             ->mapWithKeys(function (Order $order) {
-                $isToday = $order->ordered_at && $order->ordered_at->isToday();
-                $displayId = $isToday ? 'TRX-TODAY-'.$order->id : 'TRX-'.$order->id;
+                // Use order_number directly (already has prefix)
+                $displayId = $order->order_number;
                 $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
 
                 return [
@@ -81,8 +81,8 @@ class TransactionHistoryController extends Controller
 
         $orderDetailPayloads = $orders->getCollection()
             ->mapWithKeys(function (Order $order) {
-                $isToday = $order->ordered_at && $order->ordered_at->isToday();
-                $displayId = $isToday ? 'TRX-TODAY-'.$order->id : 'TRX-'.$order->id;
+                // Use order_number directly (already has prefix)
+                $displayId = $order->order_number;
                 $customerName = $order->tableSession?->customer?->name ?? $order->customer?->user?->name;
                 $tableName = $order->tableSession?->table?->table_number;
                 $areaName = $order->tableSession?->table?->area?->name;

@@ -2,8 +2,11 @@
 
 use App\Models\InventoryItem;
 use App\Models\PosCategorySetting;
+use App\Services\AccurateService;
+use Mockery\MockInterface;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\mock;
 
 function makeInventoryForActivationTest(array $attributes = []): InventoryItem
 {
@@ -24,6 +27,16 @@ test('inventory item can be toggled inactive from inventory page', function () {
     $admin = adminUser();
     $item = makeInventoryForActivationTest(['is_active' => true]);
 
+    mock(AccurateService::class, function (MockInterface $mock) use ($item): void {
+        $mock->shouldReceive('saveItem')
+            ->once()
+            ->with([
+                'id' => $item->accurate_id,
+                'suspended' => true,
+            ])
+            ->andReturn(['s' => true]);
+    });
+
     $response = actingAs($admin)
         ->patch(route('admin.inventory.toggle-active', $item));
 
@@ -32,6 +45,30 @@ test('inventory item can be toggled inactive from inventory page', function () {
         ->assertSessionHas('success');
 
     expect($item->fresh()->is_active)->toBeFalse();
+});
+
+test('inventory item can be toggled active from inventory page', function () {
+    $admin = adminUser();
+    $item = makeInventoryForActivationTest(['is_active' => false]);
+
+    mock(AccurateService::class, function (MockInterface $mock) use ($item): void {
+        $mock->shouldReceive('saveItem')
+            ->once()
+            ->with([
+                'id' => $item->accurate_id,
+                'suspended' => false,
+            ])
+            ->andReturn(['s' => true]);
+    });
+
+    $response = actingAs($admin)
+        ->patch(route('admin.inventory.toggle-active', $item));
+
+    $response
+        ->assertRedirect(route('admin.inventory.index'))
+        ->assertSessionHas('success');
+
+    expect($item->fresh()->is_active)->toBeTrue();
 });
 
 test('inactive inventory item is not shown on pos page', function () {

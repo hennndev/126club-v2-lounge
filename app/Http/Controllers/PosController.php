@@ -262,9 +262,9 @@ class PosController extends Controller
                 $session = $order->tableSession;
                 $customer = $session?->reservation?->customer;
                 $customerName = $customer?->profile?->name
-                    ?? $customer?->customerUser?->name
-                    ?? $order->customer?->user?->name
-                    ?? 'Walk-in';
+                  ?? $customer?->customerUser?->name
+                  ?? $order->customer?->user?->name
+                  ?? 'Walk-in';
 
                 return [
                     'id' => $order->id,
@@ -598,11 +598,11 @@ class PosController extends Controller
                     }
 
                     $itemServiceChargeAmount = $includeServiceCharge
-                        ? round($subtotal * ($serviceChargePercentage / 100), 2)
-                        : 0;
+                      ? round($subtotal * ($serviceChargePercentage / 100), 2)
+                      : 0;
                     $itemTaxAmount = $includeTax
-                        ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
-                        : 0;
+                      ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
+                      : 0;
 
                     // Create Order Item
                     OrderItem::create([
@@ -669,10 +669,6 @@ class PosController extends Controller
                 try {
                     $this->dashboardSyncService->sync();
                 } catch (\Throwable $e) {
-                    Log::warning('Dashboard sync failed after walk-in checkout', [
-                        'order_number' => $orderNumber,
-                        'error' => $e->getMessage(),
-                    ]);
                 }
 
                 // Clear cart
@@ -706,8 +702,10 @@ class PosController extends Controller
                 // Resolve CustomerUser for kitchen/bar checker
                 $customerUser = CustomerUser::where('user_id', $customerId)->first();
 
-                $orderNumber = 'ORD-'.date('Ymd').'-'.str_pad(
-                    Order::whereDate('created_at', today())->count() + 1,
+                $orderNumber = 'WALKIN-'.date('Ymd').'-'.str_pad(
+                    Order::whereDate('created_at', today())
+                        ->where('table_session_id', null)
+                        ->count() + 1,
                     4,
                     '0',
                     STR_PAD_LEFT
@@ -757,11 +755,11 @@ class PosController extends Controller
                 }
 
                 $paymentMethod = $paymentMode === 'split'
-                    ? null
-                    : ($validated['payment_method'] ?? null);
+                  ? null
+                  : ($validated['payment_method'] ?? null);
                 $paymentReferenceNumber = $paymentMode === 'normal'
-                    ? (($paymentMethod ?? null) === 'cash' ? null : ($validated['payment_reference_number'] ?? null))
-                    : null;
+                  ? (($paymentMethod ?? null) === 'cash' ? null : ($validated['payment_reference_number'] ?? null))
+                  : null;
 
                 if ($paymentMode === 'normal' && ($paymentMethod ?? null) !== 'cash' && blank($paymentReferenceNumber)) {
                     throw ValidationException::withMessages([
@@ -811,6 +809,7 @@ class PosController extends Controller
                     'ordered_at' => now(),
                     'payment_method' => $paymentMethod,
                     'payment_mode' => $paymentMode,
+                    'payment_reference_number' => $paymentReferenceNumber,
                 ]);
 
                 $itemsTotal = 0;
@@ -851,11 +850,11 @@ class PosController extends Controller
                     }
 
                     $itemServiceChargeAmount = $includeServiceCharge
-                        ? round($subtotal * ($serviceChargePercentage / 100), 2)
-                        : 0;
+                      ? round($subtotal * ($serviceChargePercentage / 100), 2)
+                      : 0;
                     $itemTaxAmount = $includeTax
-                        ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
-                        : 0;
+                      ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
+                      : 0;
 
                     OrderItem::create([
                         'order_id' => $order->id,
@@ -904,7 +903,12 @@ class PosController extends Controller
                     'total' => $totals['grand_total'],
                 ]);
 
-                $transactionCode = 'TRX-'.now()->timestamp.rand(100, 999);
+                $walkInSequence = Billing::query()
+                    ->where('is_walk_in', true)
+                    ->whereDate('created_at', today())
+                    ->count() + 1;
+
+                $transactionCode = 'WALKIN-'.str_pad((string) $walkInSequence, 6, '0', STR_PAD_LEFT);
                 Billing::create([
                     'table_session_id' => null,
                     'order_id' => $order->id,
@@ -939,10 +943,6 @@ class PosController extends Controller
                 try {
                     $this->dashboardSyncService->sync();
                 } catch (\Throwable $e) {
-                    Log::warning('Dashboard sync failed after walk-in checkout', [
-                        'order_number' => $orderNumber,
-                        'error' => $e->getMessage(),
-                    ]);
                 }
 
                 session()->forget('pos_cart');
@@ -966,6 +966,7 @@ class PosController extends Controller
                     'total' => $totals['grand_total'],
                     'formatted_total' => 'Rp '.number_format($totals['grand_total'], 0, ',', '.'),
                     'receipt_printed' => $receiptPrinted,
+                    'receipt_url' => route('admin.pos.order-receipt', $order),
                 ]);
             }
 
@@ -975,7 +976,6 @@ class PosController extends Controller
                 'success' => false,
                 'message' => 'Jenis customer tidak valid.',
             ], 422);
-
         } catch (ValidationException $e) {
             DB::rollBack();
 
@@ -999,23 +999,58 @@ class PosController extends Controller
      */
     public function orderReceipt(Order $order): \Illuminate\View\View
     {
-        $order->load(['items.inventoryItem', 'customer.user', 'customer.profile']);
+        $order->load(['items.inventoryItem', 'customer.user', 'customer.profile', 'tableSession.table']);
 
-        $receiptType = $order->table_session_id ? 'closed_billing' : 'walk_in';
-        $this->printOrderReceipt($order, $receiptType);
+        $billing = Billing::query()
+            ->where('order_id', $order->id)
+            ->latest('id')
+            ->first();
+
+        if (! $billing) {
+            $billing = new Billing([
+                'transaction_code' => $order->order_number,
+                'updated_at' => $order->ordered_at,
+                'minimum_charge' => 0,
+                'orders_total' => (float) $order->items_total,
+                'subtotal' => (float) $order->items_total,
+                'discount_amount' => (float) $order->discount_amount,
+                'service_charge' => 0,
+                'service_charge_percentage' => 0,
+                'tax' => 0,
+                'tax_percentage' => 0,
+                'grand_total' => (float) $order->total,
+                'payment_mode' => $order->payment_mode,
+                'payment_method' => $order->payment_method,
+                'payment_reference_number' => $order->payment_reference_number,
+            ]);
+        }
+
+        $allItems = $order->items->map(function ($item): array {
+            return [
+                'name' => $item->item_name,
+                'qty' => (int) $item->quantity,
+                'price' => (float) $item->price,
+                'subtotal' => (float) $item->subtotal,
+            ];
+        })->values();
 
         $customerName = $order->customer?->user?->name
-            ?? $order->customer?->profile?->name
-            ?? 'Walk-in';
+          ?? $order->customer?->profile?->name
+          ?? 'Walk-in';
 
-        $receiptTotals = $this->calculateWalkInTotals(
-            (float) $order->items_total,
-            0,
-            (float) $order->discount_amount,
-            $this->resolveChargeableBasesFromOrderItems($order->items)
-        );
+        $tableDisplay = $order->tableSession?->table?->table_number ?? '-';
+        $receiptType = $order->table_session_id ? 'BOOKING' : 'WALK-IN';
 
-        return view('pos.receipt', compact('order', 'customerName', 'receiptTotals'));
+        return view('bookings.receipt', [
+            'booking' => null,
+            'billing' => $billing,
+            'allItems' => $allItems,
+            'customerName' => $customerName,
+            'receiptType' => $receiptType,
+            'tableDisplay' => $tableDisplay,
+            'cashierName' => auth()->user()?->name ?? 'Admin',
+            'printedAt' => ($billing->updated_at ?? $order->ordered_at ?? now())?->format('d M Y H:i') ?? now()->format('d M Y H:i'),
+        ]);
     }
 
     /**
@@ -1182,14 +1217,30 @@ class PosController extends Controller
     public function printReceipt(Request $request, ?Order $order = null): JsonResponse
     {
         try {
+            $type = strtolower((string) $request->input('type', 'cashier'));
+
             // If no order provided, try to get from request or session
             if (! $order) {
                 $orderId = $request->input('order_id');
                 if ($orderId) {
-                    $order = Order::with(['items.inventoryItem', 'tableSession.table'])->find($orderId);
+                    $order = Order::with([
+                        'items.inventoryItem',
+                        'tableSession.table',
+                        'kitchenOrder.items.inventoryItem',
+                        'kitchenOrder.table',
+                        'barOrder.items.inventoryItem',
+                        'barOrder.table',
+                    ])->find($orderId);
                 }
             } else {
-                $order->load(['items.inventoryItem', 'tableSession.table']);
+                $order->load([
+                    'items.inventoryItem',
+                    'tableSession.table',
+                    'kitchenOrder.items.inventoryItem',
+                    'kitchenOrder.table',
+                    'barOrder.items.inventoryItem',
+                    'barOrder.table',
+                ]);
             }
 
             if (! $order) {
@@ -1197,6 +1248,79 @@ class PosController extends Controller
                     'success' => false,
                     'message' => 'Order not found.',
                 ], 404);
+            }
+
+            if (in_array($type, ['kitchen', 'bar', 'checker'], true)) {
+                $printer = null;
+                if ($request->filled('printer_id')) {
+                    $printer = Printer::active()->find($request->input('printer_id'));
+                }
+                if (! $printer) {
+                    $printer = Printer::getForService($type) ?? Printer::getDefault();
+                }
+
+                if (! $printer) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No active printer configured for this print type.',
+                    ], 400);
+                }
+
+                if ($type === 'kitchen') {
+                    if (! $order->kitchenOrder) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Order ini tidak memiliki kitchen ticket.',
+                        ], 422);
+                    }
+
+                    $this->printerService->printKitchenTicket($order->kitchenOrder, $printer);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Kitchen ticket berhasil dikirim ke printer.',
+                    ]);
+                }
+
+                if ($type === 'bar') {
+                    if (! $order->barOrder) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Order ini tidak memiliki bar ticket.',
+                        ], 422);
+                    }
+
+                    $this->printerService->printBarTicket($order->barOrder, $printer);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Bar ticket berhasil dikirim ke printer.',
+                    ]);
+                }
+
+                $printed = false;
+
+                if ($order->kitchenOrder) {
+                    $this->printerService->printCheckerTicket($order->kitchenOrder, $printer);
+                    $printed = true;
+                }
+
+                if ($order->barOrder) {
+                    $this->printerService->printCheckerTicket($order->barOrder, $printer);
+                    $printed = true;
+                }
+
+                if (! $printed) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Order ini tidak memiliki checker ticket.',
+                    ], 422);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Checker ticket berhasil dikirim ke printer.',
+                ]);
             }
 
             // Get printer (specific or default)
@@ -1216,18 +1340,16 @@ class PosController extends Controller
                 ], 400);
             }
 
-            Log::info('POS receipt print selected printer', [
-                'requested_printer_id' => $request->input('printer_id'),
-                'selected_printer_id' => $printer->id,
-                'selected_printer_name' => $printer->name,
-                'selected_printer_type' => $printer->printer_type,
-                'selected_printer_location' => $printer->location,
-                'connection_type' => $printer->connection_type,
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-            ]);
+            $billing = Billing::query()
+                ->where('order_id', $order->id)
+                ->latest('id')
+                ->first();
 
-            $this->printerService->printReceipt($order, $printer);
+            if ($billing && ! $order->table_session_id && (bool) $billing->is_walk_in) {
+                $this->printerService->printWalkInBillingReceipt($order, $billing, $printer);
+            } else {
+                $this->printerService->printReceipt($order, $printer);
+            }
 
             return response()->json([
                 'success' => true,
@@ -1260,20 +1382,11 @@ class PosController extends Controller
                 ], 400);
             }
 
-            Log::info('POS test print selected printer', [
-                'requested_printer_id' => $request->input('printer_id'),
-                'selected_printer_id' => $printer->id,
-                'selected_printer_name' => $printer->name,
-                'selected_printer_type' => $printer->printer_type,
-                'selected_printer_location' => $printer->location,
-                'connection_type' => $printer->connection_type,
-            ]);
-
             $this->printerService->testPrint($printer);
 
             $modeMessage = $printer->connection_type === 'log'
-                ? 'Mode LOG (simulasi), kertas tidak akan keluar.'
-                : 'Perintah test print sudah dikirim ke printer fisik.';
+              ? 'Mode LOG (simulasi), kertas tidak akan keluar.'
+              : 'Perintah test print sudah dikirim ke printer fisik.';
 
             return response()->json([
                 'success' => true,
@@ -1296,39 +1409,23 @@ class PosController extends Controller
             $printer = $this->resolveReceiptPrinter($receiptType);
 
             if (! $printer) {
-                Log::warning('POS receipt auto print skipped because no cashier printer is configured', [
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'receipt_type' => $receiptType,
-                ]);
-
                 return false;
             }
 
             $order->load(['items.inventoryItem', 'tableSession.table']);
+            $billing = Billing::query()
+                ->where('order_id', $order->id)
+                ->latest('id')
+                ->first();
 
-            Log::info('POS auto receipt print selected printer', [
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'receipt_type' => $receiptType,
-                'selected_printer_id' => $printer->id,
-                'selected_printer_name' => $printer->name,
-                'selected_printer_type' => $printer->printer_type,
-                'selected_printer_location' => $printer->location,
-                'connection_type' => $printer->connection_type,
-            ]);
-
-            $this->printerService->printReceipt($order, $printer);
+            if ($billing && ! $order->table_session_id && (bool) $billing->is_walk_in) {
+                $this->printerService->printWalkInBillingReceipt($order, $billing, $printer);
+            } else {
+                $this->printerService->printReceipt($order, $printer);
+            }
 
             return true;
         } catch (\Exception $e) {
-            Log::warning('POS receipt auto print failed', [
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'receipt_type' => $receiptType,
-                'message' => $e->getMessage(),
-            ]);
-
             return false;
         }
     }
@@ -1469,7 +1566,6 @@ class PosController extends Controller
             // Auto-print bar ticket if a printer is configured for 'bar' location
             $this->printBarTicket($barOrder);
         }
-
     }
 
     /**
@@ -1624,11 +1720,6 @@ class PosController extends Controller
             $ingredient = InventoryItem::where('accurate_id', $componentAccurateId)->first();
 
             if (! $ingredient) {
-                Log::warning('POS Stock Decrement: ingredient not found in inventory', [
-                    'parent_item' => $inventoryItem->code,
-                    'component_accurate_id' => $componentAccurateId,
-                ]);
-
                 continue;
             }
 
@@ -1824,8 +1915,8 @@ class PosController extends Controller
             $possibleByIngredient = (int) floor($availableStock / $componentQuantity);
 
             $linePossiblePortions = $linePossiblePortions === null
-                ? $possibleByIngredient
-                : min($linePossiblePortions, $possibleByIngredient);
+              ? $possibleByIngredient
+              : min($linePossiblePortions, $possibleByIngredient);
         }
 
         return $linePossiblePortions ?? 0;
@@ -1848,16 +1939,12 @@ class PosController extends Controller
             $order->load(['items.inventoryItem']);
 
             if (! $customerUser) {
-                Log::warning('Accurate POS Sync: customer user not found, skipping', ['order_id' => $order->id]);
-
                 return;
             }
 
             $customerNo = $this->ensureAccurateCustomer($customerUser);
 
             if (! $customerNo) {
-                Log::warning('Accurate POS Sync: customerNo not found after sync, skipping', ['order_id' => $order->id]);
-
                 return;
             }
 
@@ -1884,26 +1971,22 @@ class PosController extends Controller
             $maxAttempts = 3;
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
                 $soNumber_attempt = $attempt === 1
-                    ? $order->order_number
-                    : $order->order_number.'-'.$attempt;
+                  ? $order->order_number
+                  : $order->order_number.'-'.$attempt;
+                // order_number already has WALKIN- prefix, just add ROOM-
+                $soNumberWithPrefix = 'ROOM-'.$soNumber_attempt;
                 try {
                     $soResult = $this->accurateService->saveSalesOrder(
-                        array_merge($soBasePayload, ['number' => $soNumber_attempt])
+                        array_merge($soBasePayload, ['number' => $soNumberWithPrefix])
                     );
-                    $soNumber = $soResult['r']['number'] ?? $soResult['d']['number'] ?? null;
-                    if ($soNumber) {
-                        break;
-                    }
+                    // Use the same prefixed number we sent; Accurate may return different format
+                    $soNumber = $soNumberWithPrefix;
+                    break;
                 } catch (\Exception $e) {
                     $isDuplicate = str_contains($e->getMessage(), 'Sudah ada data');
                     if (! $isDuplicate || $attempt === $maxAttempts) {
                         throw $e;
                     }
-                    Log::info('Accurate POS Sync: duplicate SO number, retrying', [
-                        'order_id' => $order->id,
-                        'attempt' => $attempt,
-                        'tried_number' => $soNumber_attempt,
-                    ]);
                 }
             }
 
@@ -1916,28 +1999,21 @@ class PosController extends Controller
             ];
 
             if ($soNumber) {
-                $invPayload['salesOrderNumber'] = $soNumber;
+                $invPayload['detailItem'] = array_map(
+                    fn (array $item): array => array_merge($item, ['salesOrderNumber' => $soNumber]),
+                    $detailItem
+                );
             }
 
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);
-            $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? null;
+            $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? $soNumber;
 
             // 3. Persist Accurate numbers on the order record
             $order->update([
                 'accurate_so_number' => $soNumber,
                 'accurate_inv_number' => $invNumber,
             ]);
-
-            Log::info('Accurate POS Sync: OK', [
-                'order_id' => $order->id,
-                'so_number' => $soNumber,
-                'inv_number' => $invNumber,
-            ]);
         } catch (\Exception $e) {
-            Log::error('Accurate POS Sync: FAILED', [
-                'order_id' => $order->id,
-                'error' => $e->getMessage(),
-            ]);
         }
     }
 
@@ -1952,10 +2028,6 @@ class PosController extends Controller
         $user = $customerUser->user;
 
         if (! $user) {
-            Log::warning('Accurate POS Sync: related user missing for customer sync', [
-                'customer_user_id' => $customerUser->id,
-            ]);
-
             return null;
         }
 
@@ -1975,11 +2047,6 @@ class PosController extends Controller
         $customerUser->update([
             'accurate_id' => $accurateId,
             'customer_code' => $customerNo,
-        ]);
-
-        Log::info('Accurate POS Sync: customer created for walk-in', [
-            'customer_user_id' => $customerUser->id,
-            'customer_no' => $customerNo,
         ]);
 
         return $customerNo;
