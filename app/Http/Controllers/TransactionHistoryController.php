@@ -44,17 +44,20 @@ class TransactionHistoryController extends Controller
             $assignedPrinterTypes = $this->resolveOrderAssignedPrinterTypes($order);
             $hasKitchenItems = $assignedPrinterTypes->contains('kitchen');
             $hasBarItems = $assignedPrinterTypes->contains('bar');
+            $hasCheckerItems = $assignedPrinterTypes->contains('checker');
 
             $order->setAttribute('print_types', [
                 'resmi' => true,
                 'kitchen' => $hasKitchenItems,
                 'bar' => $hasBarItems,
+                'checker' => $hasCheckerItems,
             ]);
 
             $order->setAttribute('print_counts', [
                 'resmi' => (int) ($order->receipt_print_count ?? 0),
                 'kitchen' => (int) ($order->kitchen_print_count ?? 0),
                 'bar' => (int) ($order->bar_print_count ?? 0),
+                'checker' => (int) ($order->checker_print_count ?? 0),
             ]);
 
             return $order;
@@ -121,7 +124,7 @@ class TransactionHistoryController extends Controller
             ->sum('total');
         $totalRevenue = Order::whereNotIn('status', ['cancelled'])->sum('total');
 
-        $activePrinters = Printer::active()->get(['location']);
+        $activePrinters = Printer::active()->get(['id', 'name', 'location', 'printer_type']);
 
         $printerLocations = $activePrinters
             ->pluck('location')
@@ -133,6 +136,16 @@ class TransactionHistoryController extends Controller
 
         $hasAnyActivePrinter = $activePrinters->isNotEmpty();
 
+        $activePrinterOptions = $activePrinters
+            ->map(fn (Printer $printer): array => [
+                'id' => (int) $printer->id,
+                'name' => (string) $printer->name,
+                'location' => (string) ($printer->location ?? '-'),
+                'printer_type' => (string) ($printer->printer_type ?? '-'),
+            ])
+            ->values()
+            ->toArray();
+
         return view('transaction-history.index', compact(
             'orders',
             'totalOrders',
@@ -141,6 +154,7 @@ class TransactionHistoryController extends Controller
             'totalRevenue',
             'printerLocations',
             'hasAnyActivePrinter',
+            'activePrinterOptions',
             'orderPrintPayloads',
             'orderDetailPayloads',
             'perPage',
@@ -151,6 +165,7 @@ class TransactionHistoryController extends Controller
     {
         $type = $request->input('type', 'resmi');
         $isReprint = $request->boolean('is_reprint');
+        $selectedPrinterId = (int) $request->input('printer_id', 0);
 
         try {
             $order->load([
@@ -163,34 +178,17 @@ class TransactionHistoryController extends Controller
                 'barOrder.table',
             ]);
 
-            if (! in_array($type, ['resmi', 'kitchen', 'bar'], true)) {
+            if (! in_array($type, ['resmi', 'kitchen', 'bar', 'checker'], true)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Jenis cetak tidak valid.',
                 ], 422);
             }
 
-            $assignedPrinterTypes = $this->resolveOrderAssignedPrinterTypes($order);
-            $hasKitchenItems = $assignedPrinterTypes->contains('kitchen');
-            $hasBarItems = $assignedPrinterTypes->contains('bar');
-
-            if ($type === 'kitchen' && ! $hasKitchenItems) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Order ini tidak memiliki item kitchen.',
-                ], 422);
-            }
-
-            if ($type === 'bar' && ! $hasBarItems) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Order ini tidak memiliki item bar.',
-                ], 422);
-            }
-
             $counterColumn = match ($type) {
                 'kitchen' => 'kitchen_print_count',
                 'bar' => 'bar_print_count',
+                'checker' => 'checker_print_count',
                 default => 'receipt_print_count',
             };
 
@@ -206,16 +204,21 @@ class TransactionHistoryController extends Controller
             $location = match ($type) {
                 'kitchen' => 'kitchen',
                 'bar' => 'bar',
+                'checker' => 'checker',
                 default => 'cashier',
             };
 
-            if ($type === 'resmi') {
-                $printer = Printer::getForService('cashier');
+            if ($selectedPrinterId > 0) {
+                $printer = Printer::active()->find($selectedPrinterId);
             } else {
-                $printer = Printer::getByLocation($location);
+                if ($type === 'resmi') {
+                    $printer = Printer::getForService('cashier');
+                } else {
+                    $printer = Printer::getByLocation($location);
 
-                if (! $printer) {
-                    $printer = Printer::getDefault();
+                    if (! $printer) {
+                        $printer = Printer::getDefault();
+                    }
                 }
             }
 
@@ -241,7 +244,25 @@ class TransactionHistoryController extends Controller
             } elseif ($type === 'bar') {
                 if ($order->barOrder) {
                     $this->printerService->printBarTicket($order->barOrder, $printer);
+                } elseif ($order->kitchenOrder) {
+                    $this->printerService->printBarTicket($order->kitchenOrder, $printer);
                 } else {
+                    $this->printerService->printReceipt($order, $printer);
+                }
+            } elseif ($type === 'checker') {
+                $printed = false;
+
+                if ($order->kitchenOrder) {
+                    $this->printerService->printCheckerTicket($order->kitchenOrder, $printer);
+                    $printed = true;
+                }
+
+                if ($order->barOrder) {
+                    $this->printerService->printCheckerTicket($order->barOrder, $printer);
+                    $printed = true;
+                }
+
+                if (! $printed) {
                     $this->printerService->printReceipt($order, $printer);
                 }
             } else {
@@ -253,6 +274,7 @@ class TransactionHistoryController extends Controller
             $typeLabel = match ($type) {
                 'kitchen' => 'Kitchen',
                 'bar' => 'Bar',
+                'checker' => 'Checker',
                 default => 'Struk Resmi',
             };
 

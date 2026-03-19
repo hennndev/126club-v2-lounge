@@ -24,10 +24,13 @@ class GeneralSettingController extends Controller
         $validated = $request->validate([
             'tax_percentage' => ['required', 'integer', 'min:0', 'max:100'],
             'service_charge_percentage' => ['required', 'integer', 'min:0', 'max:100'],
+            'can_choose_checker' => ['nullable', 'boolean'],
             'closed_billing_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'walk_in_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'end_day_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
         ]);
+
+        $validated['can_choose_checker'] = $request->boolean('can_choose_checker');
 
         GeneralSetting::instance()->update($validated);
 

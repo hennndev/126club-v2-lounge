@@ -100,6 +100,9 @@ class PosController extends Controller
                 'price' => $item['price'],
                 'quantity' => $item['quantity'],
                 'preparation_location' => $item['preparation_location'] ?? 'direct',
+                'assigned_printer_types' => collect($item['assigned_printer_types'] ?? [])->values()->all(),
+                'assigned_checker_printers' => collect($item['assigned_checker_printers'] ?? [])->values()->all(),
+                'assigned_checker_printer_ids' => collect($item['assigned_checker_printer_ids'] ?? [])->values()->all(),
                 'include_tax' => (bool) ($flags?->include_tax ?? $item['include_tax'] ?? true),
                 'include_service_charge' => (bool) ($flags?->include_service_charge ?? $item['include_service_charge'] ?? true),
             ];
@@ -322,6 +325,7 @@ class PosController extends Controller
             'type' => 'item',
             'preparation_location' => $this->resolvePreparationLocationFromPrinters($inventoryItem) ?? $setting->preparation_location,
             'assigned_printer_types' => $this->resolveAssignedPrinterTypes($inventoryItem),
+            'assigned_checker_printers' => $this->resolveAssignedCheckerPrinters($inventoryItem),
             'include_tax' => (bool) $inventoryItem->include_tax,
             'include_service_charge' => (bool) $inventoryItem->include_service_charge,
         ];
@@ -354,6 +358,8 @@ class PosController extends Controller
             $cart[$productId]['include_tax'] = $product['include_tax'];
             $cart[$productId]['include_service_charge'] = $product['include_service_charge'];
             $cart[$productId]['assigned_printer_types'] = $product['assigned_printer_types'];
+            $cart[$productId]['assigned_checker_printers'] = $product['assigned_checker_printers'];
+            $cart[$productId]['assigned_checker_printer_ids'] = collect($product['assigned_checker_printers'])->pluck('id')->values()->all();
         } else {
             $cart[$productId] = [
                 'id' => $product['id'],
@@ -362,6 +368,8 @@ class PosController extends Controller
                 'quantity' => 1,
                 'preparation_location' => $product['preparation_location'],
                 'assigned_printer_types' => $product['assigned_printer_types'],
+                'assigned_checker_printers' => $product['assigned_checker_printers'],
+                'assigned_checker_printer_ids' => collect($product['assigned_checker_printers'])->pluck('id')->values()->all(),
                 'include_tax' => $product['include_tax'],
                 'include_service_charge' => $product['include_service_charge'],
             ];
@@ -481,9 +489,16 @@ class PosController extends Controller
             'split_non_cash_amount' => 'nullable|numeric|min:0',
             'split_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
             'split_non_cash_reference_number' => 'nullable|string|max:100',
+            'checker_printer_ids' => 'nullable|array',
+            'checker_printer_ids.*' => 'integer|exists:printers,id',
         ]);
 
         $cartNotes = $request->input('cart_notes', []);
+        $selectedCheckerPrinterIds = collect($request->input('checker_printer_ids', []))
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
 
         $cart = session()->get('pos_cart', []);
 
@@ -640,7 +655,7 @@ class PosController extends Controller
                 ]);
 
                 // Route items to Kitchen/Bar and print tickets
-                $this->routeOrderToPreparation($order, $tableSession, $orderNumber);
+                $this->routeOrderToPreparation($order, $tableSession, $orderNumber, null, $selectedCheckerPrinterIds);
 
                 // Update Billing
                 if ($tableSession->billing) {
@@ -936,7 +951,7 @@ class PosController extends Controller
                 ]);
 
                 // Route to kitchen/bar checkers (no table session)
-                $this->routeOrderToPreparation($order, null, $orderNumber, $customerUser?->id);
+                $this->routeOrderToPreparation($order, null, $orderNumber, $customerUser?->id, $selectedCheckerPrinterIds);
 
                 DB::commit();
 
@@ -1251,22 +1266,22 @@ class PosController extends Controller
             }
 
             if (in_array($type, ['kitchen', 'bar', 'checker'], true)) {
-                $printer = null;
-                if ($request->filled('printer_id')) {
-                    $printer = Printer::active()->find($request->input('printer_id'));
-                }
-                if (! $printer) {
-                    $printer = Printer::getForService($type) ?? Printer::getDefault();
-                }
-
-                if (! $printer) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'No active printer configured for this print type.',
-                    ], 400);
-                }
-
                 if ($type === 'kitchen') {
+                    $printer = null;
+                    if ($request->filled('printer_id')) {
+                        $printer = Printer::active()->find($request->input('printer_id'));
+                    }
+                    if (! $printer) {
+                        $printer = Printer::getForService($type) ?? Printer::getDefault();
+                    }
+
+                    if (! $printer) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'No active printer configured for this print type.',
+                        ], 400);
+                    }
+
                     if (! $order->kitchenOrder) {
                         return response()->json([
                             'success' => false,
@@ -1283,6 +1298,21 @@ class PosController extends Controller
                 }
 
                 if ($type === 'bar') {
+                    $printer = null;
+                    if ($request->filled('printer_id')) {
+                        $printer = Printer::active()->find($request->input('printer_id'));
+                    }
+                    if (! $printer) {
+                        $printer = Printer::getForService($type) ?? Printer::getDefault();
+                    }
+
+                    if (! $printer) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'No active printer configured for this print type.',
+                        ], 400);
+                    }
+
                     if (! $order->barOrder) {
                         return response()->json([
                             'success' => false,
@@ -1298,16 +1328,73 @@ class PosController extends Controller
                     ]);
                 }
 
-                $printed = false;
+                $availableCheckerPrinters = $this->resolveCheckerPrintersForOrder($order);
+                $canChooseChecker = (bool) (GeneralSetting::instance()->can_choose_checker ?? false);
+                $selectedCheckerPrinters = collect();
 
-                if ($order->kitchenOrder) {
-                    $this->printerService->printCheckerTicket($order->kitchenOrder, $printer);
-                    $printed = true;
+                if ($canChooseChecker && $availableCheckerPrinters->count() > 1) {
+                    $selectedCheckerIds = collect($request->input('checker_printer_ids', []))
+                        ->map(fn ($id): int => (int) $id)
+                        ->filter(fn (int $id): bool => $id > 0)
+                        ->unique()
+                        ->values();
+
+                    if ($selectedCheckerIds->isEmpty()) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Pilih minimal satu printer checker.',
+                        ], 422);
+                    }
+
+                    $invalidPrinterIds = $selectedCheckerIds->diff($availableCheckerPrinters->pluck('id'));
+
+                    if ($invalidPrinterIds->isNotEmpty()) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Printer checker yang dipilih tidak sesuai assignment menu.',
+                        ], 422);
+                    }
+
+                    $selectedCheckerPrinters = $availableCheckerPrinters
+                        ->whereIn('id', $selectedCheckerIds)
+                        ->values();
                 }
 
-                if ($order->barOrder) {
-                    $this->printerService->printCheckerTicket($order->barOrder, $printer);
-                    $printed = true;
+                if ($selectedCheckerPrinters->isEmpty() && $availableCheckerPrinters->isNotEmpty()) {
+                    $selectedCheckerPrinters = collect([$availableCheckerPrinters->first()]);
+                }
+
+                if ($selectedCheckerPrinters->isEmpty()) {
+                    $fallbackPrinter = null;
+                    if ($request->filled('printer_id')) {
+                        $fallbackPrinter = Printer::active()->find((int) $request->input('printer_id'));
+                    }
+                    if (! $fallbackPrinter) {
+                        $fallbackPrinter = Printer::getForService('checker') ?? Printer::getDefault();
+                    }
+
+                    if (! $fallbackPrinter) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'No active printer configured for this print type.',
+                        ], 400);
+                    }
+
+                    $selectedCheckerPrinters = collect([$fallbackPrinter]);
+                }
+
+                $printed = false;
+
+                foreach ($selectedCheckerPrinters as $checkerPrinter) {
+                    if ($order->kitchenOrder) {
+                        $this->printerService->printCheckerTicket($order->kitchenOrder, $checkerPrinter);
+                        $printed = true;
+                    }
+
+                    if ($order->barOrder) {
+                        $this->printerService->printCheckerTicket($order->barOrder, $checkerPrinter);
+                        $printed = true;
+                    }
                 }
 
                 if (! $printed) {
@@ -1453,8 +1540,13 @@ class PosController extends Controller
     /**
      * Route order items to Kitchen/Bar preparation queues and print tickets.
      */
-    protected function routeOrderToPreparation(Order $order, ?TableSession $tableSession, string $orderNumber, ?int $walkInCustomerUserId = null): void
-    {
+    protected function routeOrderToPreparation(
+        Order $order,
+        ?TableSession $tableSession,
+        string $orderNumber,
+        ?int $walkInCustomerUserId = null,
+        ?Collection $selectedCheckerPrinterIds = null
+    ): void {
         $order->loadMissing(['items.inventoryItem.printers']);
 
         $kitchenItems = collect();
@@ -1536,7 +1628,7 @@ class PosController extends Controller
             }
 
             // Auto-print kitchen ticket if a printer is configured for 'kitchen' location
-            $this->printKitchenTicket($kitchenOrder);
+            $this->printKitchenTicket($kitchenOrder, $selectedCheckerPrinterIds);
         }
 
         // Create Bar Order if there are bar items
@@ -1564,14 +1656,14 @@ class PosController extends Controller
             }
 
             // Auto-print bar ticket if a printer is configured for 'bar' location
-            $this->printBarTicket($barOrder);
+            $this->printBarTicket($barOrder, $selectedCheckerPrinterIds);
         }
     }
 
     /**
      * Print kitchen order ticket.
      */
-    protected function printKitchenTicket(KitchenOrder $kitchenOrder): bool
+    protected function printKitchenTicket(KitchenOrder $kitchenOrder, ?Collection $selectedCheckerPrinterIds = null): bool
     {
         try {
             $kitchenOrder->load(['items.inventoryItem.printers', 'table']);
@@ -1584,7 +1676,8 @@ class PosController extends Controller
                     'cashier' => $this->printerService->printCashierTicket($order, $printer),
                     'bar' => $this->printerService->printBarTicket($order, $printer),
                     default => $this->printerService->printKitchenTicket($order, $printer),
-                }
+                },
+                $selectedCheckerPrinterIds
             );
         } catch (\Exception $e) {
             return false;
@@ -1594,7 +1687,7 @@ class PosController extends Controller
     /**
      * Print bar order ticket.
      */
-    protected function printBarTicket(BarOrder $barOrder): bool
+    protected function printBarTicket(BarOrder $barOrder, ?Collection $selectedCheckerPrinterIds = null): bool
     {
         try {
             $barOrder->load(['items.inventoryItem.printers', 'table']);
@@ -1607,19 +1700,34 @@ class PosController extends Controller
                     'cashier' => $this->printerService->printCashierTicket($order, $printer),
                     'kitchen' => $this->printerService->printKitchenTicket($order, $printer),
                     default => $this->printerService->printBarTicket($order, $printer),
-                }
+                },
+                $selectedCheckerPrinterIds
             );
         } catch (\Exception $e) {
             return false;
         }
     }
 
-    protected function printItemsToAssignedPrinters(object $order, Collection $items, callable $callback): bool
-    {
+    protected function printItemsToAssignedPrinters(
+        object $order,
+        Collection $items,
+        callable $callback,
+        ?Collection $selectedCheckerPrinterIds = null
+    ): bool {
         $groupedByPrinter = [];
 
         foreach ($items as $item) {
             $targetPrinters = $item->inventoryItem?->printers?->filter(fn (Printer $printer): bool => $printer->is_active) ?? collect();
+
+            if ($selectedCheckerPrinterIds?->isNotEmpty()) {
+                $targetPrinters = $targetPrinters->filter(function (Printer $printer) use ($selectedCheckerPrinterIds): bool {
+                    if ($this->resolvePrinterServiceType($printer) !== 'checker') {
+                        return true;
+                    }
+
+                    return $selectedCheckerPrinterIds->contains((int) $printer->id);
+                });
+            }
 
             if ($targetPrinters->isEmpty()) {
                 continue;
@@ -1746,19 +1854,48 @@ class PosController extends Controller
     {
         return $inventoryItem->printers
             ?->filter(fn (Printer $printer): bool => $printer->is_active)
-            ->map(function (Printer $printer): ?string {
-                $type = strtolower(trim((string) $printer->printer_type));
-
-                if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker'], true)) {
-                    return $type;
-                }
-
-                $location = strtolower(trim((string) $printer->location));
-
-                return in_array($location, ['kitchen', 'bar', 'cashier', 'checker'], true) ? $location : null;
-            })
+            ->map(fn (Printer $printer): ?string => $this->resolvePrinterServiceType($printer))
             ->filter()
             ->values() ?? collect();
+    }
+
+    protected function resolveAssignedCheckerPrinters(InventoryItem $inventoryItem): Collection
+    {
+        return $inventoryItem->printers
+            ?->filter(fn (Printer $printer): bool => $printer->is_active && $this->resolvePrinterServiceType($printer) === 'checker')
+            ->map(fn (Printer $printer): array => [
+                'id' => (int) $printer->id,
+                'name' => (string) $printer->name,
+            ])
+            ->values() ?? collect();
+    }
+
+    protected function resolveCheckerPrintersForOrder(Order $order): Collection
+    {
+        $order->loadMissing([
+            'kitchenOrder.items.inventoryItem.printers',
+            'barOrder.items.inventoryItem.printers',
+        ]);
+
+        return collect([$order->kitchenOrder?->items ?? collect(), $order->barOrder?->items ?? collect()])
+            ->flatten(1)
+            ->flatMap(fn ($item): Collection => $item->inventoryItem?->printers ?? collect())
+            ->filter(fn (Printer $printer): bool => $printer->is_active && $this->resolvePrinterServiceType($printer) === 'checker')
+            ->unique('id')
+            ->values();
+    }
+
+    protected function resolvePrinterServiceType(Printer $printer): ?string
+    {
+        $type = strtolower(trim((string) $printer->printer_type));
+
+        if (in_array($type, ['kitchen', 'bar', 'cashier', 'checker'], true)) {
+            return $type;
+        }
+
+        $location = strtolower(trim((string) $printer->location));
+
+        return in_array($location, ['kitchen', 'bar', 'cashier', 'checker'], true) ? $location : null;
     }
 
     protected function decrementSingleItemStock(int $itemId, int $quantity): void
@@ -2074,6 +2211,8 @@ class PosController extends Controller
                 'subtotal' => (float) $item['price'] * (int) $item['quantity'],
                 'preparation_location' => $item['preparation_location'] ?? 'direct',
                 'assigned_printer_types' => collect($item['assigned_printer_types'] ?? [])->values()->all(),
+                'assigned_checker_printers' => collect($item['assigned_checker_printers'] ?? [])->values()->all(),
+                'assigned_checker_printer_ids' => collect($item['assigned_checker_printer_ids'] ?? [])->values()->all(),
                 'include_tax' => (bool) ($flags?->include_tax ?? $item['include_tax'] ?? true),
                 'include_service_charge' => (bool) ($flags?->include_service_charge ?? $item['include_service_charge'] ?? true),
             ];

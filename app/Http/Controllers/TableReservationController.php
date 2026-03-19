@@ -991,6 +991,169 @@ class TableReservationController extends Controller
         return back()->with('success', "Waiter berhasil di-assign: {$waiterName}.");
     }
 
+    public function requestTableMove(Request $request, TableReservation $booking)
+    {
+        $validated = $request->validate([
+            'new_table_id' => 'required|integer|exists:tables,id',
+        ]);
+
+        try {
+            $oldTableNumber = (string) ($booking->table?->table_number ?? '-');
+            $newTableNumber = '-';
+
+            DB::transaction(function () use ($booking, $validated, &$newTableNumber): void {
+                if (! in_array($booking->status, ['confirmed', 'checked_in'], true)) {
+                    throw ValidationException::withMessages([
+                        'new_table_id' => 'Pindah meja hanya bisa dilakukan untuk booking berstatus booked atau checked-in.',
+                    ]);
+                }
+
+                $session = null;
+
+                if ($booking->status === 'checked_in') {
+                    $session = TableSession::query()
+                        ->where('table_reservation_id', $booking->id)
+                        ->where('status', 'active')
+                        ->latest('id')
+                        ->first();
+
+                    if (! $session) {
+                        throw ValidationException::withMessages([
+                            'new_table_id' => 'Sesi aktif tidak ditemukan untuk booking checked-in.',
+                        ]);
+                    }
+                }
+
+                $newTableId = (int) $validated['new_table_id'];
+
+                if ((int) $booking->table_id === $newTableId) {
+                    throw ValidationException::withMessages([
+                        'new_table_id' => 'Meja tujuan harus berbeda dari meja saat ini.',
+                    ]);
+                }
+
+                $targetTable = Tabel::query()
+                    ->where('id', $newTableId)
+                    ->where('is_active', true)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $targetTable) {
+                    throw ValidationException::withMessages([
+                        'new_table_id' => 'Meja tujuan tidak aktif atau tidak ditemukan.',
+                    ]);
+                }
+
+                if ($targetTable->status !== 'available') {
+                    throw ValidationException::withMessages([
+                        'new_table_id' => 'Meja tujuan sedang tidak tersedia.',
+                    ]);
+                }
+
+                $isUsedByAnotherActiveSession = TableSession::query()
+                    ->where('table_id', $newTableId)
+                    ->where('status', 'active')
+                    ->where('table_reservation_id', '!=', $booking->id)
+                    ->exists();
+
+                if ($isUsedByAnotherActiveSession) {
+                    throw ValidationException::withMessages([
+                        'new_table_id' => 'Meja tujuan sedang dipakai oleh sesi aktif lain.',
+                    ]);
+                }
+
+                $hasAnotherReservedBooking = TableReservation::query()
+                    ->where('table_id', $newTableId)
+                    ->whereIn('status', ['confirmed', 'checked_in'])
+                    ->where('id', '!=', $booking->id)
+                    ->exists();
+
+                if ($hasAnotherReservedBooking) {
+                    throw ValidationException::withMessages([
+                        'new_table_id' => 'Meja tujuan sudah dipakai booking aktif lain.',
+                    ]);
+                }
+
+                $booking->update(['table_id' => $newTableId]);
+
+                if ($session) {
+                    $session->update(['table_id' => $newTableId]);
+                }
+
+                $newTableNumber = (string) ($targetTable->table_number ?? '-');
+            });
+
+            $this->reconcileTableStatuses();
+
+            return back()->with('success', "Request pindah meja berhasil: {$oldTableNumber} → {$newTableNumber}.");
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'new_table_id' => 'Gagal memproses request pindah meja. '.$e->getMessage(),
+            ]);
+        }
+    }
+
+    public function printRunningReceipt(TableReservation $booking)
+    {
+        $session = TableSession::with(['billing', 'orders.items.inventoryItem', 'table', 'customer', 'reservation'])
+            ->where('table_reservation_id', $booking->id)
+            ->where('status', 'active')
+            ->latest('id')
+            ->first();
+
+        if (! $session) {
+            return back()->withErrors([
+                'error' => 'Table session aktif tidak ditemukan untuk booking ini.',
+            ]);
+        }
+
+        $billing = $session->billing;
+
+        if (! $billing) {
+            return back()->withErrors([
+                'error' => 'Billing belum tersedia untuk sesi ini.',
+            ]);
+        }
+
+        try {
+            DB::transaction(function () use ($session, $billing): void {
+                $totals = $this->calculateSessionBillingTotals(
+                    $session,
+                    (float) ($billing->discount_amount ?? 0),
+                    0,
+                );
+
+                $billing->update([
+                    'orders_total' => (float) $totals['orders_total'],
+                    'subtotal' => (float) $totals['subtotal'],
+                    'tax_percentage' => (float) $totals['tax_percentage'],
+                    'tax' => (float) $totals['tax'],
+                    'service_charge_percentage' => (float) $totals['service_charge_percentage'],
+                    'service_charge' => (float) $totals['service_charge'],
+                    'grand_total' => (float) $totals['grand_total'],
+                ]);
+            });
+
+            $billing->refresh();
+
+            $printed = $this->printClosedBillingReceipt($session, $billing);
+
+            if (! $printed) {
+                return back()->withErrors([
+                    'error' => 'Struk sesi berjalan gagal dicetak. Periksa konfigurasi printer.',
+                ]);
+            }
+
+            return back()->with('success', 'Struk sesi berjalan berhasil dicetak.');
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'error' => 'Gagal mencetak struk sesi berjalan: '.$e->getMessage(),
+            ]);
+        }
+    }
+
     public function receipt(TableReservation $booking)
     {
         $booking->load([

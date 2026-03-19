@@ -106,6 +106,34 @@
         </div>
       </div>
 
+      <div x-show="canChooseChecker && cart.length > 0"
+           style="display: none;"
+           class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+        <p class="text-xs font-semibold text-slate-800">Target Checker</p>
+
+        <template x-if="shouldChooseCheckerOnCheckout()">
+          <div class="space-y-2">
+            <p class="text-xs text-slate-700">Pilih checker tujuan sebelum checkout.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <template x-for="printer in getCheckerPrintersFromCart()"
+                        :key="`checkout-checker-printer-${printer.id}`">
+                <label class="inline-flex items-center gap-2 text-xs text-slate-900 bg-white border border-slate-200 rounded-lg px-3 py-2 cursor-pointer">
+                  <input type="checkbox"
+                         :value="String(printer.id)"
+                         x-model="selectedCheckerPrinterIds"
+                         class="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-400">
+                  <span x-text="printer.name"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="!shouldChooseCheckerOnCheckout()">
+          <p class="text-xs text-slate-700">Order ini tidak punya lebih dari satu checker untuk dipilih.</p>
+        </template>
+      </div>
+
       <!-- Totals -->
       <div class="bg-gray-900 rounded-xl p-4 space-y-2">
         <div class="flex justify-between text-sm text-gray-300">

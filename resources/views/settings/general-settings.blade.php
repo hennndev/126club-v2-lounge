@@ -25,7 +25,7 @@
     <!-- Header -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-slate-800">Pengaturan Umum</h1>
-      <p class="text-sm text-slate-500 mt-1">Konfigurasi pajak dan service charge yang diterapkan pada billing</p>
+      <p class="text-sm text-slate-500 mt-1">Konfigurasi pajak, service charge, opsi pilih checker, dan printer default</p>
     </div>
 
     <form method="POST"
@@ -78,6 +78,34 @@
             <span class="text-sm text-slate-500">%</span>
           </div>
           @error('service_charge_percentage')
+            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+          @enderror
+        </div>
+
+        <div class="p-6"
+             x-data="{ canChooseChecker: @js((bool) old('can_choose_checker', $settings->can_choose_checker)) }">
+          <p class="text-sm font-semibold text-slate-700 mb-1">Can Choose Checker</p>
+          <p class="text-xs text-slate-400 mb-3">Aktifkan agar kasir bisa memilih printer checker saat tersedia lebih dari satu.</p>
+          <label for="can_choose_checker"
+                 class="inline-flex items-center gap-3 text-sm text-slate-700 cursor-pointer select-none">
+            <input type="hidden"
+                   name="can_choose_checker"
+                   value="0">
+            <input type="checkbox"
+                   id="can_choose_checker"
+                   name="can_choose_checker"
+                   value="1"
+                   {{ old('can_choose_checker', $settings->can_choose_checker) ? 'checked' : '' }}
+                   x-model="canChooseChecker"
+                   class="peer sr-only">
+            <span class="relative inline-flex h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-slate-700 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400 peer-focus-visible:ring-offset-2 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:duration-200 peer-checked:after:translate-x-5"></span>
+            <span class="font-medium">Izinkan pilih checker</span>
+          </label>
+          <p class="text-xs text-slate-500 mt-2">
+            Status: <span class="font-semibold"
+                  x-text="canChooseChecker ? 'Aktif' : 'Nonaktif'">{{ old('can_choose_checker', $settings->can_choose_checker) ? 'Aktif' : 'Nonaktif' }}</span>
+          </p>
+          @error('can_choose_checker')
             <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
           @enderror
         </div>
@@ -164,7 +192,7 @@
           </svg>
           Catatan
         </p>
-        <p>Pengaturan ini mengatur persentase charge dan printer default untuk cetak struk otomatis termasuk recap End Day.</p>
+        <p>Pengaturan ini mengatur persentase charge, opsi pilih checker, dan printer default untuk cetak struk otomatis termasuk recap End Day.</p>
       </div>
 
       <div class="mt-6 flex items-center gap-3">

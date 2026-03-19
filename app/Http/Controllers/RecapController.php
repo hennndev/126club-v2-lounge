@@ -551,6 +551,15 @@ class RecapController extends Controller
             return [$date->copy()->startOfDay(), $date->copy()->endOfDay()];
         }
 
+        $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
+
+        if ($lastCloseAt !== null) {
+            return [
+                Carbon::parse($lastCloseAt)->addSecond(),
+                now(),
+            ];
+        }
+
         return [now()->startOfDay(), now()->endOfDay()];
     }
 }

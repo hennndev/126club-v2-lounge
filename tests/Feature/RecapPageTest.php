@@ -948,6 +948,93 @@ test('recap history export returns native xlsx file', function () {
         ->assertHeader('content-disposition', 'attachment; filename=rekapan-history-'.$history->end_day?->format('Ymd').'.xlsx');
 });
 
+test('recap default range starts after last close so kitchen outgoing resets', function () {
+    $admin = adminUser();
+
+    $beforeCloseAt = now()->subHours(2);
+    $afterCloseAt = now()->subMinutes(30);
+    $closedAt = now()->subHour();
+
+    $orderBeforeClose = makeRecapOrder($admin->id, $beforeCloseAt, 'RCP-BEFORE-CLOSE');
+    $orderAfterClose = makeRecapOrder($admin->id, $afterCloseAt, 'RCP-AFTER-CLOSE');
+
+    $kitchenItem = makeRecapInventoryItem([
+        'name' => 'Kitchen Reset Item',
+        'category_type' => 'food',
+    ]);
+
+    $kitchenOrderBeforeClose = KitchenOrder::create([
+        'order_id' => $orderBeforeClose->id,
+        'order_number' => $orderBeforeClose->order_number,
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 20000,
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+    $kitchenOrderBeforeClose->forceFill([
+        'created_at' => $beforeCloseAt,
+        'updated_at' => $beforeCloseAt,
+    ])->save();
+
+    KitchenOrderItem::create([
+        'kitchen_order_id' => $kitchenOrderBeforeClose->id,
+        'inventory_item_id' => $kitchenItem->id,
+        'quantity' => 5,
+        'price' => 20000,
+        'is_completed' => true,
+    ]);
+
+    $kitchenOrderAfterClose = KitchenOrder::create([
+        'order_id' => $orderAfterClose->id,
+        'order_number' => $orderAfterClose->order_number,
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 20000,
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+    $kitchenOrderAfterClose->forceFill([
+        'created_at' => $afterCloseAt,
+        'updated_at' => $afterCloseAt,
+    ])->save();
+
+    KitchenOrderItem::create([
+        'kitchen_order_id' => $kitchenOrderAfterClose->id,
+        'inventory_item_id' => $kitchenItem->id,
+        'quantity' => 3,
+        'price' => 20000,
+        'is_completed' => true,
+    ]);
+
+    $history = RecapHistory::query()->create([
+        'end_day' => now()->toDateString(),
+        'total_amount' => 0,
+        'total_tax' => 0,
+        'total_service_charge' => 0,
+        'total_cash' => 0,
+        'total_transfer' => 0,
+        'total_debit' => 0,
+        'total_kredit' => 0,
+        'total_qris' => 0,
+        'total_kitchen_items' => 0,
+        'total_bar_items' => 0,
+        'total_transactions' => 0,
+        'last_synced_at' => $closedAt,
+    ]);
+    $history->forceFill([
+        'created_at' => $closedAt,
+        'updated_at' => $closedAt,
+    ])->save();
+
+    $response = actingAs($admin)
+        ->get(route('admin.recap.index'));
+
+    $response->assertSuccessful();
+
+    expect((int) $response->viewData('kitchenQtyTotal'))->toBe(3);
+});
+
 test('user without recap permission cannot access recap route', function () {
     $user = \App\Models\User::factory()->create();
     $role = Role::firstOrCreate(['name' => 'Cashier']);

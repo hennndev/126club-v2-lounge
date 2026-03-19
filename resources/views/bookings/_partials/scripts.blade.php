@@ -197,6 +197,31 @@
     document.getElementById('assignWaiterModal')?.classList.add('hidden');
   }
 
+  function openMoveTableModal(bookingId, currentTableNumber) {
+    const modal = document.getElementById('moveTableModal');
+    const form = document.getElementById('moveTableForm');
+    const currentTableEl = document.getElementById('moveTableCurrentTable');
+
+    if (form) {
+      form.action = `/admin/bookings/${bookingId}/move-table`;
+    }
+
+    if (currentTableEl) {
+      currentTableEl.textContent = currentTableNumber || '-';
+    }
+
+    const targetSelect = document.getElementById('moveTableTargetSelect');
+    if (targetSelect) {
+      targetSelect.value = '';
+    }
+
+    modal?.classList.remove('hidden');
+  }
+
+  function closeMoveTableModal() {
+    document.getElementById('moveTableModal')?.classList.add('hidden');
+  }
+
   @php
     $sessionOrdersJson = $activeSessions->keyBy('session_code')->map(function ($s) {
         return [
@@ -309,6 +334,7 @@
       closeDeleteModal();
       closeStatusModal();
       closeBookingInfoModal();
+      closeMoveTableModal();
     }
   });
 
@@ -317,6 +343,9 @@
   });
   document.getElementById('deleteModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeDeleteModal();
+  });
+  document.getElementById('moveTableModal')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeMoveTableModal();
   });
   document.getElementById('statusModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeStatusModal();

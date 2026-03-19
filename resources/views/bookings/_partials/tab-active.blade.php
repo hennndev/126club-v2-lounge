@@ -281,6 +281,37 @@
                     Orders
                   </button>
                   @if ($reservation)
+                    <form action="{{ route('admin.bookings.printRunningReceipt', $reservation) }}"
+                          method="POST"
+                          class="inline">
+                      @csrf
+                      <button type="submit"
+                              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+                        <svg class="w-3.5 h-3.5"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+                          <path stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" />
+                        </svg>
+                        Cetak Struk
+                      </button>
+                    </form>
+                    <button onclick="openMoveTableModal({{ $reservation->id }}, '{{ $session->table?->table_number ?? '-' }}')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition">
+                      <svg class="w-3.5 h-3.5"
+                           fill="none"
+                           stroke="currentColor"
+                           viewBox="0 0 24 24">
+                        <path stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M7 16V4m0 0L3 8m4-4l4 4m6-1v12m0 0l4-4m-4 4l-4-4" />
+                      </svg>
+                      Pindah Meja
+                    </button>
                     @if ($canClose)
                       <button type="button"
                               data-booking-id="{{ $reservation->id }}"

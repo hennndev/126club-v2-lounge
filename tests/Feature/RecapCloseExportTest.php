@@ -49,7 +49,7 @@ test('manual close export uses today as end day when closed at night', function 
         ->and((int) $dashboard->total_transactions)->toBe(0);
 });
 
-test('manual close export uses yesterday as end day when closed in morning', function () {
+test('manual close export uses yesterday as end day when closed in morning before 9am', function () {
     Carbon::setTestNow(Carbon::create(2026, 3, 18, 8, 0, 0, 'Asia/Jakarta'));
 
     Dashboard::query()->updateOrCreate(
@@ -84,6 +84,45 @@ test('manual close export uses yesterday as end day when closed in morning', fun
         ->and($history->end_day?->toDateString())->toBe('2026-03-17')
         ->and((int) $history->total_kitchen_items)->toBe(5)
         ->and((int) $history->total_bar_items)->toBe(3)
+        ->and((float) $dashboard->total_amount)->toBe(0.0)
+        ->and((int) $dashboard->total_transactions)->toBe(0);
+});
+
+test('manual close export uses today as end day when closed at exactly 9am', function () {
+    Carbon::setTestNow(Carbon::create(2026, 3, 18, 9, 0, 0, 'Asia/Jakarta'));
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 80000,
+            'total_tax' => 8000,
+            'total_service_charge' => 4000,
+            'total_cash' => 80000,
+            'total_transfer' => 0,
+            'total_debit' => 0,
+            'total_kredit' => 0,
+            'total_qris' => 0,
+            'total_kitchen_items' => 2,
+            'total_bar_items' => 1,
+            'total_transactions' => 2,
+            'last_synced_at' => now('Asia/Jakarta'),
+        ]
+    );
+
+    $admin = adminUser();
+
+    $response = actingAs($admin)
+        ->post(route('admin.recap.close-export'));
+
+    $response->assertSuccessful();
+
+    $history = RecapHistory::query()->latest('id')->first();
+    $dashboard = Dashboard::query()->findOrFail(1);
+
+    expect($history)->not->toBeNull()
+        ->and($history->end_day?->toDateString())->toBe('2026-03-18')
+        ->and((int) $history->total_kitchen_items)->toBe(2)
+        ->and((int) $history->total_bar_items)->toBe(1)
         ->and((float) $dashboard->total_amount)->toBe(0.0)
         ->and((int) $dashboard->total_transactions)->toBe(0);
 });

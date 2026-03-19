@@ -54,6 +54,7 @@ test('general settings can save receipt printer assignments', function () {
         ->put(route('admin.settings.general.update'), [
             'tax_percentage' => 10,
             'service_charge_percentage' => 5,
+            'can_choose_checker' => true,
             'closed_billing_receipt_printer_id' => $closedBillingPrinter->id,
             'walk_in_receipt_printer_id' => $walkInPrinter->id,
             'end_day_receipt_printer_id' => $endDayPrinter->id,
@@ -66,5 +67,6 @@ test('general settings can save receipt printer assignments', function () {
         ->and((int) $settings->walk_in_receipt_printer_id)->toBe((int) $walkInPrinter->id)
         ->and((int) $settings->end_day_receipt_printer_id)->toBe((int) $endDayPrinter->id)
         ->and((int) $settings->tax_percentage)->toBe(10)
-        ->and((int) $settings->service_charge_percentage)->toBe(5);
+        ->and((int) $settings->service_charge_percentage)->toBe(5)
+        ->and((bool) $settings->can_choose_checker)->toBeTrue();
 });

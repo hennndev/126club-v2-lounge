@@ -66,11 +66,13 @@ class PrinterService
             $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
             $escpos->setEmphasis(true);
             $escpos->setTextSize(2, 2);
-            $escpos->text("126 CLUB\n");
+            $escpos->text("126\n");
             $escpos->setTextSize(1, 1);
-            $escpos->text("Premium Nightclub & Lounge\n");
-            $escpos->text("Jl. Premium No. 126, Jakarta\n");
-            $escpos->text("Telp: (021) 1234-5678\n");
+            $this->printVenusRingBrandText($escpos, 'One·two·six');
+            $escpos->text("Ruko The Boulevard, Blok VD05.\n");
+            $escpos->text("126, Jl.Ecopolis Citra Raya No.126, Mekar Bakti\n");
+            $escpos->text("Kec. Cikupa, Kabupaten Tangerang, Banten.\n");
+            $escpos->text("0811-839-126\n");
             $escpos->setEmphasis(false);
             $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
 
@@ -141,8 +143,8 @@ class PrinterService
             $escpos->setEmphasis(true);
             $escpos->text("FOLLOW US\n");
             $escpos->setEmphasis(false);
-            $escpos->text("@126club | www.126club.com\n");
-            $escpos->text("Powered by 126 Club POS System\n");
+            $escpos->text("ig & tiktok : onetwosix.official\n");
+            // $escpos->text("Powered by 126 Club POS System\n");
 
             $escpos->feed(3);
             $escpos->cut();
@@ -154,6 +156,79 @@ class PrinterService
             return true;
         } finally {
             $escpos->close();
+        }
+    }
+
+    protected function printVenusRingBrandText(EscposPrinter $escpos, string $text): void
+    {
+        $fontPath = public_path('fonts/Venus Rising Rg.otf');
+
+        if (! is_file($fontPath) || ! function_exists('imagettfbbox') || ! function_exists('imagettftext')) {
+            $escpos->text($text."\n");
+
+            return;
+        }
+
+        $fontSize = 20;
+        $paddingX = 14;
+        $paddingY = 10;
+        $bbox = imagettfbbox($fontSize, 0, $fontPath, $text);
+
+        if ($bbox === false) {
+            $escpos->text($text."\n");
+
+            return;
+        }
+
+        $textWidth = (int) abs($bbox[2] - $bbox[0]);
+        $textHeight = (int) abs($bbox[7] - $bbox[1]);
+        $imageWidth = max($textWidth + ($paddingX * 2), 1);
+        $imageHeight = max($textHeight + ($paddingY * 2), 1);
+
+        $image = imagecreatetruecolor($imageWidth, $imageHeight);
+
+        if ($image === false) {
+            $escpos->text($text."\n");
+
+            return;
+        }
+
+        $tmpDir = storage_path('app/tmp');
+        $tmpPath = $tmpDir.'/venus-ring-'.uniqid('', true).'.png';
+
+        if (! is_dir($tmpDir)) {
+            mkdir($tmpDir, 0755, true);
+        }
+
+        try {
+            $white = imagecolorallocate($image, 255, 255, 255);
+            $black = imagecolorallocate($image, 0, 0, 0);
+
+            imagefilledrectangle($image, 0, 0, $imageWidth, $imageHeight, $white);
+            imagettftext(
+                $image,
+                $fontSize,
+                0,
+                $paddingX,
+                $paddingY + $textHeight,
+                $black,
+                $fontPath,
+                $text
+            );
+
+            imagepng($image, $tmpPath);
+
+            $imageForPrinter = EscposImage::load($tmpPath);
+            $escpos->graphics($imageForPrinter);
+            $escpos->feed(1);
+        } catch (\Throwable $e) {
+            $escpos->text($text."\n");
+        } finally {
+            imagedestroy($image);
+
+            if (is_file($tmpPath)) {
+                @unlink($tmpPath);
+            }
         }
     }
 
@@ -691,10 +766,12 @@ class PrinterService
     {
         $separator = str_repeat('-', $width);
         $lines = [
-            '126 CLUB',
-            'Premium Nightclub & Lounge',
-            'Jl. Premium No. 126, Jakarta',
-            'Telp: (021) 1234-5678',
+            '126',
+            'One·two·six',
+            'Ruko The Boulevard, Blok VD05.',
+            '126, Jl.Ecopolis Citra Raya No.126, Mekar Bakti',
+            'Kec. Cikupa, Kabupaten Tangerang, Banten.',
+            '0811-839-126',
             $separator,
             $this->formatClosedBillingPair('No. Transaksi', (string) $payload['transaction_code'], $width),
             $this->formatClosedBillingPair('Tanggal', (string) $payload['date'], $width),

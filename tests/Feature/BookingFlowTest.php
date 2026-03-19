@@ -5,6 +5,7 @@ use App\Models\Billing;
 use App\Models\InventoryItem;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Printer;
 use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
@@ -346,6 +347,225 @@ test('admin can assign a waiter to an active session', function () {
         ->assertRedirect();
 
     expect($session->fresh()->waiter_id)->toBe($waiter->id);
+});
+
+test('admin can request move table for checked in booking with active session', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $sourceTable = makeTable($area, ['status' => 'occupied']);
+    $targetTable = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $sourceTable->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $sourceTable->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.moveTable', $booking), [
+            'new_table_id' => $targetTable->id,
+        ])
+        ->assertRedirect();
+
+    expect($booking->fresh()->table_id)->toBe($targetTable->id)
+        ->and($session->fresh()->table_id)->toBe($targetTable->id)
+        ->and($sourceTable->fresh()->status)->toBe('available')
+        ->and($targetTable->fresh()->status)->toBe('occupied');
+});
+
+test('request move table for confirmed booking can move without active table session', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $sourceTable = makeTable($area, ['status' => 'reserved']);
+    $targetTable = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $sourceTable->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'confirmed',
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.moveTable', $booking), [
+            'new_table_id' => $targetTable->id,
+        ])
+        ->assertRedirect();
+
+    expect($booking->fresh()->table_id)->toBe($targetTable->id)
+        ->and($sourceTable->fresh()->status)->toBe('available')
+        ->and($targetTable->fresh()->status)->toBe('reserved');
+});
+
+test('request move table fails for checked in booking when active session is missing', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $sourceTable = makeTable($area, ['status' => 'occupied']);
+    $targetTable = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $sourceTable->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'checked_in',
+    ]);
+
+    $this->actingAs($admin)
+        ->from(route('admin.bookings.index'))
+        ->post(route('admin.bookings.moveTable', $booking), [
+            'new_table_id' => $targetTable->id,
+        ])
+        ->assertRedirect(route('admin.bookings.index'))
+        ->assertSessionHasErrors('new_table_id');
+
+    expect($booking->fresh()->table_id)->toBe($sourceTable->id)
+        ->and($sourceTable->fresh()->status)->toBe('occupied')
+        ->and($targetTable->fresh()->status)->toBe('available');
+});
+
+test('admin can print running receipt while table session is active', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'occupied', 'minimum_charge' => 100000]);
+    $customer = makeBookingCustomer();
+
+    Printer::create([
+        'name' => 'Cashier Log Printer',
+        'location' => 'cashier',
+        'printer_type' => 'cashier',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => true,
+        'is_active' => true,
+    ]);
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'is_walk_in' => false,
+        'is_booking' => true,
+        'minimum_charge' => 200000,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 0,
+        'paid_amount' => 0,
+        'billing_status' => 'draft',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'RUN-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Running Receipt Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 50000,
+        'stock_quantity' => 20,
+        'threshold' => 2,
+        'unit' => 'glass',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'pending',
+        'items_total' => 100000,
+        'discount_amount' => 0,
+        'total' => 100000,
+        'ordered_at' => now(),
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 2,
+        'price' => 50000,
+        'subtotal' => 100000,
+        'discount_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.printRunningReceipt', $booking))
+        ->assertRedirect();
+
+    expect($billing->fresh()->billing_status)->toBe('draft')
+        ->and((float) $billing->fresh()->orders_total)->toBe(100000.0)
+        ->and((float) $billing->fresh()->subtotal)->toBe(100000.0)
+        ->and((float) $billing->fresh()->grand_total)->toBe(100000.0)
+        ->and($session->fresh()->status)->toBe('active');
+});
+
+test('print running receipt fails when active session is missing', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'reserved']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'confirmed',
+    ]);
+
+    $this->actingAs($admin)
+        ->from(route('admin.bookings.index'))
+        ->post(route('admin.bookings.printRunningReceipt', $booking))
+        ->assertRedirect(route('admin.bookings.index'))
+        ->assertSessionHasErrors('error');
 });
 
 test('active bookings page includes transaction checker progress for close billing', function () {

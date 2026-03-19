@@ -54,6 +54,7 @@
     @include('bookings._components.booking-info-modal')
     @include('bookings._components.close-billing-modal')
     @include('bookings._components.assign-waiter-modal')
+    @include('bookings._components.move-table-modal')
     @include('bookings._components.order-history-modal')
   </div>
 

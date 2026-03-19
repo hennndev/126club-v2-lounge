@@ -196,6 +196,11 @@
         <p class="text-sm font-semibold text-slate-800 truncate">
           {{ $tableBooking->booking_name ?? ($tableBooking->customer?->name ?? '-') }}
         </p>
+        <button type="button"
+                onclick="event.stopPropagation(); openMoveTableModal({{ $tableBooking->id }}, '{{ $table->table_number }}')"
+                class="mt-2 w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition">
+          Pindah Meja
+        </button>
       @endif
     </div>
   @endforeach

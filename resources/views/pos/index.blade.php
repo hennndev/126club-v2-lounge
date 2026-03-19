@@ -53,6 +53,7 @@
         kitchenUrl: "{{ route('admin.kitchen.index') }}",
         barUrl: "{{ route('admin.bar.index') }}",
         checkerUrl: "{{ route('admin.transaction-checker.index') }}",
+        canChooseChecker: {{ (int) ((bool) ($generalSettings->can_choose_checker ?? false)) }},
       };
       const posWaiters = @json($waiters);
       const posCharges = {
@@ -210,6 +211,8 @@
           kitchenUrl: posInitialData.kitchenUrl,
           barUrl: posInitialData.barUrl,
           checkerUrl: posInitialData.checkerUrl,
+          canChooseChecker: Boolean(posInitialData.canChooseChecker),
+          selectedCheckerPrinterIds: [],
           posCharges,
           bookingStep: 'type',
           checkoutForm: {
@@ -540,7 +543,14 @@
               return;
             }
 
+            this.prepareCheckerSelectionFromCart();
+
             if (!this.validateWalkInPaymentFields()) {
+              return;
+            }
+
+            if (this.shouldChooseCheckerOnCheckout() && this.getSelectedCheckerPrinterIds().length === 0) {
+              this.showToastMessage('Pilih minimal satu printer checker.', 'error');
               return;
             }
 
@@ -901,6 +911,10 @@
                 cart_notes: this.cartNotes,
               };
 
+              if (this.shouldChooseCheckerOnCheckout()) {
+                payload.checker_printer_ids = this.getSelectedCheckerPrinterIds();
+              }
+
               if (this.checkoutForm.customer_type === 'walk-in') {
                 payload.discount_type = this.checkoutForm.discount_type;
 
@@ -936,7 +950,25 @@
                   price: Number(item.price || 0),
                   notes: this.cartNotes[item.id] || '',
                   assigned_printer_types: Array.isArray(item.assigned_printer_types) ? item.assigned_printer_types : [],
+                  assigned_checker_printers: Array.isArray(item.assigned_checker_printers) ? item.assigned_checker_printers : [],
+                  assigned_checker_printer_ids: Array.isArray(item.assigned_checker_printer_ids) ? item.assigned_checker_printer_ids : [],
                 }));
+
+                const checkerPrintersById = new Map();
+                receiptItems.forEach((item) => {
+                  (Array.isArray(item.assigned_checker_printers) ? item.assigned_checker_printers : []).forEach((printer) => {
+                    const printerId = Number(printer?.id || 0);
+
+                    if (printerId > 0 && !checkerPrintersById.has(printerId)) {
+                      checkerPrintersById.set(printerId, {
+                        id: printerId,
+                        name: String(printer?.name || `Checker #${printerId}`),
+                      });
+                    }
+                  });
+                });
+
+                const checkerPrinters = Array.from(checkerPrintersById.values());
 
                 this.cart = [];
                 this.cartTotal = 0;
@@ -971,7 +1003,10 @@
                     hour12: false,
                   }),
                   items: receiptItems,
+                  checkerPrinters,
                 };
+                const selectedCheckerIds = this.getSelectedCheckerPrinterIds().filter((id) => checkerPrinters.some((printer) => Number(printer.id) === Number(id)));
+                this.selectedCheckerPrinterIds = selectedCheckerIds.length > 0 ? selectedCheckerIds : checkerPrinters.map((printer) => printer.id);
                 this.checkerPrinted = {
                   kitchen: false,
                   bar: false,
@@ -1021,9 +1056,56 @@
           closeReceiptModal() {
             this.showReceiptModal = false;
             this.receiptData = null;
+            this.selectedCheckerPrinterIds = [];
+          },
+
+          getCheckerPrintersFromCart() {
+            const checkerPrintersById = new Map();
+
+            (Array.isArray(this.cart) ? this.cart : []).forEach((item) => {
+              (Array.isArray(item.assigned_checker_printers) ? item.assigned_checker_printers : []).forEach((printer) => {
+                const printerId = Number(printer?.id || 0);
+
+                if (printerId > 0 && !checkerPrintersById.has(printerId)) {
+                  checkerPrintersById.set(printerId, {
+                    id: printerId,
+                    name: String(printer?.name || `Checker #${printerId}`),
+                  });
+                }
+              });
+            });
+
+            return Array.from(checkerPrintersById.values());
+          },
+
+          shouldChooseCheckerOnCheckout() {
+            return this.canChooseChecker && this.getCheckerPrintersFromCart().length > 1;
+          },
+
+          prepareCheckerSelectionFromCart() {
+            const availableCheckerPrinters = this.getCheckerPrintersFromCart();
+            const availableIds = availableCheckerPrinters.map((printer) => Number(printer.id));
+            const retainedSelection = this.getSelectedCheckerPrinterIds().filter((id) => availableIds.includes(id));
+
+            this.selectedCheckerPrinterIds = retainedSelection.length > 0 ? retainedSelection : availableIds;
+          },
+
+          shouldChooseCheckerPrinters() {
+            return this.canChooseChecker && (this.receiptData?.checkerPrinters?.length || 0) > 1;
+          },
+
+          getSelectedCheckerPrinterIds() {
+            return Array.from(new Set((this.selectedCheckerPrinterIds || [])
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0)));
           },
 
           async printCheckerAndNavigate(type, url) {
+            if (type === 'checker' && this.shouldChooseCheckerPrinters() && this.getSelectedCheckerPrinterIds().length === 0) {
+              this.showToastMessage('Pilih minimal satu printer checker.', 'error');
+              return;
+            }
+
             if (this.checkerPrinted[type]) {
               this.authPending = {
                 type,
@@ -1081,6 +1163,7 @@
 
           async _doPrintChecker(type, isReprint) {
             const d = this.receiptData;
+            const selectedCheckerPrinterIds = this.getSelectedCheckerPrinterIds();
 
             if (type === 'cashier') {
               this.checkerPrinted[type] = true;
@@ -1089,7 +1172,21 @@
 
             const items = d ?
               (type === 'checker' ?
-                d.items :
+                d.items.filter((item) => {
+                  if (!this.shouldChooseCheckerPrinters()) {
+                    return true;
+                  }
+
+                  const assignedIds = Array.isArray(item.assigned_checker_printer_ids) ?
+                    item.assigned_checker_printer_ids.map((id) => Number(id)) :
+                    [];
+
+                  if (assignedIds.length === 0) {
+                    return false;
+                  }
+
+                  return assignedIds.some((id) => selectedCheckerPrinterIds.includes(id));
+                }) :
                 d.items.filter(i =>
                   Array.isArray(i.assigned_printer_types) && i.assigned_printer_types.includes(type),
                 )) : [];
@@ -1171,6 +1268,7 @@
                   },
                   body: JSON.stringify({
                     type,
+                    checker_printer_ids: type === 'checker' && this.shouldChooseCheckerPrinters() ? this.getSelectedCheckerPrinterIds() : undefined,
                   }),
                 });
 

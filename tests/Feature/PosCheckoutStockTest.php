@@ -772,6 +772,136 @@ test('walk in checkout auto prints one menu to multiple assigned target printers
         ->assertJsonPath('receipt_printed', true);
 });
 
+test('walk in checkout auto print only targets selected checker printers', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081888888888',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => null,
+        'customer_code' => null,
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    GeneralSetting::instance()->update([
+        'can_choose_checker' => true,
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
+    $checkerPrinterOne = Printer::create([
+        'name' => 'Checker Lt1',
+        'location' => 'checker',
+        'printer_type' => 'checker',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $checkerPrinterTwo = Printer::create([
+        'name' => 'Checker Lt2',
+        'location' => 'checker',
+        'printer_type' => 'checker',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $cashierPrinter = Printer::create([
+        'name' => 'Cashier Default',
+        'location' => 'cashier',
+        'printer_type' => 'cashier',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => true,
+        'is_active' => true,
+    ]);
+
+    $inventoryItem = makePosInventoryItem(['stock_quantity' => 8, 'category_type' => 'main-course']);
+    $inventoryItem->printers()->sync([$checkerPrinterOne->id, $checkerPrinterTwo->id]);
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'main-course'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')->andReturn([]);
+        $mock->shouldReceive('saveCustomer')->andReturn(['r' => ['id' => 1, 'customerNo' => 'CUST-001']]);
+        $mock->shouldReceive('saveSalesOrder')->andReturn(['r' => ['number' => 'SO-001']]);
+        $mock->shouldReceive('saveSalesInvoice')->andReturn(['r' => ['number' => 'INV-001']]);
+    });
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($checkerPrinterTwo): void {
+        $mock->shouldReceive('printCheckerTicket')
+            ->once()
+            ->withArgs(function ($order, $printer) use ($checkerPrinterTwo): bool {
+                return $printer->id === $checkerPrinterTwo->id
+                    && (int) ($order->items->count() ?? 0) === 1;
+            })
+            ->andReturnTrue();
+
+        $mock->shouldReceive('printWalkInBillingReceipt')
+            ->once()
+            ->andReturnTrue();
+
+        $mock->shouldReceive('printKitchenTicket')->never();
+        $mock->shouldReceive('printBarTicket')->never();
+        $mock->shouldReceive('printCashierTicket')->never();
+        $mock->shouldReceive('printReceipt')->never();
+    });
+
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'walk-in',
+            'walk_in_customer_id' => $customer->id,
+            'payment_method' => 'cash',
+            'payment_mode' => 'normal',
+            'discount_percentage' => 0,
+            'checker_printer_ids' => [$checkerPrinterTwo->id],
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('receipt_printed', true);
+});
+
 test('booking checkout does not print receipt even when cashier printer exists', function () {
     $admin = adminUser();
     $customer = User::factory()->create();
