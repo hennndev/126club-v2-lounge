@@ -426,6 +426,42 @@ test('close billing works with split payment mode cash and non-cash method', fun
         ->and((float) $updatedBilling->paid_amount)->toBe((float) $updatedBilling->grand_total);
 });
 
+test('close billing works with split payment mode non-cash and non-cash', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'split',
+        'split_cash_amount' => 0,
+        'split_non_cash_amount' => 50000,
+        'split_non_cash_method' => 'debit',
+        'split_non_cash_reference_number' => 'DB-50000',
+        'split_second_non_cash_amount' => 70000,
+        'split_second_non_cash_method' => 'qris',
+        'split_second_non_cash_reference_number' => 'QR-70000',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('receipt.split_cash_amount', 0)
+        ->assertJsonPath('receipt.split_debit_amount', 50000)
+        ->assertJsonPath('receipt.split_second_non_cash_amount', 70000)
+        ->assertJsonPath('receipt.split_second_non_cash_method', 'QRIS');
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect($updatedBilling->billing_status)->toBe('paid')
+        ->and($updatedBilling->payment_mode)->toBe('split')
+        ->and((float) $updatedBilling->split_cash_amount)->toBe(0.0)
+        ->and((float) $updatedBilling->split_debit_amount)->toBe(50000.0)
+        ->and($updatedBilling->split_non_cash_method)->toBe('debit')
+        ->and((float) $updatedBilling->split_second_non_cash_amount)->toBe(70000.0)
+        ->and($updatedBilling->split_second_non_cash_method)->toBe('qris')
+        ->and($updatedBilling->split_second_non_cash_reference_number)->toBe('QR-70000')
+        ->and((float) $updatedBilling->paid_amount)->toBe((float) $updatedBilling->grand_total);
+});
+
 test('close billing rejects split payment when totals do not match', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
@@ -440,7 +476,8 @@ test('close billing rejects split payment when totals do not match', function ()
 
     $response
         ->assertStatus(422)
-        ->assertJsonPath('success', false);
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'Total pembayaran split harus sama dengan grand total.');
 
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
@@ -463,7 +500,7 @@ test('close billing rejects split payment when non-cash reference is missing', f
     $response
         ->assertStatus(422)
         ->assertJsonPath('success', false)
-        ->assertJsonPath('errors.split_non_cash_reference_number.0', 'Nomor referensi non-cash untuk split bill wajib diisi.');
+        ->assertJsonPath('errors.split_non_cash_reference_number.0', 'Nomor referensi non-cash pertama untuk split bill wajib diisi.');
 });
 
 test('close billing updates table status using session table even when booking table id differs', function () {
@@ -586,4 +623,54 @@ test('close billing prioritizes active session when booking has multiple session
         ->and($activeSession->fresh()->billing?->billing_status)->toBe('paid')
         ->and($booking->fresh()->status)->toBe('completed')
         ->and($booking->fresh()->table?->status)->toBe('available');
+});
+
+test('close billing prevents closure when order items total is less than down payment', function () {
+    $admin = adminUser();
+    [$booking, $session] = makeBookingCloseBillingFixture($admin);
+
+    // Set down payment to 100000
+    $booking->update(['down_payment_amount' => 100000]);
+
+    // Update existing orders to total only 50000 (less than DP)
+    foreach ($session->orders as $order) {
+        $order->update(['items_total' => 50000, 'total' => 50000]);
+        foreach ($order->items as $item) {
+            $item->update(['subtotal' => 50000]);
+        }
+    }
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $response
+        ->assertStatus(422)
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', fn ($message) => str_contains($message, 'tidak sesuai dengan DP'));
+
+    expect($session->fresh()->billing?->billing_status)->toBe('draft');
+});
+
+test('close billing allows closure when order items total matches or exceeds down payment', function () {
+    $admin = adminUser();
+    [$booking, $session] = makeBookingCloseBillingFixture($admin);
+
+    // Set down payment to 100000
+    $booking->update(['down_payment_amount' => 100000]);
+
+    // Update existing orders to total exactly 120000 (matches fixture default which exceeds DP)
+    // Fixture already creates orders with 120000 total
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    expect($session->fresh()->billing?->billing_status)->toBe('paid');
 });

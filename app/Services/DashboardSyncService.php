@@ -65,6 +65,7 @@ class DashboardSyncService
             if (strtolower((string) ($billing->payment_mode ?? 'normal')) === 'split') {
                 $splitCashAmount = (float) ($billing->split_cash_amount ?? 0);
                 $splitNonCashAmount = (float) ($billing->split_debit_amount ?? 0);
+                $splitSecondNonCashAmount = (float) ($billing->split_second_non_cash_amount ?? 0);
 
                 $totals['total_cash'] += $splitCashAmount;
                 $splitNonCashAmount = $splitNonCashAmount > 0
@@ -73,6 +74,11 @@ class DashboardSyncService
 
                 $splitNonCashMethod = $billing->split_non_cash_method ?: 'debit';
                 $this->addPaymentAmount($totals, $this->normalizePaymentMethod($splitNonCashMethod), $splitNonCashAmount);
+
+                if ($splitSecondNonCashAmount > 0) {
+                    $splitSecondNonCashMethod = $billing->split_second_non_cash_method ?: 'debit';
+                    $this->addPaymentAmount($totals, $this->normalizePaymentMethod($splitSecondNonCashMethod), $splitSecondNonCashAmount);
+                }
 
                 continue;
             }

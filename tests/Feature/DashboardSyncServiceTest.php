@@ -141,6 +141,9 @@ test('dashboard sync aggregates totals from paid billings and walk-in orders', f
         'split_debit_amount' => 20000,
         'split_non_cash_method' => 'qris',
         'split_non_cash_reference_number' => 'SPLIT-001',
+        'split_second_non_cash_amount' => 20000,
+        'split_second_non_cash_method' => 'kredit',
+        'split_second_non_cash_reference_number' => 'SPLIT-002',
     ]);
 
     Billing::create([
@@ -174,7 +177,7 @@ test('dashboard sync aggregates totals from paid billings and walk-in orders', f
         ->and((float) $dashboard->total_transfer)->toBe(50000.0)
         ->and((float) $dashboard->total_debit)->toBe(121000.0)
         ->and((float) $dashboard->total_qris)->toBe(20000.0)
-        ->and((float) $dashboard->total_kredit)->toBe(0.0)
+        ->and((float) $dashboard->total_kredit)->toBe(20000.0)
         ->and((int) $dashboard->total_kitchen_items)->toBe(7)
         ->and((int) $dashboard->total_bar_items)->toBe(5)
         ->and((int) $dashboard->total_transactions)->toBe(3);

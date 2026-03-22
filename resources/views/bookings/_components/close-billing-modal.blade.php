@@ -255,13 +255,13 @@
         </div>
       </div>
 
-      <!-- Split mode: cash + non-cash -->
+      <!-- Split mode: payment 1 + payment 2 (+ optional cash) -->
       <div id="cbSplitBlock"
            class="hidden space-y-3">
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label for="cb_split_cash"
-                   class="block text-xs font-semibold text-gray-600 mb-1.5">Cash</label>
+                   class="block text-xs font-semibold text-gray-600 mb-1.5">Cash (Opsional)</label>
             <input id="cb_split_cash_display"
                    type="text"
                    inputmode="numeric"
@@ -273,7 +273,7 @@
           </div>
           <div>
             <label for="cb_split_non_cash_amount"
-                   class="block text-xs font-semibold text-gray-600 mb-1.5">Nominal Non-Cash</label>
+                   class="block text-xs font-semibold text-gray-600 mb-1.5">Nominal Non-Cash 1</label>
             <input id="cb_split_non_cash_amount_display"
                    type="text"
                    inputmode="numeric"
@@ -283,27 +283,64 @@
                    type="hidden"
                    value="0">
           </div>
+          <div>
+            <label for="cb_split_second_non_cash_amount"
+                   class="block text-xs font-semibold text-gray-600 mb-1.5">Nominal Non-Cash 2</label>
+            <input id="cb_split_second_non_cash_amount_display"
+                   type="text"
+                   inputmode="numeric"
+                   value="Rp 0"
+                   class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+            <input id="cb_split_second_non_cash_amount"
+                   type="hidden"
+                   value="0">
+          </div>
         </div>
-        <div>
-          <label for="cb_split_non_cash_method"
-                 class="block text-xs font-semibold text-gray-600 mb-1.5">Metode Non-Cash</label>
-          <select id="cb_split_non_cash_method"
-                  class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-            <option value="debit">Debit</option>
-            <option value="kredit">Kredit</option>
-            <option value="qris">QRIS</option>
-            <option value="transfer">Transfer</option>
-            <option value="ewallet">E-Wallet</option>
-            <option value="lainnya">Lainnya</option>
-          </select>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label for="cb_split_non_cash_method"
+                   class="block text-xs font-semibold text-gray-600 mb-1.5">Metode Non-Cash 1</label>
+            <select id="cb_split_non_cash_method"
+                    class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+              <option value="debit">Debit</option>
+              <option value="kredit">Kredit</option>
+              <option value="qris">QRIS</option>
+              <option value="transfer">Transfer</option>
+              <option value="ewallet">E-Wallet</option>
+              <option value="lainnya">Lainnya</option>
+            </select>
+          </div>
+          <div>
+            <label for="cb_split_second_non_cash_method"
+                   class="block text-xs font-semibold text-gray-600 mb-1.5">Metode Non-Cash 2</label>
+            <select id="cb_split_second_non_cash_method"
+                    class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+              <option value="debit">Debit</option>
+              <option value="kredit">Kredit</option>
+              <option value="qris">QRIS</option>
+              <option value="transfer">Transfer</option>
+              <option value="ewallet">E-Wallet</option>
+              <option value="lainnya">Lainnya</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label for="cb_split_non_cash_reference_number"
-                 class="block text-xs font-semibold text-gray-600 mb-1.5">Nomor Referensi Non-Cash</label>
-          <input id="cb_split_non_cash_reference_number"
-                 type="text"
-                 placeholder="Nomor kartu / approval / referensi"
-                 class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label for="cb_split_non_cash_reference_number"
+                   class="block text-xs font-semibold text-gray-600 mb-1.5">Referensi Non-Cash 1</label>
+            <input id="cb_split_non_cash_reference_number"
+                   type="text"
+                   placeholder="Nomor kartu / approval / referensi"
+                   class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+          </div>
+          <div>
+            <label for="cb_split_second_non_cash_reference_number"
+                   class="block text-xs font-semibold text-gray-600 mb-1.5">Referensi Non-Cash 2</label>
+            <input id="cb_split_second_non_cash_reference_number"
+                   type="text"
+                   placeholder="Nomor kartu / approval / referensi"
+                   class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+          </div>
         </div>
         <div id="cbSplitSummary"
              class="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 space-y-1">
@@ -391,15 +428,39 @@
     const maxAmount = Math.max(cbCurrentGrandTotal, 0);
     const normalizedAmount = Math.min(Math.max(enteredAmount, 0), maxAmount);
 
+    let splitCashAmount = Number(document.getElementById('cb_split_cash')?.value || 0);
+    let splitNonCashAmount = Number(document.getElementById('cb_split_non_cash_amount')?.value || 0);
+    let splitSecondNonCashAmount = Number(document.getElementById('cb_split_second_non_cash_amount')?.value || 0);
+
     if (which === 'cash') {
-      const pairedNonCashAmount = Math.max(maxAmount - normalizedAmount, 0);
-      setSplitInput('cash', normalizedAmount);
-      setSplitInput('non_cash_amount', pairedNonCashAmount);
-    } else {
-      const pairedCashAmount = Math.max(maxAmount - normalizedAmount, 0);
-      setSplitInput('non_cash_amount', normalizedAmount);
-      setSplitInput('cash', pairedCashAmount);
+      splitCashAmount = normalizedAmount;
+      splitNonCashAmount = Math.max(maxAmount - splitCashAmount, 0);
+      splitSecondNonCashAmount = 0;
     }
+
+    if (which === 'non_cash_amount') {
+      splitNonCashAmount = normalizedAmount;
+
+      if (splitCashAmount > maxAmount - splitNonCashAmount) {
+        splitCashAmount = Math.max(maxAmount - splitNonCashAmount, 0);
+      }
+
+      splitSecondNonCashAmount = Math.max(maxAmount - splitCashAmount - splitNonCashAmount, 0);
+    }
+
+    if (which === 'second_non_cash_amount') {
+      splitSecondNonCashAmount = normalizedAmount;
+
+      if (splitCashAmount > maxAmount - splitSecondNonCashAmount) {
+        splitCashAmount = Math.max(maxAmount - splitSecondNonCashAmount, 0);
+      }
+
+      splitNonCashAmount = Math.max(maxAmount - splitCashAmount - splitSecondNonCashAmount, 0);
+    }
+
+    setSplitInput('cash', splitCashAmount);
+    setSplitInput('non_cash_amount', splitNonCashAmount);
+    setSplitInput('second_non_cash_amount', splitSecondNonCashAmount);
 
     updateSplitSummary();
   }
@@ -516,8 +577,11 @@
     document.getElementById('cb_discount_auth_code').value = '';
     setSplitInput('cash', 0);
     setSplitInput('non_cash_amount', computedGrandTotal);
+    setSplitInput('second_non_cash_amount', 0);
     document.getElementById('cb_split_non_cash_method').value = 'debit';
+    document.getElementById('cb_split_second_non_cash_method').value = 'debit';
     document.getElementById('cb_split_non_cash_reference_number').value = '';
+    document.getElementById('cb_split_second_non_cash_reference_number').value = '';
 
     updatePaymentModeUI();
     updateDiscountUI();
@@ -561,7 +625,8 @@
     const fmt = v => formatRupiah(v || 0);
     const splitCash = Number(document.getElementById('cb_split_cash')?.value || 0);
     const splitNonCash = Number(document.getElementById('cb_split_non_cash_amount')?.value || 0);
-    const splitTotal = splitCash + splitNonCash;
+    const splitSecondNonCash = Number(document.getElementById('cb_split_second_non_cash_amount')?.value || 0);
+    const splitTotal = splitCash + splitNonCash + splitSecondNonCash;
     const diff = cbCurrentGrandTotal - splitTotal;
 
     document.getElementById('cbSplitTotal').textContent = fmt(splitTotal);
@@ -667,27 +732,51 @@
     } else {
       const splitCashAmount = Number(document.getElementById('cb_split_cash').value || 0);
       const splitNonCashAmount = Number(document.getElementById('cb_split_non_cash_amount').value || 0);
+      const splitSecondNonCashAmount = Number(document.getElementById('cb_split_second_non_cash_amount').value || 0);
       const splitNonCashMethod = document.getElementById('cb_split_non_cash_method').value;
+      const splitSecondNonCashMethod = document.getElementById('cb_split_second_non_cash_method').value;
       const splitNonCashReferenceNumber = document.getElementById('cb_split_non_cash_reference_number').value.trim();
-      const splitTotal = splitCashAmount + splitNonCashAmount;
+      const splitSecondNonCashReferenceNumber = document.getElementById('cb_split_second_non_cash_reference_number').value.trim();
+      const splitTotal = splitCashAmount + splitNonCashAmount + splitSecondNonCashAmount;
+      const nonCashCount = [splitNonCashAmount, splitSecondNonCashAmount].filter((amount) => amount > 0).length;
 
-      if (splitCashAmount <= 0 || splitNonCashAmount <= 0) {
-        alert('Untuk split bill, nominal cash dan non-cash harus lebih dari 0.');
+      if (splitCashAmount < 0 || splitNonCashAmount < 0 || splitSecondNonCashAmount < 0) {
+        alert('Nominal split bill tidak boleh minus.');
         return;
       }
 
-      if (!splitNonCashMethod) {
-        alert('Metode non-cash untuk split bill wajib dipilih.');
+      if (splitCashAmount <= 0 && nonCashCount < 2) {
+        alert('Untuk split non-cash + non-cash, isi dua nominal non-cash lebih dari 0.');
         return;
       }
 
-      if (!splitNonCashReferenceNumber) {
-        alert('Nomor referensi non-cash untuk split bill wajib diisi.');
+      if (splitCashAmount > 0 && nonCashCount < 1) {
+        alert('Untuk split cash + non-cash, minimal satu nominal non-cash harus lebih dari 0.');
+        return;
+      }
+
+      if (splitNonCashAmount > 0 && !splitNonCashMethod) {
+        alert('Metode non-cash pertama untuk split bill wajib dipilih.');
+        return;
+      }
+
+      if (splitNonCashAmount > 0 && !splitNonCashReferenceNumber) {
+        alert('Nomor referensi non-cash pertama untuk split bill wajib diisi.');
+        return;
+      }
+
+      if (splitSecondNonCashAmount > 0 && !splitSecondNonCashMethod) {
+        alert('Metode non-cash kedua untuk split bill wajib dipilih.');
+        return;
+      }
+
+      if (splitSecondNonCashAmount > 0 && !splitSecondNonCashReferenceNumber) {
+        alert('Nomor referensi non-cash kedua untuk split bill wajib diisi.');
         return;
       }
 
       if (Math.abs(splitTotal - cbCurrentGrandTotal) > 0.01) {
-        alert('Total split (cash + non-cash) harus sama dengan grand total.');
+        alert('Total split harus sama dengan grand total.');
         return;
       }
 
@@ -695,6 +784,9 @@
       payload.split_non_cash_amount = splitNonCashAmount;
       payload.split_non_cash_method = splitNonCashMethod;
       payload.split_non_cash_reference_number = splitNonCashReferenceNumber;
+      payload.split_second_non_cash_amount = splitSecondNonCashAmount;
+      payload.split_second_non_cash_method = splitSecondNonCashMethod;
+      payload.split_second_non_cash_reference_number = splitSecondNonCashReferenceNumber;
     }
 
     const btn = document.getElementById('cbSubmitBtn');
@@ -771,4 +863,5 @@
 
   document.getElementById('cb_split_cash_display').addEventListener('input', (event) => onSplitInput('cash', event));
   document.getElementById('cb_split_non_cash_amount_display').addEventListener('input', (event) => onSplitInput('non_cash_amount', event));
+  document.getElementById('cb_split_second_non_cash_amount_display').addEventListener('input', (event) => onSplitInput('second_non_cash_amount', event));
 </script>

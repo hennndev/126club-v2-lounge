@@ -247,7 +247,74 @@ test('walk in checkout split payment must match grand total', function () {
     $response
         ->assertUnprocessable()
         ->assertJsonPath('success', false)
-        ->assertJsonPath('message', 'Total split (cash + non-cash) harus sama dengan grand total.');
+        ->assertJsonPath('message', 'Total split harus sama dengan grand total.');
+});
+
+test('walk in checkout supports split non-cash and non-cash payment', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081977777777',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => null,
+        'customer_code' => null,
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
+    $inventoryItem = makePosInventoryItem(['stock_quantity' => 8]);
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 2,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'walk-in',
+            'walk_in_customer_id' => $customer->id,
+            'payment_mode' => 'split',
+            'split_cash_amount' => 0,
+            'split_non_cash_amount' => 50000,
+            'split_non_cash_method' => 'debit',
+            'split_non_cash_reference_number' => 'DB-50000',
+            'split_second_non_cash_amount' => 11050,
+            'split_second_non_cash_method' => 'qris',
+            'split_second_non_cash_reference_number' => 'QR-11050',
+            'discount_type' => 'none',
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $billing = Billing::query()->where('is_walk_in', true)->latest('id')->first();
+
+    expect($billing)->not->toBeNull()
+        ->and($billing?->payment_mode)->toBe('split')
+        ->and((float) ($billing?->split_cash_amount ?? 0))->toBe(0.0)
+        ->and((float) ($billing?->split_debit_amount ?? 0))->toBe(50000.0)
+        ->and($billing?->split_non_cash_method)->toBe('debit')
+        ->and((float) ($billing?->split_second_non_cash_amount ?? 0))->toBe(11050.0)
+        ->and($billing?->split_second_non_cash_method)->toBe('qris')
+        ->and($billing?->split_second_non_cash_reference_number)->toBe('QR-11050');
 });
 
 test('booking checkout auto prints one menu to multiple assigned target printers', function () {

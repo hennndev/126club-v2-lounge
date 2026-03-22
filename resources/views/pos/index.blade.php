@@ -226,6 +226,9 @@
             split_non_cash_amount: 0,
             split_non_cash_method: 'debit',
             split_non_cash_reference_number: '',
+            split_second_non_cash_amount: 0,
+            split_second_non_cash_method: 'debit',
+            split_second_non_cash_reference_number: '',
             discount_type: 'none',
             discount_percentage: 0,
             discount_nominal: 0,
@@ -641,6 +644,9 @@
             this.checkoutForm.split_non_cash_amount = this.payableTotal();
             this.checkoutForm.split_non_cash_method = 'debit';
             this.checkoutForm.split_non_cash_reference_number = '';
+            this.checkoutForm.split_second_non_cash_amount = 0;
+            this.checkoutForm.split_second_non_cash_method = 'debit';
+            this.checkoutForm.split_second_non_cash_reference_number = '';
             this.checkoutForm.discount_type = 'none';
             this.checkoutForm.discount_percentage = 0;
             this.checkoutForm.discount_nominal = 0;
@@ -671,7 +677,7 @@
           },
 
           walkInSplitTotal() {
-            return Number(this.checkoutForm.split_cash_amount || 0) + Number(this.checkoutForm.split_non_cash_amount || 0);
+            return Number(this.checkoutForm.split_cash_amount || 0) + Number(this.checkoutForm.split_non_cash_amount || 0) + Number(this.checkoutForm.split_second_non_cash_amount || 0);
           },
 
           walkInSplitDiff() {
@@ -683,15 +689,48 @@
             const maxAmount = Math.max(this.payableTotal(), 0);
             const normalizedAmount = Math.min(Math.max(enteredAmount, 0), maxAmount);
 
+            let splitCashAmount = Number(this.checkoutForm.split_cash_amount || 0);
+            let splitNonCashAmount = Number(this.checkoutForm.split_non_cash_amount || 0);
+            let splitSecondNonCashAmount = Number(this.checkoutForm.split_second_non_cash_amount || 0);
+
             if (which === 'cash') {
-              this.checkoutForm.split_cash_amount = normalizedAmount;
-              this.checkoutForm.split_non_cash_amount = Math.max(maxAmount - normalizedAmount, 0);
+              splitCashAmount = normalizedAmount;
+              splitNonCashAmount = Math.max(maxAmount - splitCashAmount, 0);
+              splitSecondNonCashAmount = 0;
+
+              this.checkoutForm.split_cash_amount = splitCashAmount;
+              this.checkoutForm.split_non_cash_amount = splitNonCashAmount;
+              this.checkoutForm.split_second_non_cash_amount = splitSecondNonCashAmount;
+              return;
+            }
+
+            if (which === 'non-cash') {
+              splitNonCashAmount = normalizedAmount;
+
+              if (splitCashAmount > maxAmount - splitNonCashAmount) {
+                splitCashAmount = Math.max(maxAmount - splitNonCashAmount, 0);
+              }
+
+              splitSecondNonCashAmount = Math.max(maxAmount - splitCashAmount - splitNonCashAmount, 0);
+
+              this.checkoutForm.split_cash_amount = splitCashAmount;
+              this.checkoutForm.split_non_cash_amount = splitNonCashAmount;
+              this.checkoutForm.split_second_non_cash_amount = splitSecondNonCashAmount;
 
               return;
             }
 
-            this.checkoutForm.split_non_cash_amount = normalizedAmount;
-            this.checkoutForm.split_cash_amount = Math.max(maxAmount - normalizedAmount, 0);
+            splitSecondNonCashAmount = normalizedAmount;
+
+            if (splitCashAmount > maxAmount - splitSecondNonCashAmount) {
+              splitCashAmount = Math.max(maxAmount - splitSecondNonCashAmount, 0);
+            }
+
+            splitNonCashAmount = Math.max(maxAmount - splitCashAmount - splitSecondNonCashAmount, 0);
+
+            this.checkoutForm.split_cash_amount = splitCashAmount;
+            this.checkoutForm.split_non_cash_amount = splitNonCashAmount;
+            this.checkoutForm.split_second_non_cash_amount = splitSecondNonCashAmount;
           },
 
           extractNumber(value) {
@@ -747,28 +786,54 @@
 
             const splitCashAmount = Number(this.checkoutForm.split_cash_amount || 0);
             const splitNonCashAmount = Number(this.checkoutForm.split_non_cash_amount || 0);
-            const splitTotal = splitCashAmount + splitNonCashAmount;
+            const splitSecondNonCashAmount = Number(this.checkoutForm.split_second_non_cash_amount || 0);
+            const splitTotal = splitCashAmount + splitNonCashAmount + splitSecondNonCashAmount;
+            const nonCashCount = [splitNonCashAmount, splitSecondNonCashAmount].filter((amount) => amount > 0).length;
 
-            if (splitCashAmount <= 0 || splitNonCashAmount <= 0) {
-              this.showToastMessage('Untuk split bill, nominal cash dan non-cash harus lebih dari 0.', 'error');
-
-              return false;
-            }
-
-            if (!this.checkoutForm.split_non_cash_method) {
-              this.showToastMessage('Metode non-cash untuk split bill wajib dipilih.', 'error');
+            if (splitCashAmount < 0 || splitNonCashAmount < 0 || splitSecondNonCashAmount < 0) {
+              this.showToastMessage('Nominal split bill tidak boleh minus.', 'error');
 
               return false;
             }
 
-            if (!String(this.checkoutForm.split_non_cash_reference_number || '').trim()) {
-              this.showToastMessage('Nomor referensi non-cash untuk split bill wajib diisi.', 'error');
+            if (splitCashAmount <= 0 && nonCashCount < 2) {
+              this.showToastMessage('Untuk split non-cash + non-cash, isi dua nominal non-cash lebih dari 0.', 'error');
+
+              return false;
+            }
+
+            if (splitCashAmount > 0 && nonCashCount < 1) {
+              this.showToastMessage('Untuk split cash + non-cash, minimal satu nominal non-cash harus lebih dari 0.', 'error');
+
+              return false;
+            }
+
+            if (splitNonCashAmount > 0 && !this.checkoutForm.split_non_cash_method) {
+              this.showToastMessage('Metode non-cash pertama untuk split bill wajib dipilih.', 'error');
+
+              return false;
+            }
+
+            if (splitNonCashAmount > 0 && !String(this.checkoutForm.split_non_cash_reference_number || '').trim()) {
+              this.showToastMessage('Nomor referensi non-cash pertama untuk split bill wajib diisi.', 'error');
+
+              return false;
+            }
+
+            if (splitSecondNonCashAmount > 0 && !this.checkoutForm.split_second_non_cash_method) {
+              this.showToastMessage('Metode non-cash kedua untuk split bill wajib dipilih.', 'error');
+
+              return false;
+            }
+
+            if (splitSecondNonCashAmount > 0 && !String(this.checkoutForm.split_second_non_cash_reference_number || '').trim()) {
+              this.showToastMessage('Nomor referensi non-cash kedua untuk split bill wajib diisi.', 'error');
 
               return false;
             }
 
             if (Math.abs(splitTotal - this.payableTotal()) > 0.01) {
-              this.showToastMessage('Total split (cash + non-cash) harus sama dengan grand total.', 'error');
+              this.showToastMessage('Total split harus sama dengan grand total.', 'error');
 
               return false;
             }
@@ -1046,6 +1111,9 @@
                   split_non_cash_amount: 0,
                   split_non_cash_method: 'debit',
                   split_non_cash_reference_number: '',
+                  split_second_non_cash_amount: 0,
+                  split_second_non_cash_method: 'debit',
+                  split_second_non_cash_reference_number: '',
                   discount_type: 'none',
                   discount_percentage: 0,
                   discount_nominal: 0,

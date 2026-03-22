@@ -489,6 +489,9 @@ class PosController extends Controller
             'split_non_cash_amount' => 'nullable|numeric|min:0',
             'split_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
             'split_non_cash_reference_number' => 'nullable|string|max:100',
+            'split_second_non_cash_amount' => 'nullable|numeric|min:0',
+            'split_second_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
+            'split_second_non_cash_reference_number' => 'nullable|string|max:100',
             'checker_printer_ids' => 'nullable|array',
             'checker_printer_ids.*' => 'integer|exists:printers,id',
         ]);
@@ -786,28 +789,64 @@ class PosController extends Controller
                 $splitNonCashAmount = null;
                 $splitNonCashMethod = null;
                 $splitNonCashReferenceNumber = null;
+                $splitSecondNonCashAmount = null;
+                $splitSecondNonCashMethod = null;
+                $splitSecondNonCashReferenceNumber = null;
 
                 if ($paymentMode === 'split') {
                     $splitCashAmount = (float) ($validated['split_cash_amount'] ?? 0);
                     $splitNonCashAmount = (float) ($validated['split_non_cash_amount'] ?? 0);
                     $splitNonCashMethod = $validated['split_non_cash_method'] ?? null;
                     $splitNonCashReferenceNumber = $validated['split_non_cash_reference_number'] ?? null;
+                    $splitSecondNonCashAmount = (float) ($validated['split_second_non_cash_amount'] ?? 0);
+                    $splitSecondNonCashMethod = $validated['split_second_non_cash_method'] ?? null;
+                    $splitSecondNonCashReferenceNumber = $validated['split_second_non_cash_reference_number'] ?? null;
+                    $activeNonCashCount = collect([
+                        ['amount' => $splitNonCashAmount, 'method' => $splitNonCashMethod, 'reference' => $splitNonCashReferenceNumber],
+                        ['amount' => $splitSecondNonCashAmount, 'method' => $splitSecondNonCashMethod, 'reference' => $splitSecondNonCashReferenceNumber],
+                    ])->filter(fn (array $entry): bool => (float) $entry['amount'] > 0)->count();
 
-                    if ($splitCashAmount <= 0 || $splitNonCashAmount <= 0) {
+                    $hasCash = $splitCashAmount > 0;
+
+                    if ($splitCashAmount < 0 || $splitNonCashAmount < 0 || $splitSecondNonCashAmount < 0) {
                         throw ValidationException::withMessages([
-                            'split_total' => 'Untuk split bill, nominal cash dan non-cash harus lebih dari 0.',
+                            'split_total' => 'Nominal split bill tidak boleh minus.',
                         ]);
                     }
 
-                    if (blank($splitNonCashMethod)) {
+                    if (! $hasCash && $activeNonCashCount < 2) {
                         throw ValidationException::withMessages([
-                            'split_non_cash_method' => 'Metode non-cash untuk split bill wajib dipilih.',
+                            'split_total' => 'Untuk split non-cash + non-cash, isi dua nominal non-cash lebih dari 0.',
                         ]);
                     }
 
-                    if (blank($splitNonCashReferenceNumber)) {
+                    if ($hasCash && $activeNonCashCount < 1) {
                         throw ValidationException::withMessages([
-                            'split_non_cash_reference_number' => 'Nomor referensi non-cash untuk split bill wajib diisi.',
+                            'split_total' => 'Untuk split cash + non-cash, minimal satu nominal non-cash harus lebih dari 0.',
+                        ]);
+                    }
+
+                    if ($splitNonCashAmount > 0 && blank($splitNonCashMethod)) {
+                        throw ValidationException::withMessages([
+                            'split_non_cash_method' => 'Metode non-cash pertama untuk split bill wajib dipilih.',
+                        ]);
+                    }
+
+                    if ($splitNonCashAmount > 0 && blank($splitNonCashReferenceNumber)) {
+                        throw ValidationException::withMessages([
+                            'split_non_cash_reference_number' => 'Nomor referensi non-cash pertama untuk split bill wajib diisi.',
+                        ]);
+                    }
+
+                    if ($splitSecondNonCashAmount > 0 && blank($splitSecondNonCashMethod)) {
+                        throw ValidationException::withMessages([
+                            'split_second_non_cash_method' => 'Metode non-cash kedua untuk split bill wajib dipilih.',
+                        ]);
+                    }
+
+                    if ($splitSecondNonCashAmount > 0 && blank($splitSecondNonCashReferenceNumber)) {
+                        throw ValidationException::withMessages([
+                            'split_second_non_cash_reference_number' => 'Nomor referensi non-cash kedua untuk split bill wajib diisi.',
                         ]);
                     }
                 }
@@ -903,11 +942,11 @@ class PosController extends Controller
                 ]);
 
                 if ($paymentMode === 'split') {
-                    $splitTotal = round((float) ($splitCashAmount ?? 0) + (float) ($splitNonCashAmount ?? 0), 2);
+                    $splitTotal = round((float) ($splitCashAmount ?? 0) + (float) ($splitNonCashAmount ?? 0) + (float) ($splitSecondNonCashAmount ?? 0), 2);
 
                     if (abs($splitTotal - (float) $totals['grand_total']) > 0.01) {
                         throw ValidationException::withMessages([
-                            'split_total' => 'Total split (cash + non-cash) harus sama dengan grand total.',
+                            'split_total' => 'Total split harus sama dengan grand total.',
                         ]);
                     }
                 }
@@ -948,6 +987,9 @@ class PosController extends Controller
                     'split_debit_amount' => $splitNonCashAmount,
                     'split_non_cash_method' => $splitNonCashMethod,
                     'split_non_cash_reference_number' => $splitNonCashReferenceNumber,
+                    'split_second_non_cash_amount' => $splitSecondNonCashAmount,
+                    'split_second_non_cash_method' => $splitSecondNonCashMethod,
+                    'split_second_non_cash_reference_number' => $splitSecondNonCashReferenceNumber,
                 ]);
 
                 // Route to kitchen/bar checkers (no table session)

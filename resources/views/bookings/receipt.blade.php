@@ -282,19 +282,38 @@
       <span class="label">Mode Pembayaran</span>
       <span class="value">SPLIT BILL</span>
     </div>
-    <div class="two-col">
-      <span class="label">Cash</span>
-      <span class="value">Rp {{ number_format($billing?->split_cash_amount ?? 0, 0, ',', '.') }}</span>
-    </div>
-    <div class="two-col">
-      <span class="label">{{ strtoupper((string) ($billing?->split_non_cash_method ?? 'NON-CASH')) }}</span>
-      <span class="value">Rp {{ number_format($billing?->split_debit_amount ?? 0, 0, ',', '.') }}</span>
-    </div>
-    @if (filled($billing?->split_non_cash_reference_number))
+
+    @if (($billing?->split_cash_amount ?? 0) > 0)
       <div class="two-col">
-        <span class="label">No. Referensi Non-Cash</span>
-        <span class="value">{{ $billing->split_non_cash_reference_number }}</span>
+        <span class="label">Cash</span>
+        <span class="value">Rp {{ number_format($billing?->split_cash_amount ?? 0, 0, ',', '.') }}</span>
       </div>
+    @endif
+
+    @if (($billing?->split_debit_amount ?? 0) > 0)
+      <div class="two-col">
+        <span class="label">{{ strtoupper((string) ($billing?->split_non_cash_method ?? 'NON-CASH 1')) }}</span>
+        <span class="value">Rp {{ number_format($billing?->split_debit_amount ?? 0, 0, ',', '.') }}</span>
+      </div>
+      @if (filled($billing?->split_non_cash_reference_number))
+        <div class="two-col">
+          <span class="label">Ref 1</span>
+          <span class="value">{{ $billing->split_non_cash_reference_number }}</span>
+        </div>
+      @endif
+    @endif
+
+    @if (($billing?->split_second_non_cash_amount ?? 0) > 0)
+      <div class="two-col">
+        <span class="label">{{ strtoupper((string) ($billing?->split_second_non_cash_method ?? 'NON-CASH 2')) }}</span>
+        <span class="value">Rp {{ number_format($billing?->split_second_non_cash_amount ?? 0, 0, ',', '.') }}</span>
+      </div>
+      @if (filled($billing?->split_second_non_cash_reference_number))
+        <div class="two-col">
+          <span class="label">Ref 2</span>
+          <span class="value">{{ $billing->split_second_non_cash_reference_number }}</span>
+        </div>
+      @endif
     @endif
   @endif
 

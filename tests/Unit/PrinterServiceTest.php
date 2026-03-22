@@ -64,6 +64,9 @@ it('shows dp line and subtotal net of dp in simulation', function () {
         'split_non_cash_amount' => 0,
         'split_non_cash_method' => 'NON-CASH',
         'split_non_cash_reference_number' => null,
+        'split_second_non_cash_amount' => 0,
+        'split_second_non_cash_method' => 'NON-CASH 2',
+        'split_second_non_cash_reference_number' => null,
     ];
 
     $lines = $service->simulationLines($payload, 42, $printer);

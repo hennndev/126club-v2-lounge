@@ -264,9 +264,9 @@
         <div x-show="checkoutForm.payment_mode === 'split'"
              style="display: none;"
              class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Cash</label>
+              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Cash (Opsional)</label>
               <input type="text"
                      inputmode="numeric"
                      :value="formatCurrency(checkoutForm.split_cash_amount || 0)"
@@ -274,34 +274,65 @@
                      class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
             </div>
             <div>
-              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nominal Non-Cash</label>
+              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nominal Non-Cash 1</label>
               <input type="text"
                      inputmode="numeric"
                      :value="formatCurrency(checkoutForm.split_non_cash_amount || 0)"
                      @input="onWalkInSplitInput('non-cash', $event)"
                      class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
             </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nominal Non-Cash 2</label>
+              <input type="text"
+                     inputmode="numeric"
+                     :value="formatCurrency(checkoutForm.split_second_non_cash_amount || 0)"
+                     @input="onWalkInSplitInput('second-non-cash', $event)"
+                     class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+            </div>
           </div>
 
-          <div>
-            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Metode Non-Cash</label>
-            <select x-model="checkoutForm.split_non_cash_method"
-                    class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
-              <option value="debit">Debit</option>
-              <option value="kredit">Kredit</option>
-              <option value="qris">QRIS</option>
-              <option value="transfer">Transfer</option>
-              <option value="ewallet">E-Wallet</option>
-              <option value="lainnya">Lainnya</option>
-            </select>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Metode Non-Cash 1</label>
+              <select x-model="checkoutForm.split_non_cash_method"
+                      class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                <option value="debit">Debit</option>
+                <option value="kredit">Kredit</option>
+                <option value="qris">QRIS</option>
+                <option value="transfer">Transfer</option>
+                <option value="ewallet">E-Wallet</option>
+                <option value="lainnya">Lainnya</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Metode Non-Cash 2</label>
+              <select x-model="checkoutForm.split_second_non_cash_method"
+                      class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                <option value="debit">Debit</option>
+                <option value="kredit">Kredit</option>
+                <option value="qris">QRIS</option>
+                <option value="transfer">Transfer</option>
+                <option value="ewallet">E-Wallet</option>
+                <option value="lainnya">Lainnya</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nomor Referensi Non-Cash</label>
-            <input type="text"
-                   x-model="checkoutForm.split_non_cash_reference_number"
-                   placeholder="Nomor kartu / approval / referensi"
-                   class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Referensi Non-Cash 1</label>
+              <input type="text"
+                     x-model="checkoutForm.split_non_cash_reference_number"
+                     placeholder="Nomor kartu / approval / referensi"
+                     class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1.5">Referensi Non-Cash 2</label>
+              <input type="text"
+                     x-model="checkoutForm.split_second_non_cash_reference_number"
+                     placeholder="Nomor kartu / approval / referensi"
+                     class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+            </div>
           </div>
 
           <div class="rounded-xl border p-3 text-xs space-y-1"
