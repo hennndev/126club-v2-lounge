@@ -277,6 +277,32 @@ test('pending tab shows pending bookings and is accessible', function () {
         ->assertViewHas('blockedPendingKeys');
 });
 
+test('reserved table keeps active booking mapping for confirmed booking even if reservation date is past', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'reserved']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '19:00',
+        'status' => 'confirmed',
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.bookings.index'))
+        ->assertOk();
+
+    $activeBookingsByTable = $response->viewData('activeBookingsByTable');
+
+    expect($activeBookingsByTable)->not->toBeNull()
+        ->and($activeBookingsByTable->has($table->id))->toBeTrue()
+        ->and($activeBookingsByTable->get($table->id)?->id)->toBe($booking->id);
+});
+
 test('pending tab conflict keys include competing bookings', function () {
     $admin = adminUser();
     $area = makeArea();

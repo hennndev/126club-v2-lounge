@@ -104,17 +104,14 @@ class TableReservationController extends Controller
         $bookedTablesCount = $tables->where('status', 'reserved')->count();
         $checkedInTablesCount = $tables->where('status', 'occupied')->count();
 
-        // Earliest upcoming confirmed/checked-in booking per table (today or future)
+        // Latest checked-in/confirmed booking per table (ensures reserved cards always map to booking data)
         $activeBookingsByTable = TableReservation::with(['customer.profile', 'customer.customerUser', 'tableSession.billing', 'tableSession.orders.items'])
-            ->where(function ($query): void {
-                $query->where('status', 'checked_in')
-                    ->orWhere(function ($subQuery): void {
-                        $subQuery->where('status', 'confirmed')
-                            ->where('reservation_date', '>=', now()->toDateString());
-                    });
-            })
+            ->whereIn('status', ['checked_in', 'confirmed'])
+            ->whereNotNull('table_id')
+            ->orderByRaw("CASE WHEN status = 'checked_in' THEN 0 ELSE 1 END")
+            ->orderByDesc('reservation_date')
+            ->orderByDesc('reservation_time')
             ->get()
-            ->sortBy('reservation_date')
             ->unique('table_id')
             ->keyBy('table_id');
 
