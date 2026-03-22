@@ -7,6 +7,7 @@ use App\Models\CustomerUser;
 use App\Models\DailyAuthCode;
 use App\Models\GeneralSetting;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\Tabel;
 use App\Models\TableReservation;
@@ -245,7 +246,7 @@ class TableReservationController extends Controller
             'reservation_time' => 'required',
             'note' => 'nullable|string|max:1000',
             'has_down_payment' => 'nullable|boolean',
-            'down_payment_amount' => 'nullable|required_if:has_down_payment,1|numeric|min:1',
+            'down_payment_amount' => 'nullable|numeric|min:0',
         ]);
 
         $validated['down_payment_amount'] = (bool) ($validated['has_down_payment'] ?? false)
@@ -294,7 +295,7 @@ class TableReservationController extends Controller
             'status' => 'required|in:pending,confirmed,checked_in,completed,cancelled,rejected',
             'note' => 'nullable|string|max:1000',
             'has_down_payment' => 'nullable|boolean',
-            'down_payment_amount' => 'nullable|required_if:has_down_payment,1|numeric|min:1',
+            'down_payment_amount' => 'nullable|numeric|min:0',
         ]);
 
         $validated['down_payment_amount'] = (bool) ($validated['has_down_payment'] ?? false)
@@ -1065,7 +1066,7 @@ class TableReservationController extends Controller
                     ]);
                 }
 
-                if ($targetTable->status !== 'available') {
+                if (! in_array($targetTable->status, ['available', 'reserved'], true)) {
                     throw ValidationException::withMessages([
                         'new_table_id' => 'Meja tujuan sedang tidak tersedia.',
                     ]);
@@ -1083,16 +1084,28 @@ class TableReservationController extends Controller
                     ]);
                 }
 
-                $hasAnotherReservedBooking = TableReservation::query()
+                $conflictingBookings = TableReservation::query()
                     ->where('table_id', $newTableId)
                     ->whereIn('status', ['confirmed', 'checked_in'])
                     ->where('id', '!=', $booking->id)
-                    ->exists();
+                    ->lockForUpdate()
+                    ->get();
 
-                if ($hasAnotherReservedBooking) {
+                if ($conflictingBookings->contains(fn (TableReservation $conflictBooking) => $conflictBooking->status === 'checked_in')) {
                     throw ValidationException::withMessages([
-                        'new_table_id' => 'Meja tujuan sudah dipakai booking aktif lain.',
+                        'new_table_id' => 'Meja tujuan sedang dipakai booking checked-in lain.',
                     ]);
+                }
+
+                $conflictingConfirmedIds = $conflictingBookings
+                    ->where('status', 'confirmed')
+                    ->pluck('id')
+                    ->values();
+
+                if ($conflictingConfirmedIds->isNotEmpty()) {
+                    TableReservation::query()
+                        ->whereIn('id', $conflictingConfirmedIds)
+                        ->update(['status' => 'pending']);
                 }
 
                 $booking->update(['table_id' => $newTableId]);
@@ -1119,7 +1132,8 @@ class TableReservationController extends Controller
     public function moveOrder(Request $request, TableReservation $booking)
     {
         $validated = $request->validate([
-            'order_id' => 'required|integer|exists:orders,id',
+            'order_item_ids' => 'required|array|min:1',
+            'order_item_ids.*' => 'integer|exists:order_items,id',
             'target_table_session_id' => 'required|integer|exists:table_sessions,id',
         ]);
 
@@ -1133,24 +1147,37 @@ class TableReservationController extends Controller
 
                 if (! $sourceSession) {
                     throw ValidationException::withMessages([
-                        'order_id' => 'Sesi aktif sumber tidak ditemukan.',
+                        'order_item_ids' => 'Sesi aktif sumber tidak ditemukan.',
                     ]);
                 }
 
-                $order = Order::query()
-                    ->where('id', (int) $validated['order_id'])
+                $selectedItemIds = collect($validated['order_item_ids'])
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values();
+
+                $selectedItems = OrderItem::query()
+                    ->whereIn('id', $selectedItemIds)
+                    ->whereHas('order', fn ($query) => $query->where('table_session_id', $sourceSession->id))
+                    ->with('order')
                     ->lockForUpdate()
-                    ->first();
+                    ->get();
 
-                if (! $order || (int) $order->table_session_id !== (int) $sourceSession->id) {
+                if ($selectedItems->count() !== $selectedItemIds->count()) {
                     throw ValidationException::withMessages([
-                        'order_id' => 'Order tidak ditemukan pada sesi aktif booking ini.',
+                        'order_item_ids' => 'Sebagian item tidak ditemukan pada sesi aktif ini.',
                     ]);
                 }
 
-                if ($order->status === 'cancelled') {
+                if ($selectedItems->contains(fn (OrderItem $item) => $item->order?->status === 'cancelled')) {
                     throw ValidationException::withMessages([
-                        'order_id' => 'Order berstatus cancelled tidak bisa dipindahkan.',
+                        'order_item_ids' => 'Item dari order berstatus cancelled tidak bisa dipindahkan.',
+                    ]);
+                }
+
+                if ($selectedItems->contains(fn (OrderItem $item) => $item->status === 'cancelled')) {
+                    throw ValidationException::withMessages([
+                        'order_item_ids' => 'Item berstatus cancelled tidak bisa dipindahkan.',
                     ]);
                 }
 
@@ -1172,19 +1199,91 @@ class TableReservationController extends Controller
                     ]);
                 }
 
-                $order->update([
+                $firstSourceOrder = $selectedItems->first()?->order;
+
+                $newOrder = Order::create([
                     'table_session_id' => $targetSession->id,
+                    'created_by' => auth()->id() ?? $firstSourceOrder?->created_by,
+                    'order_number' => $this->generateOrderNumber(),
+                    'status' => 'pending',
+                    'items_total' => 0,
+                    'discount_amount' => 0,
+                    'total' => 0,
+                    'ordered_at' => now(),
+                    'notes' => $firstSourceOrder?->notes,
                 ]);
+
+                OrderItem::query()
+                    ->whereIn('id', $selectedItemIds)
+                    ->update(['order_id' => $newOrder->id]);
+
+                $newOrder->refresh();
+                $newOrder->updateTotals();
+                $newOrder->updateStatus();
+
+                $affectedOrderIds = $selectedItems->pluck('order_id')->unique()->values();
+
+                foreach ($affectedOrderIds as $affectedOrderId) {
+                    $sourceOrder = Order::query()
+                        ->where('id', (int) $affectedOrderId)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $sourceOrder) {
+                        continue;
+                    }
+
+                    $remainingItemsTotal = (float) $sourceOrder->items()->sum('subtotal');
+                    $currentDiscount = (float) ($sourceOrder->discount_amount ?? 0);
+
+                    if ($currentDiscount > $remainingItemsTotal) {
+                        $sourceOrder->discount_amount = $remainingItemsTotal;
+                        $sourceOrder->save();
+                    }
+
+                    $activeItemsCount = $sourceOrder->items()->where('status', '!=', 'cancelled')->count();
+
+                    if ($activeItemsCount === 0) {
+                        $sourceOrder->update([
+                            'status' => 'cancelled',
+                            'cancelled_at' => now(),
+                            'cancelled_by' => auth()->id(),
+                            'items_total' => 0,
+                            'total' => 0,
+                        ]);
+                    } else {
+                        $sourceOrder->updateTotals();
+                        $sourceOrder->updateStatus();
+                    }
+                }
             });
 
-            return back()->with('success', 'Order berhasil dipindahkan ke sesi tujuan.');
+            return back()->with('success', 'Item order berhasil dipindahkan dan dibuatkan order baru di sesi tujuan.');
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             return back()->withErrors([
-                'order_id' => 'Gagal memindahkan order. '.$e->getMessage(),
+                'order_item_ids' => 'Gagal memindahkan item order. '.$e->getMessage(),
             ]);
         }
+    }
+
+    protected function generateOrderNumber(): string
+    {
+        $baseSequence = Order::query()
+            ->whereDate('created_at', today())
+            ->count() + 1;
+
+        $attempt = 0;
+
+        do {
+            $sequence = $baseSequence + $attempt;
+            $orderNumber = 'ORD-'.date('Ymd').'-'.str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+            $exists = Order::query()->where('order_number', $orderNumber)->exists();
+            $attempt++;
+        } while ($exists);
+
+        return $orderNumber;
     }
 
     public function cancelOrder(Request $request, TableReservation $booking)

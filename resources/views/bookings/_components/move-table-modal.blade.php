@@ -43,13 +43,13 @@
                 required
                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-300 focus:border-amber-300 outline-none bg-white">
           <option value="">Pilih meja tujuan</option>
-          @foreach ($tables->where('is_active', true)->where('status', 'available') as $availableTable)
+          @foreach ($tables->where('is_active', true)->whereIn('status', ['available', 'reserved']) as $availableTable)
             <option value="{{ $availableTable->id }}">
-              {{ $availableTable->table_number }} — {{ $availableTable->area->name ?? '-' }}
+              {{ $availableTable->table_number }} — {{ $availableTable->area->name ?? '-' }} ({{ ucfirst($availableTable->status) }})
             </option>
           @endforeach
         </select>
-        <p class="text-xs text-gray-500 mt-1">Hanya meja dengan status available yang ditampilkan.</p>
+        <p class="text-xs text-gray-500 mt-1">Meja dengan status available dan reserved bisa dipilih.</p>
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">

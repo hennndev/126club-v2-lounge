@@ -7,18 +7,26 @@
             id="orderHistoryTitle">Riwayat Order</h3>
         <p class="text-xs text-gray-400 mt-0.5">Daftar semua order dalam sesi ini</p>
       </div>
-      <button onclick="closeOrderHistoryModal()"
-              class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
-        <svg class="w-5 h-5"
-             fill="none"
-             stroke="currentColor"
-             viewBox="0 0 24 24">
-          <path stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      <div class="flex items-center gap-2">
+        <button id="openMoveItemListButton"
+                type="button"
+                onclick="openMoveOrderModal()"
+                class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition">
+          Move Item List
+        </button>
+        <button onclick="closeOrderHistoryModal()"
+                class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
+          <svg class="w-5 h-5"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     </div>
     <div class="p-5 max-h-[60vh] overflow-y-auto"
          id="orderHistoryBody">
@@ -32,8 +40,8 @@
   <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
     <div class="flex items-center justify-between p-5 border-b border-gray-200">
       <div>
-        <h3 class="text-base font-bold text-gray-900">Pindah Order</h3>
-        <p class="text-xs text-gray-400 mt-0.5">Pindahkan order ke sesi aktif lain</p>
+        <h3 class="text-base font-bold text-gray-900">Pindah Item Massal</h3>
+        <p class="text-xs text-gray-400 mt-0.5">Pilih beberapa item untuk dibuatkan order baru di sesi tujuan</p>
       </div>
       <button onclick="closeMoveOrderModal()"
               class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
@@ -59,9 +67,23 @@
              value="">
 
       <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Order Sumber</label>
+        <p id="moveOrderNumberInfo"
+           class="text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">-</p>
+      </div>
+
+      <div>
         <label class="block text-xs font-semibold text-gray-500 mb-1">Sesi Asal</label>
         <p id="moveOrderSourceInfo"
            class="text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">-</p>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Pilih Item yang Dipindah</label>
+        <div id="moveOrderItemsContainer"
+             class="max-h-44 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100 bg-white">
+          <p class="px-3 py-2 text-sm text-gray-400">Belum ada item.</p>
+        </div>
       </div>
 
       <div>

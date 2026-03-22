@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\Area;
+use App\Models\InventoryItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
@@ -9,7 +11,7 @@ use App\Models\User;
 
 use function Pest\Laravel\actingAs;
 
-test('order can be moved to another active table session from active bookings flow', function () {
+test('selected order items from multiple source orders are moved into one new target order', function () {
     $admin = adminUser();
     $customerA = User::factory()->create();
     $customerB = User::factory()->create();
@@ -80,20 +82,104 @@ test('order can be moved to another active table session from active bookings fl
         'created_by' => $admin->id,
         'order_number' => 'MVO-ORD-'.uniqid(),
         'status' => 'pending',
-        'items_total' => 100000,
+        'items_total' => 160000,
         'discount_amount' => 0,
-        'total' => 100000,
+        'total' => 160000,
         'ordered_at' => now(),
+    ]);
+
+    $orderSecond = Order::create([
+        'table_session_id' => $sourceSession->id,
+        'created_by' => $admin->id,
+        'order_number' => 'MVO-ORD-'.uniqid(),
+        'status' => 'pending',
+        'items_total' => 50000,
+        'discount_amount' => 0,
+        'total' => 50000,
+        'ordered_at' => now(),
+    ]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'MVO-INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Move Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 100000,
+        'stock_quantity' => 100,
+        'threshold' => 5,
+        'unit' => 'pcs',
+        'is_active' => true,
+    ]);
+
+    $itemToMove = OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => 'Move Me',
+        'item_code' => 'MOVE-1',
+        'quantity' => 1,
+        'price' => 100000,
+        'subtotal' => 100000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'pending',
+    ]);
+
+    $itemStay = OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => 'Stay Here',
+        'item_code' => 'MOVE-2',
+        'quantity' => 1,
+        'price' => 60000,
+        'subtotal' => 60000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'pending',
+    ]);
+
+    $itemFromSecondOrder = OrderItem::create([
+        'order_id' => $orderSecond->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => 'Move Me Too',
+        'item_code' => 'MOVE-3',
+        'quantity' => 1,
+        'price' => 50000,
+        'subtotal' => 50000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'pending',
     ]);
 
     actingAs($admin)
         ->post(route('admin.bookings.moveOrder', $bookingA), [
-            'order_id' => $order->id,
+            'order_item_ids' => [$itemToMove->id, $itemFromSecondOrder->id],
             'target_table_session_id' => $targetSession->id,
         ])
         ->assertRedirect();
 
-    expect($order->fresh()->table_session_id)->toBe($targetSession->id);
+    $movedItem = $itemToMove->fresh();
+    $movedItemSecond = $itemFromSecondOrder->fresh();
+    $remainingItem = $itemStay->fresh();
+
+    $newOrder = Order::query()
+        ->where('table_session_id', $targetSession->id)
+        ->where('id', '!=', $order->id)
+        ->latest('id')
+        ->first();
+
+    expect($newOrder)->not->toBeNull()
+        ->and($movedItem->order_id)->toBe($newOrder->id)
+        ->and($movedItemSecond->order_id)->toBe($newOrder->id)
+        ->and($remainingItem->order_id)->toBe($order->id)
+        ->and((float) $newOrder->fresh()->total)->toBe(150000.0)
+        ->and((float) $order->fresh()->total)->toBe(60000.0)
+        ->and($orderSecond->fresh()->status)->toBe('cancelled');
 });
 
 test('move order fails when target session equals source session', function () {
@@ -145,10 +231,37 @@ test('move order fails when target session equals source session', function () {
         'ordered_at' => now(),
     ]);
 
+    $inventoryItem = InventoryItem::create([
+        'code' => 'MVO-INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Move Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 50000,
+        'stock_quantity' => 100,
+        'threshold' => 5,
+        'unit' => 'pcs',
+        'is_active' => true,
+    ]);
+
+    $item = OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => 'Move Me',
+        'item_code' => 'MOVE-1',
+        'quantity' => 1,
+        'price' => 50000,
+        'subtotal' => 50000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'pending',
+    ]);
+
     actingAs($admin)
         ->from(route('admin.bookings.index', ['tab' => 'active']))
         ->post(route('admin.bookings.moveOrder', $booking), [
-            'order_id' => $order->id,
+            'order_item_ids' => [$item->id],
             'target_table_session_id' => $session->id,
         ])
         ->assertSessionHasErrors('target_table_session_id');
@@ -156,7 +269,7 @@ test('move order fails when target session equals source session', function () {
     expect($order->fresh()->table_session_id)->toBe($session->id);
 });
 
-test('move order fails when order status is cancelled', function () {
+test('move order fails when selected item is cancelled', function () {
     $admin = adminUser();
     $customerA = User::factory()->create();
     $customerB = User::factory()->create();
@@ -226,11 +339,38 @@ test('move order fails when order status is cancelled', function () {
         'table_session_id' => $sourceSession->id,
         'created_by' => $admin->id,
         'order_number' => 'MVO-ORD-'.uniqid(),
-        'status' => 'cancelled',
+        'status' => 'pending',
         'items_total' => 100000,
         'discount_amount' => 0,
         'total' => 100000,
         'ordered_at' => now(),
+    ]);
+
+    $inventoryItem = InventoryItem::create([
+        'code' => 'MVO-INV-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Move Item '.uniqid(),
+        'category_type' => 'beverage',
+        'price' => 100000,
+        'stock_quantity' => 100,
+        'threshold' => 5,
+        'unit' => 'pcs',
+        'is_active' => true,
+    ]);
+
+    $cancelledItem = OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => 'Cancelled Item',
+        'item_code' => 'MOVE-3',
+        'quantity' => 1,
+        'price' => 100000,
+        'subtotal' => 100000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'cancelled',
         'cancelled_at' => now(),
         'cancelled_by' => $admin->id,
     ]);
@@ -238,10 +378,10 @@ test('move order fails when order status is cancelled', function () {
     actingAs($admin)
         ->from(route('admin.bookings.index', ['tab' => 'active']))
         ->post(route('admin.bookings.moveOrder', $bookingA), [
-            'order_id' => $order->id,
+            'order_item_ids' => [$cancelledItem->id],
             'target_table_session_id' => $targetSession->id,
         ])
-        ->assertSessionHasErrors('order_id');
+        ->assertSessionHasErrors('order_item_ids');
 
     expect($order->fresh()->table_session_id)->toBe($sourceSession->id);
 });

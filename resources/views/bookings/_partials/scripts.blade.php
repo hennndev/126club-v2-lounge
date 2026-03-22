@@ -283,10 +283,12 @@
                         'items' => $o->items
                             ->map(function ($i) {
                                 return [
+                                    'id' => $i->id,
                                     'item_name' => $i->item_name,
                                     'quantity' => $i->quantity,
                                     'price' => (float) $i->price,
                                     'subtotal' => (float) $i->subtotal,
+                                    'status' => $i->status,
                                 ];
                             })
                             ->values(),
@@ -319,6 +321,15 @@
       data.customer + ' — Meja ' + data.table;
 
     const container = document.getElementById('orderHistoryBody');
+    const openMoveItemListButton = document.getElementById('openMoveItemListButton');
+    const hasMovableItems = (data.orders || []).some(order =>
+      (order.items || []).some(item => item.status !== 'cancelled')
+    );
+
+    if (openMoveItemListButton) {
+      openMoveItemListButton.classList.toggle('hidden', !hasMovableItems);
+    }
+
     if (data.orders.length === 0) {
       container.innerHTML = '<p class="text-sm text-gray-400 text-center py-6">Belum ada order.</p>';
     } else {
@@ -348,11 +359,6 @@
             <div class="flex items-center gap-3">
               <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}">${order.status}</span>
               <span class="text-sm font-bold text-gray-900">Rp ${order.total.toLocaleString('id-ID')}</span>
-                ${order.status !== 'cancelled' ? `<button type="button"
-                      onclick="openMoveOrderModal(${order.id})"
-                      class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition">
-                Pindah Order
-                </button>` : ''}
               ${order.status === 'pending' ? `<button type="button"
                       onclick="openCancelOrderModal(${order.id}, '${String(order.order_number || '').replace(/'/g, "&#39;")}')"
                       class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition">
@@ -379,9 +385,10 @@
   function closeOrderHistoryModal() {
     document.getElementById('orderHistoryModal')?.classList.add('hidden');
     currentOrderHistorySession = null;
+    document.getElementById('openMoveItemListButton')?.classList.add('hidden');
   }
 
-  function openMoveOrderModal(orderId) {
+  function openMoveOrderModal() {
     if (!currentOrderHistorySession || !currentOrderHistorySession.booking_id || !currentOrderHistorySession.session_id) {
       return;
     }
@@ -391,17 +398,60 @@
     const orderInput = document.getElementById('moveOrderId');
     const targetSelect = document.getElementById('moveOrderTargetSessionId');
     const sourceInfo = document.getElementById('moveOrderSourceInfo');
+    const orderNumberInfo = document.getElementById('moveOrderNumberInfo');
+    const itemsContainer = document.getElementById('moveOrderItemsContainer');
 
     if (form) {
       form.action = `/admin/bookings/${currentOrderHistorySession.booking_id}/move-order`;
     }
 
     if (orderInput) {
-      orderInput.value = String(orderId);
+      orderInput.value = '';
     }
 
     if (sourceInfo) {
       sourceInfo.textContent = `${currentOrderHistorySession.customer} — Meja ${currentOrderHistorySession.table}`;
+    }
+
+    if (orderNumberInfo) {
+      orderNumberInfo.textContent = 'Multi-order (item terpilih)';
+    }
+
+    if (itemsContainer) {
+      const movableItems = (currentOrderHistorySession.orders || []).flatMap(order =>
+        (order.items || [])
+        .filter(item => item.status !== 'cancelled')
+        .map(item => ({
+          ...item,
+          order_number: order.order_number,
+        }))
+      );
+
+      if (movableItems.length === 0) {
+        itemsContainer.innerHTML = '<p class="px-3 py-2 text-sm text-gray-400">Tidak ada item aktif yang bisa dipindah.</p>';
+      } else {
+        itemsContainer.innerHTML = movableItems.map(item => {
+          const itemStatusClass = {
+            pending: 'bg-yellow-100 text-yellow-700',
+            preparing: 'bg-blue-100 text-blue-700',
+            ready: 'bg-emerald-100 text-emerald-700',
+            served: 'bg-green-100 text-green-700',
+          } [item.status] || 'bg-gray-100 text-gray-600';
+
+          return `<label class="flex items-start gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50">
+            <input type="checkbox"
+                   name="order_item_ids[]"
+                   value="${item.id}"
+                   class="mt-1 rounded border-gray-300 text-amber-600 focus:ring-amber-500">
+            <div class="min-w-0 flex-1">
+              <div class="text-xs font-mono text-gray-400 mb-0.5">${item.order_number}</div>
+              <div class="text-sm font-medium text-gray-800">${item.item_name}</div>
+              <div class="text-xs text-gray-500 mt-0.5">${item.quantity}x · Rp ${Number(item.subtotal || 0).toLocaleString('id-ID')}</div>
+            </div>
+            <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${itemStatusClass}">${item.status}</span>
+          </label>`;
+        }).join('');
+      }
     }
 
     if (targetSelect) {
@@ -419,6 +469,11 @@
 
   function closeMoveOrderModal() {
     document.getElementById('moveOrderModal')?.classList.add('hidden');
+
+    const itemsContainer = document.getElementById('moveOrderItemsContainer');
+    if (itemsContainer) {
+      itemsContainer.innerHTML = '<p class="px-3 py-2 text-sm text-gray-400">Belum ada item.</p>';
+    }
   }
 
   function openCancelOrderModal(orderId, orderNumber) {

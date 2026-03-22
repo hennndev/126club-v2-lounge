@@ -113,6 +113,32 @@ test('creating a booking can persist down payment amount', function () {
         ->and((float) $booking->down_payment_amount)->toBe(50000.0);
 });
 
+test('creating a booking keeps down payment optional even when checkbox is checked', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area);
+    $customer = makeBookingCustomer();
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.store'), [
+            'table_id' => $table->id,
+            'customer_id' => $customer->id,
+            'reservation_date' => now()->addDays(2)->toDateString(),
+            'reservation_time' => '20:00',
+            'has_down_payment' => '1',
+            'down_payment_amount' => null,
+        ])
+        ->assertRedirect(route('admin.bookings.index'));
+
+    $booking = TableReservation::where('table_id', $table->id)
+        ->where('customer_id', $customer->id)
+        ->latest('id')
+        ->first();
+
+    expect($booking)->not->toBeNull()
+        ->and((float) $booking->down_payment_amount)->toBe(0.0);
+});
+
 test('creating a booking is blocked when customer has an active table session', function () {
     $admin = adminUser();
     $area = makeArea();
@@ -514,6 +540,77 @@ test('request move table fails for checked in booking when active session is mis
     expect($booking->fresh()->table_id)->toBe($sourceTable->id)
         ->and($sourceTable->fresh()->status)->toBe('occupied')
         ->and($targetTable->fresh()->status)->toBe('available');
+});
+
+test('request move table can take over reserved table and set previous confirmed booking to pending', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $sourceTable = makeTable($area, ['status' => 'occupied']);
+    $targetTable = makeTable($area, ['status' => 'reserved']);
+
+    $customerA = makeBookingCustomer();
+    $customerB = makeBookingCustomer();
+
+    $existingConfirmedBooking = TableReservation::create([
+        'booking_code' => rand(1000, 4999),
+        'table_id' => $targetTable->id,
+        'customer_id' => $customerA->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '19:00',
+        'status' => 'confirmed',
+    ]);
+
+    $bookingToMove = TableReservation::create([
+        'booking_code' => rand(5000, 9999),
+        'table_id' => $sourceTable->id,
+        'customer_id' => $customerB->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $bookingToMove->id,
+        'table_id' => $sourceTable->id,
+        'customer_id' => $customerB->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.moveTable', $bookingToMove), [
+            'new_table_id' => $targetTable->id,
+        ])
+        ->assertRedirect();
+
+    expect($bookingToMove->fresh()->table_id)->toBe($targetTable->id)
+        ->and($session->fresh()->table_id)->toBe($targetTable->id)
+        ->and($existingConfirmedBooking->fresh()->status)->toBe('pending')
+        ->and($sourceTable->fresh()->status)->toBe('available')
+        ->and($targetTable->fresh()->status)->toBe('occupied');
+});
+
+test('move table modal lists both available and reserved target tables', function () {
+    $admin = adminUser();
+    $area = makeArea();
+
+    $availableTable = makeTable($area, [
+        'table_number' => 'MV-AVAILABLE-'.uniqid(),
+        'status' => 'available',
+    ]);
+
+    $reservedTable = makeTable($area, [
+        'table_number' => 'MV-RESERVED-'.uniqid(),
+        'status' => 'reserved',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'active']))
+        ->assertOk()
+        ->assertSee($availableTable->table_number)
+        ->assertSee($reservedTable->table_number)
+        ->assertSee('Meja dengan status available dan reserved bisa dipilih.');
 });
 
 test('admin can print running receipt while table session is active', function () {
