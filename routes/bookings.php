@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Route;
 Route::resource('bookings', TableReservationController::class)->except(['show', 'create', 'edit']);
 Route::patch('bookings/{booking}/status', [TableReservationController::class, 'updateStatus'])->name('bookings.updateStatus');
 Route::post('bookings/{booking}/move-table', [TableReservationController::class, 'requestTableMove'])->name('bookings.moveTable');
+Route::post('bookings/{booking}/move-order', [TableReservationController::class, 'moveOrder'])->name('bookings.moveOrder');
+Route::post('bookings/{booking}/cancel-order', [TableReservationController::class, 'cancelOrder'])->name('bookings.cancelOrder');
 Route::post('bookings/{booking}/print-running-receipt', [TableReservationController::class, 'printRunningReceipt'])->name('bookings.printRunningReceipt');
 Route::post('bookings/{booking}/close-billing', [TableReservationController::class, 'closeBilling'])->name('bookings.closeBilling');
 Route::post('bookings/{booking}/assign-waiter', [TableReservationController::class, 'assignWaiter'])->name('bookings.assignWaiter');

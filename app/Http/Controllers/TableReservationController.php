@@ -1116,6 +1116,146 @@ class TableReservationController extends Controller
         }
     }
 
+    public function moveOrder(Request $request, TableReservation $booking)
+    {
+        $validated = $request->validate([
+            'order_id' => 'required|integer|exists:orders,id',
+            'target_table_session_id' => 'required|integer|exists:table_sessions,id',
+        ]);
+
+        try {
+            DB::transaction(function () use ($booking, $validated): void {
+                $sourceSession = TableSession::query()
+                    ->where('table_reservation_id', $booking->id)
+                    ->where('status', 'active')
+                    ->latest('id')
+                    ->first();
+
+                if (! $sourceSession) {
+                    throw ValidationException::withMessages([
+                        'order_id' => 'Sesi aktif sumber tidak ditemukan.',
+                    ]);
+                }
+
+                $order = Order::query()
+                    ->where('id', (int) $validated['order_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $order || (int) $order->table_session_id !== (int) $sourceSession->id) {
+                    throw ValidationException::withMessages([
+                        'order_id' => 'Order tidak ditemukan pada sesi aktif booking ini.',
+                    ]);
+                }
+
+                if ($order->status === 'cancelled') {
+                    throw ValidationException::withMessages([
+                        'order_id' => 'Order berstatus cancelled tidak bisa dipindahkan.',
+                    ]);
+                }
+
+                $targetSession = TableSession::query()
+                    ->where('id', (int) $validated['target_table_session_id'])
+                    ->where('status', 'active')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $targetSession) {
+                    throw ValidationException::withMessages([
+                        'target_table_session_id' => 'Sesi tujuan tidak ditemukan atau sudah tidak aktif.',
+                    ]);
+                }
+
+                if ((int) $targetSession->id === (int) $sourceSession->id) {
+                    throw ValidationException::withMessages([
+                        'target_table_session_id' => 'Sesi tujuan harus berbeda dari sesi asal.',
+                    ]);
+                }
+
+                $order->update([
+                    'table_session_id' => $targetSession->id,
+                ]);
+            });
+
+            return back()->with('success', 'Order berhasil dipindahkan ke sesi tujuan.');
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'order_id' => 'Gagal memindahkan order. '.$e->getMessage(),
+            ]);
+        }
+    }
+
+    public function cancelOrder(Request $request, TableReservation $booking)
+    {
+        $validated = $request->validate([
+            'order_id' => 'required|integer|exists:orders,id',
+            'cancel_auth_code' => 'required|string',
+        ]);
+
+        try {
+            DB::transaction(function () use ($booking, $validated): void {
+                $session = TableSession::query()
+                    ->where('table_reservation_id', $booking->id)
+                    ->where('status', 'active')
+                    ->latest('id')
+                    ->first();
+
+                if (! $session) {
+                    throw ValidationException::withMessages([
+                        'order_id' => 'Sesi aktif tidak ditemukan untuk booking ini.',
+                    ]);
+                }
+
+                $order = Order::query()
+                    ->where('id', (int) $validated['order_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $order || (int) $order->table_session_id !== (int) $session->id) {
+                    throw ValidationException::withMessages([
+                        'order_id' => 'Order tidak ditemukan pada sesi aktif booking ini.',
+                    ]);
+                }
+
+                if ($order->status !== 'pending') {
+                    throw ValidationException::withMessages([
+                        'order_id' => 'Hanya order berstatus pending yang bisa dibatalkan.',
+                    ]);
+                }
+
+                $authCode = trim((string) ($validated['cancel_auth_code'] ?? ''));
+                $today = now()->format('Y-m-d');
+                $authRecord = DailyAuthCode::forDate($today);
+
+                if ($authCode !== $authRecord->active_code) {
+                    throw ValidationException::withMessages([
+                        'cancel_auth_code' => 'Daily auth code tidak valid.',
+                    ]);
+                }
+
+                $order->items()
+                    ->where('status', '!=', 'cancelled')
+                    ->update(['status' => 'cancelled']);
+
+                $order->update([
+                    'status' => 'cancelled',
+                    'cancelled_at' => now(),
+                    'cancelled_by' => auth()->id(),
+                ]);
+            });
+
+            return back()->with('success', 'Order pending berhasil dibatalkan.');
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'order_id' => 'Gagal membatalkan order. '.$e->getMessage(),
+            ]);
+        }
+    }
+
     public function printRunningReceipt(TableReservation $booking)
     {
         $session = TableSession::with(['billing', 'orders.items.inventoryItem', 'table', 'customer', 'reservation'])

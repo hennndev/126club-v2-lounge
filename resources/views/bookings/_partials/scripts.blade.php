@@ -268,11 +268,14 @@
   @php
     $sessionOrdersJson = $activeSessions->keyBy('session_code')->map(function ($s) {
         return [
+            'session_id' => $s->id,
+            'booking_id' => $s->table_reservation_id,
             'customer' => $s->reservation?->customer?->profile?->name ?? ($s->reservation?->customer?->customerUser?->name ?? ($s->reservation?->customer?->name ?? 'Tamu')),
             'table' => $s->table?->table_number ?? '—',
             'orders' => $s->orders
                 ->map(function ($o) {
                     return [
+                        'id' => $o->id,
                         'order_number' => $o->order_number,
                         'ordered_at' => $o->ordered_at?->setTimezone('Asia/Jakarta')->format('H:i'),
                         'status' => $o->status,
@@ -292,12 +295,25 @@
                 ->values(),
         ];
     });
+
+    $moveOrderTargetsJson = $activeSessions
+        ->map(function ($s) {
+            return [
+                'session_id' => $s->id,
+                'table' => $s->table?->table_number ?? '—',
+                'customer' => $s->reservation?->customer?->profile?->name ?? ($s->reservation?->customer?->customerUser?->name ?? ($s->reservation?->customer?->name ?? 'Tamu')),
+            ];
+        })
+        ->values();
   @endphp
   const sessionOrdersData = @json($sessionOrdersJson);
+  const moveOrderTargets = @json($moveOrderTargetsJson);
+  let currentOrderHistorySession = null;
 
   function openOrderHistoryModal(sessionCode) {
     const data = sessionOrdersData[sessionCode];
     if (!data) return;
+    currentOrderHistorySession = data;
 
     document.getElementById('orderHistoryTitle').textContent =
       data.customer + ' — Meja ' + data.table;
@@ -332,6 +348,16 @@
             <div class="flex items-center gap-3">
               <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}">${order.status}</span>
               <span class="text-sm font-bold text-gray-900">Rp ${order.total.toLocaleString('id-ID')}</span>
+                ${order.status !== 'cancelled' ? `<button type="button"
+                      onclick="openMoveOrderModal(${order.id})"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition">
+                Pindah Order
+                </button>` : ''}
+              ${order.status === 'pending' ? `<button type="button"
+                      onclick="openCancelOrderModal(${order.id}, '${String(order.order_number || '').replace(/'/g, "&#39;")}')"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition">
+                Cancel
+              </button>` : ''}
             </div>
           </div>
           <table class="w-full px-4">
@@ -352,6 +378,80 @@
 
   function closeOrderHistoryModal() {
     document.getElementById('orderHistoryModal')?.classList.add('hidden');
+    currentOrderHistorySession = null;
+  }
+
+  function openMoveOrderModal(orderId) {
+    if (!currentOrderHistorySession || !currentOrderHistorySession.booking_id || !currentOrderHistorySession.session_id) {
+      return;
+    }
+
+    const modal = document.getElementById('moveOrderModal');
+    const form = document.getElementById('moveOrderForm');
+    const orderInput = document.getElementById('moveOrderId');
+    const targetSelect = document.getElementById('moveOrderTargetSessionId');
+    const sourceInfo = document.getElementById('moveOrderSourceInfo');
+
+    if (form) {
+      form.action = `/admin/bookings/${currentOrderHistorySession.booking_id}/move-order`;
+    }
+
+    if (orderInput) {
+      orderInput.value = String(orderId);
+    }
+
+    if (sourceInfo) {
+      sourceInfo.textContent = `${currentOrderHistorySession.customer} — Meja ${currentOrderHistorySession.table}`;
+    }
+
+    if (targetSelect) {
+      const options = moveOrderTargets
+        .filter(target => Number(target.session_id) !== Number(currentOrderHistorySession.session_id))
+        .map(target => `<option value="${target.session_id}">Meja ${target.table} — ${target.customer}</option>`)
+        .join('');
+
+      targetSelect.innerHTML = `<option value="">Pilih sesi tujuan</option>${options}`;
+      targetSelect.value = '';
+    }
+
+    modal?.classList.remove('hidden');
+  }
+
+  function closeMoveOrderModal() {
+    document.getElementById('moveOrderModal')?.classList.add('hidden');
+  }
+
+  function openCancelOrderModal(orderId, orderNumber) {
+    if (!currentOrderHistorySession || !currentOrderHistorySession.booking_id) {
+      return;
+    }
+
+    const form = document.getElementById('cancelOrderForm');
+    const orderInput = document.getElementById('cancelOrderId');
+    const orderNumberEl = document.getElementById('cancelOrderNumber');
+    const authInput = document.getElementById('cancelOrderAuthCode');
+
+    if (form) {
+      form.action = `/admin/bookings/${currentOrderHistorySession.booking_id}/cancel-order`;
+    }
+
+    if (orderInput) {
+      orderInput.value = String(orderId);
+    }
+
+    if (orderNumberEl) {
+      orderNumberEl.textContent = orderNumber || '-';
+    }
+
+    if (authInput) {
+      authInput.value = '';
+    }
+
+    document.getElementById('cancelOrderModal')?.classList.remove('hidden');
+  }
+
+  function closeCancelOrderModal() {
+    document.getElementById('cancelOrderModal')?.classList.add('hidden');
   }
 
   // History tab client-side filter
@@ -378,6 +478,8 @@
       closeStatusModal();
       closeBookingInfoModal();
       closeMoveTableModal();
+      closeMoveOrderModal();
+      closeCancelOrderModal();
     }
   });
 
@@ -395,5 +497,14 @@
   });
   document.getElementById('bookingInfoModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeBookingInfoModal();
+  });
+  document.getElementById('orderHistoryModal')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeOrderHistoryModal();
+  });
+  document.getElementById('moveOrderModal')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeMoveOrderModal();
+  });
+  document.getElementById('cancelOrderModal')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeCancelOrderModal();
   });
 </script>

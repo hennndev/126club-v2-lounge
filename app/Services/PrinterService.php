@@ -103,7 +103,13 @@ class PrinterService
                 $escpos->text($this->formatClosedBillingPair('Minimum Charge', 'Rp '.number_format((float) $payload['minimum_charge'], 0, ',', '.'), $width)."\n");
             }
 
-            $escpos->text($this->formatClosedBillingPair('Subtotal', 'Rp '.number_format((float) $payload['subtotal'], 0, ',', '.'), $width)."\n");
+            $downPaymentAmount = (float) ($payload['down_payment_amount'] ?? 0);
+            $displaySubtotal = max((float) $payload['subtotal'] - $downPaymentAmount, 0);
+            $escpos->text($this->formatClosedBillingPair('Subtotal', 'Rp '.number_format($displaySubtotal, 0, ',', '.'), $width)."\n");
+
+            if ($downPaymentAmount > 0) {
+                $escpos->text($this->formatClosedBillingPair('DP', 'Rp '.number_format($downPaymentAmount, 0, ',', '.'), $width)."\n");
+            }
 
             if ($payload['service_charge'] > 0) {
                 $escpos->text($this->formatClosedBillingPair('Service Charge ('.(int) $payload['service_charge_percentage'].'%)', 'Rp '.number_format((float) $payload['service_charge'], 0, ',', '.'), $width)."\n");
@@ -703,6 +709,7 @@ class PrinterService
             'service_charge_percentage' => (float) ($billing->service_charge_percentage ?? 0),
             'tax' => (float) ($billing->tax ?? 0),
             'tax_percentage' => (float) ($billing->tax_percentage ?? 0),
+            'down_payment_amount' => (float) ($session->reservation?->down_payment_amount ?? 0),
             'grand_total' => (float) ($billing->grand_total ?? 0),
             'payment_mode' => $paymentMode,
             'payment_method' => $paymentMethod,
@@ -756,6 +763,7 @@ class PrinterService
             'service_charge_percentage' => (float) ($billing->service_charge_percentage ?? 0),
             'tax' => (float) ($billing->tax ?? 0),
             'tax_percentage' => (float) ($billing->tax_percentage ?? 0),
+            'down_payment_amount' => 0,
             'grand_total' => (float) ($billing->grand_total ?? 0),
             'payment_mode' => $paymentMode,
             'payment_method' => $paymentMethod,
@@ -806,7 +814,13 @@ class PrinterService
             $lines[] = $this->formatClosedBillingPair('Minimum Charge', 'Rp '.number_format((float) $payload['minimum_charge'], 0, ',', '.'), $width);
         }
 
-        $lines[] = $this->formatClosedBillingPair('Subtotal', 'Rp '.number_format((float) $payload['subtotal'], 0, ',', '.'), $width);
+        $downPaymentAmount = (float) ($payload['down_payment_amount'] ?? 0);
+        $displaySubtotal = max((float) $payload['subtotal'] - $downPaymentAmount, 0);
+        $lines[] = $this->formatClosedBillingPair('Subtotal', 'Rp '.number_format($displaySubtotal, 0, ',', '.'), $width);
+
+        if ($downPaymentAmount > 0) {
+            $lines[] = $this->formatClosedBillingPair('DP', 'Rp '.number_format($downPaymentAmount, 0, ',', '.'), $width);
+        }
 
         if ((float) $payload['service_charge'] > 0) {
             $lines[] = $this->formatClosedBillingPair(
