@@ -132,11 +132,24 @@ class PrinterService
 
             if ($payload['payment_mode'] === 'split') {
                 $escpos->text($this->formatClosedBillingPair('Mode Pembayaran', 'SPLIT BILL', $width)."\n");
-                $escpos->text($this->formatClosedBillingPair('Cash', 'Rp '.number_format((float) $payload['split_cash_amount'], 0, ',', '.'), $width)."\n");
-                $escpos->text($this->formatClosedBillingPair((string) $payload['split_non_cash_method'], 'Rp '.number_format((float) $payload['split_non_cash_amount'], 0, ',', '.'), $width)."\n");
+                if ((float) $payload['split_cash_amount'] > 0) {
+                    $escpos->text($this->formatClosedBillingPair('Cash', 'Rp '.number_format((float) $payload['split_cash_amount'], 0, ',', '.'), $width)."\n");
+                }
 
-                if (filled($payload['split_non_cash_reference_number'])) {
-                    $escpos->text($this->formatClosedBillingPair('No. Referensi Non-Cash', (string) $payload['split_non_cash_reference_number'], $width)."\n");
+                if ((float) $payload['split_non_cash_amount'] > 0) {
+                    $escpos->text($this->formatClosedBillingPair((string) $payload['split_non_cash_method'], 'Rp '.number_format((float) $payload['split_non_cash_amount'], 0, ',', '.'), $width)."\n");
+
+                    if (filled($payload['split_non_cash_reference_number'])) {
+                        $escpos->text($this->formatClosedBillingPair('Ref 1', (string) $payload['split_non_cash_reference_number'], $width)."\n");
+                    }
+                }
+
+                if ((float) ($payload['split_second_non_cash_amount'] ?? 0) > 0) {
+                    $escpos->text($this->formatClosedBillingPair((string) ($payload['split_second_non_cash_method'] ?? 'NON-CASH 2'), 'Rp '.number_format((float) ($payload['split_second_non_cash_amount'] ?? 0), 0, ',', '.'), $width)."\n");
+
+                    if (filled($payload['split_second_non_cash_reference_number'] ?? null)) {
+                        $escpos->text($this->formatClosedBillingPair('Ref 2', (string) ($payload['split_second_non_cash_reference_number'] ?? ''), $width)."\n");
+                    }
                 }
             }
 
@@ -694,6 +707,7 @@ class PrinterService
         $paymentMethod = strtoupper((string) ($billing->payment_method ?: (($billing->payment_mode ?? 'normal') === 'split' ? 'split' : '-')));
         $paymentMode = (string) ($billing->payment_mode ?? 'normal');
         $splitNonCashMethod = strtoupper((string) ($billing->split_non_cash_method ?? 'NON-CASH'));
+        $splitSecondNonCashMethod = strtoupper((string) ($billing->split_second_non_cash_method ?? 'NON-CASH 2'));
 
         return [
             'transaction_code' => (string) ($billing->transaction_code ?? '-'),
@@ -718,6 +732,9 @@ class PrinterService
             'split_non_cash_amount' => (float) ($billing->split_debit_amount ?? 0),
             'split_non_cash_method' => $splitNonCashMethod,
             'split_non_cash_reference_number' => $billing->split_non_cash_reference_number,
+            'split_second_non_cash_amount' => (float) ($billing->split_second_non_cash_amount ?? 0),
+            'split_second_non_cash_method' => $splitSecondNonCashMethod,
+            'split_second_non_cash_reference_number' => $billing->split_second_non_cash_reference_number,
         ];
     }
 
@@ -748,6 +765,7 @@ class PrinterService
         $paymentMethod = strtoupper((string) ($billing->payment_method ?: (($billing->payment_mode ?? 'normal') === 'split' ? 'split' : '-')));
         $paymentMode = (string) ($billing->payment_mode ?? 'normal');
         $splitNonCashMethod = strtoupper((string) ($billing->split_non_cash_method ?? 'NON-CASH'));
+        $splitSecondNonCashMethod = strtoupper((string) ($billing->split_second_non_cash_method ?? 'NON-CASH 2'));
 
         return [
             'transaction_code' => (string) ($billing->transaction_code ?? $order->order_number ?? '-'),
@@ -772,6 +790,9 @@ class PrinterService
             'split_non_cash_amount' => (float) ($billing->split_debit_amount ?? 0),
             'split_non_cash_method' => $splitNonCashMethod,
             'split_non_cash_reference_number' => $billing->split_non_cash_reference_number,
+            'split_second_non_cash_amount' => (float) ($billing->split_second_non_cash_amount ?? 0),
+            'split_second_non_cash_method' => $splitSecondNonCashMethod,
+            'split_second_non_cash_reference_number' => $billing->split_second_non_cash_reference_number,
         ];
     }
 
@@ -848,11 +869,24 @@ class PrinterService
 
         if ($payload['payment_mode'] === 'split') {
             $lines[] = $this->formatClosedBillingPair('Mode Pembayaran', 'SPLIT BILL', $width);
-            $lines[] = $this->formatClosedBillingPair('Cash', 'Rp '.number_format((float) $payload['split_cash_amount'], 0, ',', '.'), $width);
-            $lines[] = $this->formatClosedBillingPair((string) $payload['split_non_cash_method'], 'Rp '.number_format((float) $payload['split_non_cash_amount'], 0, ',', '.'), $width);
+            if ((float) $payload['split_cash_amount'] > 0) {
+                $lines[] = $this->formatClosedBillingPair('Cash', 'Rp '.number_format((float) $payload['split_cash_amount'], 0, ',', '.'), $width);
+            }
 
-            if (filled($payload['split_non_cash_reference_number'])) {
-                $lines[] = $this->formatClosedBillingPair('No. Referensi Non-Cash', (string) $payload['split_non_cash_reference_number'], $width);
+            if ((float) $payload['split_non_cash_amount'] > 0) {
+                $lines[] = $this->formatClosedBillingPair((string) $payload['split_non_cash_method'], 'Rp '.number_format((float) $payload['split_non_cash_amount'], 0, ',', '.'), $width);
+
+                if (filled($payload['split_non_cash_reference_number'])) {
+                    $lines[] = $this->formatClosedBillingPair('Ref 1', (string) $payload['split_non_cash_reference_number'], $width);
+                }
+            }
+
+            if ((float) ($payload['split_second_non_cash_amount'] ?? 0) > 0) {
+                $lines[] = $this->formatClosedBillingPair((string) ($payload['split_second_non_cash_method'] ?? 'NON-CASH 2'), 'Rp '.number_format((float) ($payload['split_second_non_cash_amount'] ?? 0), 0, ',', '.'), $width);
+
+                if (filled($payload['split_second_non_cash_reference_number'] ?? null)) {
+                    $lines[] = $this->formatClosedBillingPair('Ref 2', (string) ($payload['split_second_non_cash_reference_number'] ?? ''), $width);
+                }
             }
         }
 

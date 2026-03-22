@@ -119,9 +119,12 @@
               $chargePreview = $activeSessionChargePreviews[$session->id] ?? null;
               $ordersForEligibility = (float) ($chargePreview['orders_total'] ?? ($billing?->orders_total ?? 0));
 
-              // Billing state
-              $canClose = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $ordersForEligibility >= (float) ($billing->minimum_charge ?? 0);
-              $belowMinCharge = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $ordersForEligibility < (float) ($billing->minimum_charge ?? 0);
+              // Billing state: check both DP and minimum charge
+              $downPaymentAmount = (float) ($reservation?->down_payment_amount ?? 0);
+              $minimumCharge = (float) ($billing->minimum_charge ?? 0);
+              $requiredAmount = $downPaymentAmount > 0 ? $downPaymentAmount : $minimumCharge;
+              $canClose = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $ordersForEligibility >= $requiredAmount;
+              $belowMinCharge = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $ordersForEligibility < $requiredAmount;
 
               // Waiter
               $waiterDisplayName = $session->waiter?->profile?->name ?? ($session->waiter?->name ?? null);
@@ -238,9 +241,15 @@
 
               {{-- Min charge --}}
               <td class="px-5 py-4 whitespace-nowrap text-right">
-                <div class="text-base text-gray-700">
-                  Rp {{ number_format($billing?->minimum_charge ?? 0, 0, ',', '.') }}
-                </div>
+                @if ($downPaymentAmount > 0)
+                  <div class="text-base text-gray-700 font-semibold">
+                    DP: Rp {{ number_format($downPaymentAmount, 0, ',', '.') }}
+                  </div>
+                @else
+                  <div class="text-base text-gray-700">
+                    Rp {{ number_format($minimumCharge, 0, ',', '.') }}
+                  </div>
+                @endif
               </td>
 
               {{-- Orders total --}}
@@ -257,7 +266,11 @@
                 </div>
                 @if ($belowMinCharge)
                   <div class="text-sm text-amber-600 mt-0.5">
-                    Min. Rp {{ number_format((float) ($billing->minimum_charge ?? 0), 0, ',', '.') }}
+                    @if ($downPaymentAmount > 0)
+                      DP: Rp {{ number_format($downPaymentAmount, 0, ',', '.') }}
+                    @else
+                      Min. Rp {{ number_format($minimumCharge, 0, ',', '.') }}
+                    @endif
                   </div>
                 @elseif ($billing?->billing_status === 'paid')
                   <div class="text-sm text-green-600 mt-0.5">Lunas</div>

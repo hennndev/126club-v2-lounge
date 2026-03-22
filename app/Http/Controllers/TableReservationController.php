@@ -470,10 +470,13 @@ class TableReservationController extends Controller
             'payment_mode' => 'required|in:normal,split',
             'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit,qris,transfer',
             'payment_reference_number' => 'nullable|string|max:100',
-            'split_cash_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
-            'split_non_cash_amount' => 'required_if:payment_mode,split|nullable|numeric|min:0',
-            'split_non_cash_method' => 'required_if:payment_mode,split|nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
+            'split_cash_amount' => 'nullable|numeric|min:0',
+            'split_non_cash_amount' => 'nullable|numeric|min:0',
+            'split_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
             'split_non_cash_reference_number' => 'nullable|string|max:100',
+            'split_second_non_cash_amount' => 'nullable|numeric|min:0',
+            'split_second_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
+            'split_second_non_cash_reference_number' => 'nullable|string|max:100',
             'discount_type' => 'nullable|in:percentage,nominal',
             'discount_percentage' => 'nullable|numeric|min:0|max:100',
             'discount_nominal' => 'nullable|numeric|min:0',
@@ -509,6 +512,22 @@ class TableReservationController extends Controller
 
         if ($billing->billing_status === 'paid') {
             return response()->json(['success' => false, 'message' => 'Billing sudah ditutup.'], 422);
+        }
+
+        // Validate DP (down payment) matches order items
+        $downPaymentAmount = (float) ($booking->down_payment_amount ?? 0);
+        if ($downPaymentAmount > 0) {
+            $session->loadMissing('orders');
+            $ordersTotal = (float) $session->orders
+                ->where('status', '!=', 'cancelled')
+                ->sum(fn ($order) => (float) ($order->total ?? 0));
+
+            if ($ordersTotal < $downPaymentAmount) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order items total (Rp '.number_format($ordersTotal, 0, ',', '.').') tidak sesuai dengan DP yang diambil (Rp '.number_format($downPaymentAmount, 0, ',', '.').'). Silakan tambahkan order lebih banyak atau batalkan booking.',
+                ], 422);
+            }
         }
 
         try {
@@ -584,45 +603,87 @@ class TableReservationController extends Controller
                 $splitDebitAmount = null;
                 $splitNonCashMethod = null;
                 $splitNonCashReferenceNumber = null;
+                $splitSecondNonCashAmount = null;
+                $splitSecondNonCashMethod = null;
+                $splitSecondNonCashReferenceNumber = null;
 
                 if ($paymentMode === 'split') {
-                    $splitCashAmount = (float) $validated['split_cash_amount'];
-                    $splitDebitAmount = (float) $validated['split_non_cash_amount'];
-                    $splitNonCashMethod = $validated['split_non_cash_method'];
+                    $splitCashAmount = (float) ($validated['split_cash_amount'] ?? 0);
+                    $splitDebitAmount = (float) ($validated['split_non_cash_amount'] ?? 0);
+                    $splitNonCashMethod = $validated['split_non_cash_method'] ?? null;
                     $splitNonCashReferenceNumber = $validated['split_non_cash_reference_number'] ?? null;
+                    $splitSecondNonCashAmount = (float) ($validated['split_second_non_cash_amount'] ?? 0);
+                    $splitSecondNonCashMethod = $validated['split_second_non_cash_method'] ?? null;
+                    $splitSecondNonCashReferenceNumber = $validated['split_second_non_cash_reference_number'] ?? null;
                     $grandTotal = round((float) $totals['grand_total'], 2);
-                    $splitTotal = round($splitCashAmount + $splitDebitAmount, 2);
+                    $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 2);
+                    $activeNonCashCount = collect([
+                        ['amount' => $splitDebitAmount, 'method' => $splitNonCashMethod, 'reference' => $splitNonCashReferenceNumber],
+                        ['amount' => $splitSecondNonCashAmount, 'method' => $splitSecondNonCashMethod, 'reference' => $splitSecondNonCashReferenceNumber],
+                    ])->filter(fn (array $entry): bool => (float) $entry['amount'] > 0)->count();
 
-                    if ($splitCashAmount <= 0 || $splitDebitAmount <= 0) {
+                    $hasCash = $splitCashAmount > 0;
+
+                    if (! $hasCash && $activeNonCashCount < 2) {
                         throw ValidationException::withMessages([
-                            'split_total' => 'Untuk split bill, nominal cash dan non-cash harus lebih dari 0.',
+                            'split_total' => 'Untuk split non-cash + non-cash, isi dua nominal non-cash lebih dari 0.',
+                        ]);
+                    }
+
+                    if ($hasCash && $activeNonCashCount < 1) {
+                        throw ValidationException::withMessages([
+                            'split_total' => 'Untuk split cash + non-cash, minimal satu nominal non-cash harus lebih dari 0.',
+                        ]);
+                    }
+
+                    if ($activeNonCashCount === 0) {
+                        throw ValidationException::withMessages([
+                            'split_total' => 'Split bill memerlukan minimal satu pembayaran non-cash.',
+                        ]);
+                    }
+
+                    if ($splitCashAmount < 0 || $splitDebitAmount < 0 || $splitSecondNonCashAmount < 0) {
+                        throw ValidationException::withMessages([
+                            'split_total' => 'Nominal split bill tidak boleh minus.',
                         ]);
                     }
 
                     if (abs($splitTotal - $grandTotal) > 0.01) {
                         $isDiscountApplied = $requestedDiscountAmount > 0;
 
-                        if ($isDiscountApplied && $splitCashAmount > 0 && $splitCashAmount < $grandTotal) {
+                        if ($isDiscountApplied && $splitCashAmount > 0 && $splitCashAmount < $grandTotal && $splitSecondNonCashAmount <= 0) {
                             $splitDebitAmount = round($grandTotal - $splitCashAmount, 2);
-                            $splitTotal = round($splitCashAmount + $splitDebitAmount, 2);
+                            $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 2);
                         }
-                    }
-
-                    if ($splitDebitAmount <= 0) {
-                        throw ValidationException::withMessages([
-                            'split_total' => 'Nominal non-cash pada split bill harus lebih dari 0.',
-                        ]);
                     }
 
                     if (abs($splitTotal - $grandTotal) > 0.01) {
                         throw ValidationException::withMessages([
-                            'split_total' => 'Total pembayaran split (cash + non-cash) harus sama dengan grand total.',
+                            'split_total' => 'Total pembayaran split harus sama dengan grand total.',
                         ]);
                     }
 
-                    if (blank($splitNonCashReferenceNumber)) {
+                    if ($splitDebitAmount > 0 && blank($splitNonCashMethod)) {
                         throw ValidationException::withMessages([
-                            'split_non_cash_reference_number' => 'Nomor referensi non-cash untuk split bill wajib diisi.',
+                            'split_non_cash_method' => 'Metode non-cash pertama untuk split bill wajib dipilih.',
+                        ]);
+                    }
+
+                    if ($splitDebitAmount > 0 && blank($splitNonCashReferenceNumber)) {
+                        throw ValidationException::withMessages([
+                            'split_non_cash_reference_number' => 'Nomor referensi non-cash pertama untuk split bill wajib diisi.',
+                        ]);
+                    }
+
+                    if ($splitSecondNonCashAmount > 0 && blank($splitSecondNonCashMethod)) {
+                        throw ValidationException::withMessages([
+                            'split_second_non_cash_method' => 'Metode non-cash kedua untuk split bill wajib dipilih.',
+                        ]);
+                    }
+
+                    if ($splitSecondNonCashAmount > 0 && blank($splitSecondNonCashReferenceNumber)) {
+                        throw ValidationException::withMessages([
+                            'split_second_non_cash_reference_number' => 'Nomor referensi non-cash kedua untuk split bill wajib diisi.',
                         ]);
                     }
                 }
@@ -646,6 +707,9 @@ class TableReservationController extends Controller
                     'split_debit_amount' => $splitDebitAmount,
                     'split_non_cash_method' => $splitNonCashMethod,
                     'split_non_cash_reference_number' => $splitNonCashReferenceNumber,
+                    'split_second_non_cash_amount' => $splitSecondNonCashAmount,
+                    'split_second_non_cash_method' => $splitSecondNonCashMethod,
+                    'split_second_non_cash_reference_number' => $splitSecondNonCashReferenceNumber,
                 ]);
 
                 $session->update([
@@ -740,6 +804,9 @@ class TableReservationController extends Controller
                     'split_debit_amount' => (float) ($billing->split_debit_amount ?? 0),
                     'split_non_cash_method' => strtoupper((string) ($billing->split_non_cash_method ?? '')),
                     'split_non_cash_reference_number' => $billing->split_non_cash_reference_number,
+                    'split_second_non_cash_amount' => (float) ($billing->split_second_non_cash_amount ?? 0),
+                    'split_second_non_cash_method' => strtoupper((string) ($billing->split_second_non_cash_method ?? '')),
+                    'split_second_non_cash_reference_number' => $billing->split_second_non_cash_reference_number,
                 ],
                 'receipt_url' => route('admin.bookings.receipt', $booking->id),
             ]);
