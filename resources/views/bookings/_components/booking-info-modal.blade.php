@@ -56,6 +56,11 @@
           <p id="biModalTime"
              class="text-sm text-gray-700 mt-0.5">—</p>
         </div>
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">DP</p>
+          <p id="biModalDownPayment"
+             class="text-sm text-gray-700 mt-0.5">Rp 0</p>
+        </div>
       </div>
       <div id="biModalNoteWrap"
            class="hidden">

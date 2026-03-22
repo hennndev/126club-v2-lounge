@@ -361,18 +361,18 @@
              class="space-y-1">
           <div class="w-full bg-gray-700 rounded-full h-1.5">
             <div class="h-1.5 rounded-full transition-all"
-                 :class="(checkoutForm.ordersTotal + cartTotal) >= checkoutForm.minimumCharge ? 'bg-green-400' : 'bg-orange-400'"
-                 :style="'width: ' + Math.min((checkoutForm.ordersTotal + cartTotal) / checkoutForm.minimumCharge * 100, 100) + '%'"></div>
+                 :class="minimumChargeCoveredAmount() >= checkoutForm.minimumCharge ? 'bg-green-400' : 'bg-orange-400'"
+                 :style="'width: ' + Math.min((minimumChargeCoveredAmount() / checkoutForm.minimumCharge) * 100, 100) + '%'"></div>
           </div>
-          <p x-show="(checkoutForm.ordersTotal + cartTotal) < checkoutForm.minimumCharge"
+          <p x-show="minimumChargeShortfall() > 0"
              class="text-xs text-orange-400 font-medium"
-             x-text="'Kurang ' + formatCurrency(checkoutForm.minimumCharge - (checkoutForm.ordersTotal + cartTotal)) + ' dari min. charge'"></p>
+             x-text="'Kurang ' + formatCurrency(minimumChargeShortfall()) + ' dari min. charge'"></p>
         </div>
         <div x-show="checkoutForm.minimumCharge > 0"
              style="display: none;"
              class="border-t border-gray-700 pt-1 flex justify-between text-sm text-gray-300">
           <span>Orders</span>
-          <span x-text="formatCurrency(cartTotal)"></span>
+          <span x-text="formatCurrency(checkoutForm.ordersTotal + cartTotal)"></span>
         </div>
         <div x-show="checkoutForm.minimumCharge === 0"
              style="display: none;"

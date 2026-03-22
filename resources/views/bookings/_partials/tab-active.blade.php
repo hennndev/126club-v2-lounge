@@ -318,6 +318,7 @@
                               data-minimum-charge="{{ (float) $billing->minimum_charge }}"
                               data-orders-total="{{ (float) ($chargePreview['orders_total'] ?? 0) }}"
                               data-discount-amount="{{ (float) ($chargePreview['discount_amount'] ?? 0) }}"
+                              data-down-payment-amount="{{ (float) ($reservation->down_payment_amount ?? 0) }}"
                               data-service-charge="{{ (float) ($chargePreview['service_charge'] ?? 0) }}"
                               data-tax="{{ (float) ($chargePreview['tax'] ?? 0) }}"
                               data-service-charge-percentage="{{ (float) ($chargePreview['service_charge_percentage'] ?? 0) }}"

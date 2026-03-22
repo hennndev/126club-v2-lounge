@@ -41,6 +41,35 @@
         this.selectedTableId = tableId;
         const modal = document.getElementById('bookingModal');
         if (modal) {
+          const form = document.getElementById('bookingForm');
+          if (form) {
+            form.action = form.dataset.storeAction || form.action;
+            form.reset();
+          }
+
+          const methodInput = document.getElementById('formMethod');
+          if (methodInput) {
+            methodInput.value = 'POST';
+          }
+
+          const statusInput = document.getElementById('status');
+          if (statusInput) {
+            statusInput.value = 'pending';
+          }
+
+          const title = document.getElementById('modalTitle');
+          if (title) {
+            title.textContent = 'Booking Baru';
+          }
+
+          if (typeof window.setBookingDownPayment === 'function') {
+            window.setBookingDownPayment(false, 0);
+          }
+
+          if (typeof window.applyBookingRealtimeDateTimeDefaults === 'function') {
+            window.applyBookingRealtimeDateTimeDefaults();
+          }
+
           modal.classList.remove('hidden');
           // Pre-fill table selection if given
           if (tableId) {
@@ -76,10 +105,19 @@
     document.getElementById('formMethod').value = 'PUT';
     document.getElementById('table_id').value = booking.table_id;
     document.getElementById('customer_id').value = booking.customer_id;
+    document.getElementById('booking_name').value = booking.booking_name || '';
+    document.getElementById('phone').value = booking.customer?.profile?.phone || booking.customer?.phone || '';
+    document.getElementById('email').value = booking.customer?.email || '';
     document.getElementById('reservation_date').value = booking.reservation_date;
     document.getElementById('reservation_time').value = booking.reservation_time;
     document.getElementById('status').value = booking.status;
     document.getElementById('note').value = booking.note || '';
+
+    if (typeof window.setBookingDownPayment === 'function') {
+      const downPaymentAmount = Number(booking.down_payment_amount || 0);
+      window.setBookingDownPayment(downPaymentAmount > 0, downPaymentAmount);
+    }
+
     modal?.classList.remove('hidden');
   }
 
@@ -95,6 +133,10 @@
   function openBookingInfoModal(bookingId) {
     const booking = (window.activeBookingsById || {})[bookingId];
     if (!booking) return;
+
+    const formatRupiah = (value) => {
+      return 'Rp ' + new Intl.NumberFormat('id-ID').format(Number(value || 0));
+    };
 
     const formatReservationDate = (value) => {
       if (!value) {
@@ -130,6 +172,7 @@
     document.getElementById('biModalDate').textContent = formatReservationDate(booking.reservation_date);
     document.getElementById('biModalTime').textContent =
       booking.reservation_time ? booking.reservation_time.substring(0, 5) : '—';
+    document.getElementById('biModalDownPayment').textContent = formatRupiah(booking.down_payment_amount || 0);
 
     if (booking.note) {
       document.getElementById('biModalNote').textContent = booking.note;

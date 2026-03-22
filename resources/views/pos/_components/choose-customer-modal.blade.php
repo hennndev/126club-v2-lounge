@@ -141,6 +141,7 @@
                 'customerPhone' => $phone,
                 'minimumCharge' => $minCharge,
                 'ordersTotal' => $ordersTotal,
+                'downPaymentAmount' => (float) ($session->reservation?->down_payment_amount ?? 0),
                 'tierName' => $tierName,
                 'discountPercentage' => $tierDiscount,
                 'waiterName' => $session->waiter?->profile?->name ?? ($session->waiter?->name ?? null),

@@ -59,6 +59,13 @@
                 class="text-green-600">- Rp 0</span>
         </div>
         <div class="flex justify-between text-gray-600"
+             id="cbDownPaymentRow"
+             style="display:none!important">
+          <span>DP</span>
+          <span id="cbDownPayment"
+                class="text-green-600">- Rp 0</span>
+        </div>
+        <div class="flex justify-between text-gray-600"
              id="cbServiceChargeRow">
           <span id="cbServiceChargeLabel">Service Charge</span>
           <span id="cbServiceCharge">Rp 0</span>
@@ -422,6 +429,7 @@
     const minimumCharge = Number(trigger?.dataset?.minimumCharge || 0);
     const ordersTotal = Number(trigger?.dataset?.ordersTotal || 0);
     const discountAmount = Number(trigger?.dataset?.discountAmount || 0);
+    const downPaymentAmount = Number(trigger?.dataset?.downPaymentAmount || 0);
     const serviceChargeAmount = Number(trigger?.dataset?.serviceCharge || 0);
     const taxAmount = Number(trigger?.dataset?.tax || 0);
     const serviceChargePercentage = Number(trigger?.dataset?.serviceChargePercentage || 0);
@@ -442,6 +450,14 @@
       discountRow.style.removeProperty('display');
     } else {
       discountRow.style.setProperty('display', 'none', 'important');
+    }
+
+    const downPaymentRow = document.getElementById('cbDownPaymentRow');
+    if (downPaymentAmount > 0) {
+      document.getElementById('cbDownPayment').textContent = '- ' + fmt(downPaymentAmount);
+      downPaymentRow.style.removeProperty('display');
+    } else {
+      downPaymentRow.style.setProperty('display', 'none', 'important');
     }
 
     const subtotal = Math.max(minimumCharge, ordersTotal);

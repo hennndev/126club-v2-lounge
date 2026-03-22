@@ -239,6 +239,12 @@
       <span>- Rp {{ number_format($billing->discount_amount, 0, ',', '.') }}</span>
     </div>
   @endif
+  @if (($booking?->down_payment_amount ?? 0) > 0)
+    <div class="total-row">
+      <span>DP</span>
+      <span>- Rp {{ number_format($booking->down_payment_amount, 0, ',', '.') }}</span>
+    </div>
+  @endif
   @if (($billing?->service_charge ?? 0) > 0)
     <div class="total-row">
       <span>Service Charge ({{ (int) ($billing->service_charge_percentage ?? 0) }}%)</span>

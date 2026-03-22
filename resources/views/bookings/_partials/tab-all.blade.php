@@ -13,6 +13,7 @@
               'area_name' => $b->table?->area?->name,
               'reservation_date' => $b->reservation_date,
               'reservation_time' => $b->reservation_time,
+              'down_payment_amount' => (float) ($b->down_payment_amount ?? 0),
               'note' => $b->note,
           ],
       ],
@@ -175,6 +176,7 @@
                     data-minimum-charge="{{ (float) $billing->minimum_charge }}"
                     data-orders-total="{{ $ordersForEligibility }}"
                     data-discount-amount="{{ (float) ($sessionChargePreview['discount_amount'] ?? 0) }}"
+                    data-down-payment-amount="{{ (float) ($tableBooking->down_payment_amount ?? 0) }}"
                     data-service-charge="{{ (float) ($sessionChargePreview['service_charge'] ?? 0) }}"
                     data-tax="{{ (float) ($sessionChargePreview['tax'] ?? 0) }}"
                     data-service-charge-percentage="{{ (float) ($sessionChargePreview['service_charge_percentage'] ?? 0) }}"

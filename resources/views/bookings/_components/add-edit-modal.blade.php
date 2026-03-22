@@ -48,6 +48,7 @@
     <form id="bookingForm"
           method="POST"
           action="{{ route('admin.bookings.store') }}"
+          data-store-action="{{ route('admin.bookings.store') }}"
           class="px-6 py-5 space-y-5">
       @csrf
       <input type="hidden"
@@ -61,6 +62,10 @@
              name="status"
              id="status"
              value="pending">
+      <input type="hidden"
+             name="down_payment_amount"
+             id="down_payment_amount"
+             value="0">
 
       <!-- Meja yang Dipilih -->
       <div>
@@ -240,6 +245,31 @@
                class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
       </div>
 
+      <div class="rounded-lg border border-gray-200 p-3 space-y-3 bg-gray-50">
+        <label class="inline-flex items-center gap-2 text-sm font-semibold text-gray-700 cursor-pointer">
+          <input type="checkbox"
+                 name="has_down_payment"
+                 id="has_down_payment"
+                 value="1"
+                 @change="toggleDownPayment($event.target.checked)"
+                 class="rounded border-gray-300 text-slate-700 focus:ring-slate-500">
+          Apakah ingin menambahkan DP?
+        </label>
+
+        <div x-show="hasDownPayment"
+             x-cloak>
+          <label for="down_payment_amount_display"
+                 class="block text-sm font-semibold text-gray-700 mb-2">Nominal DP</label>
+          <input type="text"
+                 id="down_payment_amount_display"
+                 inputmode="numeric"
+                 x-model="downPaymentDisplay"
+                 @input="handleDownPaymentInput($event.target.value)"
+                 placeholder="Rp 0"
+                 class="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+        </div>
+      </div>
+
       <!-- Catatan -->
       <div>
         <label for="note"
@@ -290,34 +320,42 @@
   ) !!};
 
   function bookingModal() {
-    const now = new Date();
-    const dateParts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Jakarta',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(now).reduce((parts, part) => {
-      if (part.type !== 'literal') {
-        parts[part.type] = part.value;
-      }
+    const getRealtimeBookingDefaults = () => {
+      const now = new Date();
+      const dateParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(now).reduce((parts, part) => {
+        if (part.type !== 'literal') {
+          parts[part.type] = part.value;
+        }
 
-      return parts;
-    }, {});
+        return parts;
+      }, {});
 
-    const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
-    const currentTime = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Jakarta',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(now);
+      return {
+        today: `${dateParts.year}-${dateParts.month}-${dateParts.day}`,
+        currentTime: new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Jakarta',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).format(now),
+      };
+    };
+
+    const realtimeDefaults = getRealtimeBookingDefaults();
 
     return {
       selectedTable: null,
-      today,
-      currentTime,
+      today: realtimeDefaults.today,
+      currentTime: realtimeDefaults.currentTime,
       phoneValue: '',
       emailValue: '',
+      hasDownPayment: false,
+      downPaymentDisplay: 'Rp 0',
 
       init() {
         document.addEventListener('table-selected', e => {
@@ -355,6 +393,25 @@
         document.getElementById('table_id').value = '';
       },
 
+      toggleDownPayment(enabled) {
+        this.hasDownPayment = !!enabled;
+
+        if (!this.hasDownPayment) {
+          this.setDownPaymentAmount(0);
+        }
+      },
+
+      setDownPaymentAmount(amount) {
+        const normalizedAmount = Math.max(Number(amount || 0), 0);
+        document.getElementById('down_payment_amount').value = String(normalizedAmount);
+        this.downPaymentDisplay = 'Rp ' + new Intl.NumberFormat('id-ID').format(normalizedAmount);
+      },
+
+      handleDownPaymentInput(value) {
+        const numericAmount = Number(String(value || '').replace(/[^0-9]/g, ''));
+        this.setDownPaymentAmount(numericAmount);
+      },
+
       selectCustomer(id) {
         const selectedId = Number(id || 0);
 
@@ -381,6 +438,105 @@
           this.emailValue = '';
         }
       },
+
+      setDownPaymentState(enabled, amount) {
+        const downPaymentCheckbox = document.getElementById('has_down_payment');
+
+        this.hasDownPayment = !!enabled;
+
+        if (downPaymentCheckbox) {
+          downPaymentCheckbox.checked = this.hasDownPayment;
+        }
+
+        this.setDownPaymentAmount(this.hasDownPayment ? amount : 0);
+      },
+
+      applyRealtimeDateTimeDefaults() {
+        const realtime = getRealtimeBookingDefaults();
+        this.today = realtime.today;
+        this.currentTime = realtime.currentTime;
+
+        const reservationDateInput = document.getElementById('reservation_date');
+        const reservationTimeInput = document.getElementById('reservation_time');
+
+        if (reservationDateInput) {
+          reservationDateInput.value = realtime.today;
+        }
+
+        if (reservationTimeInput) {
+          reservationTimeInput.value = realtime.currentTime;
+        }
+      },
     };
   }
+
+  window.setBookingDownPayment = function(enabled, amount) {
+    const modalEl = document.getElementById('bookingModal');
+    const alpineData = modalEl?.__x?.$data;
+
+    if (alpineData && typeof alpineData.setDownPaymentState === 'function') {
+      alpineData.setDownPaymentState(enabled, amount);
+      return;
+    }
+
+    const downPaymentCheckbox = document.getElementById('has_down_payment');
+    const downPaymentHidden = document.getElementById('down_payment_amount');
+    const downPaymentDisplay = document.getElementById('down_payment_amount_display');
+    const normalizedAmount = Math.max(Number(amount || 0), 0);
+
+    if (downPaymentCheckbox) {
+      downPaymentCheckbox.checked = !!enabled;
+    }
+
+    if (downPaymentHidden) {
+      downPaymentHidden.value = String(enabled ? normalizedAmount : 0);
+    }
+
+    if (downPaymentDisplay) {
+      downPaymentDisplay.value = 'Rp ' + new Intl.NumberFormat('id-ID').format(enabled ? normalizedAmount : 0);
+    }
+  };
+
+  window.applyBookingRealtimeDateTimeDefaults = function() {
+    const modalEl = document.getElementById('bookingModal');
+    const alpineData = modalEl?.__x?.$data;
+
+    if (alpineData && typeof alpineData.applyRealtimeDateTimeDefaults === 'function') {
+      alpineData.applyRealtimeDateTimeDefaults();
+      return;
+    }
+
+    const now = new Date();
+    const dateParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now).reduce((parts, part) => {
+      if (part.type !== 'literal') {
+        parts[part.type] = part.value;
+      }
+
+      return parts;
+    }, {});
+
+    const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+    const currentTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(now);
+
+    const reservationDateInput = document.getElementById('reservation_date');
+    const reservationTimeInput = document.getElementById('reservation_time');
+
+    if (reservationDateInput) {
+      reservationDateInput.value = today;
+    }
+
+    if (reservationTimeInput) {
+      reservationTimeInput.value = currentTime;
+    }
+  };
 </script>

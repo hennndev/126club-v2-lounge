@@ -135,6 +135,7 @@ class TableReservationController extends Controller
                     $session,
                     (float) ($billing?->discount_amount ?? 0),
                     (float) ($billing?->minimum_charge ?? 0),
+                    (float) ($session->reservation?->down_payment_amount ?? 0),
                 ),
             ];
         });
@@ -243,7 +244,15 @@ class TableReservationController extends Controller
             'reservation_date' => 'required|date',
             'reservation_time' => 'required',
             'note' => 'nullable|string|max:1000',
+            'has_down_payment' => 'nullable|boolean',
+            'down_payment_amount' => 'nullable|required_if:has_down_payment,1|numeric|min:1',
         ]);
+
+        $validated['down_payment_amount'] = (bool) ($validated['has_down_payment'] ?? false)
+            ? (float) ($validated['down_payment_amount'] ?? 0)
+            : 0;
+
+        unset($validated['has_down_payment']);
 
         $hasActiveSession = TableSession::query()
             ->where('customer_id', $validated['customer_id'])
@@ -284,7 +293,15 @@ class TableReservationController extends Controller
             'reservation_time' => 'required',
             'status' => 'required|in:pending,confirmed,checked_in,completed,cancelled,rejected',
             'note' => 'nullable|string|max:1000',
+            'has_down_payment' => 'nullable|boolean',
+            'down_payment_amount' => 'nullable|required_if:has_down_payment,1|numeric|min:1',
         ]);
+
+        $validated['down_payment_amount'] = (bool) ($validated['has_down_payment'] ?? false)
+            ? (float) ($validated['down_payment_amount'] ?? 0)
+            : 0;
+
+        unset($validated['has_down_payment']);
 
         try {
             // Check for conflicts whenever confirming or checking in
@@ -506,6 +523,7 @@ class TableReservationController extends Controller
                     $session,
                     0,
                     (float) $billing->minimum_charge,
+                    (float) ($booking->down_payment_amount ?? 0),
                 );
 
                 $subtotalForDiscount = (float) $baseTotals['subtotal'];
@@ -538,6 +556,7 @@ class TableReservationController extends Controller
                     $session,
                     $requestedDiscountAmount,
                     (float) $billing->minimum_charge,
+                    (float) ($booking->down_payment_amount ?? 0),
                 );
 
                 $billingSequence = Billing::query()
@@ -711,6 +730,7 @@ class TableReservationController extends Controller
                     'service_charge' => (float) $billing->service_charge,
                     'service_charge_percentage' => (float) $billing->service_charge_percentage,
                     'discount_amount' => (float) $billing->discount_amount,
+                    'down_payment_amount' => (float) ($booking->down_payment_amount ?? 0),
                     'grand_total' => (float) $billing->grand_total,
                     'payment_mode' => strtoupper($billing->payment_mode ?? 'NORMAL'),
                     'payment_method' => strtoupper($billing->payment_method ?? ($billing->payment_mode === 'split' ? 'split' : '-')),
@@ -736,7 +756,7 @@ class TableReservationController extends Controller
     /**
      * @return array<string, float>
      */
-    protected function calculateSessionBillingTotals(TableSession $session, float $discountAmount, float $minimumCharge): array
+    protected function calculateSessionBillingTotals(TableSession $session, float $discountAmount, float $minimumCharge, float $downPaymentAmount = 0): array
     {
         $settings = GeneralSetting::instance();
         $orders = $session->orders
@@ -758,6 +778,8 @@ class TableReservationController extends Controller
         $serviceCharge = round($serviceChargeBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
         $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
         $tax = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+        $grandTotalBeforeDownPayment = $subtotalAfterDiscount + $serviceCharge + $tax;
+        $downPaymentAmount = min(max($downPaymentAmount, 0), $grandTotalBeforeDownPayment);
 
         return [
             'orders_total' => $ordersTotal,
@@ -769,7 +791,9 @@ class TableReservationController extends Controller
             'service_charge' => $serviceCharge,
             'tax_percentage' => (float) $settings->tax_percentage,
             'tax' => $tax,
-            'grand_total' => $subtotalAfterDiscount + $serviceCharge + $tax,
+            'down_payment_amount' => $downPaymentAmount,
+            'grand_total_before_down_payment' => $grandTotalBeforeDownPayment,
+            'grand_total' => max($grandTotalBeforeDownPayment - $downPaymentAmount, 0),
         ];
     }
 
@@ -1120,6 +1144,7 @@ class TableReservationController extends Controller
                     $session,
                     (float) ($billing->discount_amount ?? 0),
                     0,
+                    (float) ($session->reservation?->down_payment_amount ?? 0),
                 );
 
                 $billing->update([

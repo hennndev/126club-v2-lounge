@@ -142,7 +142,32 @@ test('close billing works with normal payment mode', function () {
         ->and($updatedTable?->status)->toBe('available');
 });
 
-test('close billing sends LOUNGE-BILLING sales order number and maps salesOrderNumber into invoice detail items', function () {
+test('close billing deducts booking down payment from grand total', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $booking->update([
+        'down_payment_amount' => 20000,
+    ]);
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('receipt.down_payment_amount', 20000)
+        ->assertJsonPath('receipt.grand_total', 100000);
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect((float) $updatedBilling->grand_total)->toBe(100000.0)
+        ->and((float) $updatedBilling->paid_amount)->toBe(100000.0);
+});
+
+test('close billing sends ROOM-BILLING sales order number and maps salesOrderNumber into invoice detail items', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
 

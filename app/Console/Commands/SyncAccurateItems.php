@@ -21,6 +21,7 @@ class SyncAccurateItems extends Command
     protected $stats = [
         'created' => 0,
         'updated' => 0,
+        'deleted' => 0,
         'failed' => 0,
         'total' => 0,
     ];
@@ -114,6 +115,7 @@ class SyncAccurateItems extends Command
     protected function syncItems()
     {
         // $stockMap = $this->fetchStockMap();
+        $syncedAccurateIds = [];
 
         $page = 1;
         $pageSize = 100;
@@ -132,6 +134,12 @@ class SyncAccurateItems extends Command
 
             foreach ($items as $itemData) {
                 try {
+                    $accurateId = (int) ($itemData['id'] ?? 0);
+
+                    if ($accurateId > 0) {
+                        $syncedAccurateIds[] = $accurateId;
+                    }
+
                     $this->syncSingleItem($itemData);
                 } catch (Exception $e) {
                     Log::warning('Sync item failed', ['id' => $itemData['id'] ?? null, 'error' => $e->getMessage()]);
@@ -140,6 +148,39 @@ class SyncAccurateItems extends Command
 
             $page++;
         } while ($items->count() >= $pageSize);
+
+        $this->pruneDeletedItems($syncedAccurateIds);
+    }
+
+    /**
+     * @param  array<int, int>  $syncedAccurateIds
+     */
+    protected function pruneDeletedItems(array $syncedAccurateIds): void
+    {
+        $syncedAccurateIds = array_values(array_unique($syncedAccurateIds));
+
+        if ($syncedAccurateIds === []) {
+            return;
+        }
+
+        $staleItems = InventoryItem::query()
+            ->whereNotIn('accurate_id', $syncedAccurateIds)
+            ->get();
+
+        foreach ($staleItems as $staleItem) {
+            try {
+                $staleItem->delete();
+                $this->stats['deleted']++;
+            } catch (\Throwable $e) {
+                $this->stats['failed']++;
+
+                Log::warning('Failed to delete stale Accurate item from local database', [
+                    'inventory_item_id' => $staleItem->id,
+                    'accurate_id' => $staleItem->accurate_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     protected function syncSingleItem(array $itemData)

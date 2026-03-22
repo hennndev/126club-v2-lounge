@@ -241,6 +241,7 @@
             assignWaiterError: '',
             minimumCharge: 0,
             ordersTotal: 0,
+            minimumChargeCredit: 0,
             tierName: '',
             discountPercentage: 0,
           },
@@ -573,6 +574,7 @@
             this.checkoutForm.customerPhone = data.customerPhone;
             this.checkoutForm.minimumCharge = data.minimumCharge;
             this.checkoutForm.ordersTotal = data.ordersTotal;
+            this.checkoutForm.minimumChargeCredit = Number(data.downPaymentAmount || 0);
             this.checkoutForm.tierName = data.tierName || '';
             this.checkoutForm.discountPercentage = data.discountPercentage || 0;
             this.checkoutForm.waiterName = data.waiterName || '';
@@ -627,6 +629,7 @@
             this.checkoutForm.customerPhone = d.phone;
             this.checkoutForm.minimumCharge = 0;
             this.checkoutForm.ordersTotal = 0;
+            this.checkoutForm.minimumChargeCredit = 0;
             this.checkoutForm.tierName = '';
             this.checkoutForm.discountPercentage = 0;
             this.checkoutForm.waiterName = '';
@@ -850,6 +853,22 @@
             return this.finalTotal() + this.calculatedServiceCharge() + this.calculatedTax();
           },
 
+          minimumChargeCoveredAmount() {
+            const baseCoveredAmount = Number(this.checkoutForm.ordersTotal || 0) + Number(this.cartTotal || 0);
+
+            if (this.checkoutForm.customer_type !== 'booking') {
+              return baseCoveredAmount;
+            }
+
+            const minimumChargeCredit = Math.max(Number(this.checkoutForm.minimumChargeCredit || 0), 0);
+
+            return baseCoveredAmount + minimumChargeCredit;
+          },
+
+          minimumChargeShortfall() {
+            return Math.max(Number(this.checkoutForm.minimumCharge || 0) - this.minimumChargeCoveredAmount(), 0);
+          },
+
           pointsEarned() {
             return Math.floor(this.payableTotal() / 10000);
           },
@@ -1040,6 +1059,7 @@
                   reservationId: null,
                   minimumCharge: 0,
                   ordersTotal: 0,
+                  minimumChargeCredit: 0,
                   tierName: '',
                   discountPercentage: 0,
                 };
@@ -1178,8 +1198,7 @@
                   }
 
                   const assignedIds = Array.isArray(item.assigned_checker_printer_ids) ?
-                    item.assigned_checker_printer_ids.map((id) => Number(id)) :
-                    [];
+                    item.assigned_checker_printer_ids.map((id) => Number(id)) : [];
 
                   if (assignedIds.length === 0) {
                     return false;

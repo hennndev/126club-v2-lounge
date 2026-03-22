@@ -185,6 +185,17 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
         ->assertSee('Memproses...', false);
 });
 
+test('pos payment modal keeps minimum-charge shortfall expression and does not show dp row', function () {
+    $admin = adminUser();
+    actingAs($admin)
+        ->get(route('admin.pos.index'))
+        ->assertOk()
+        ->assertSee('minimumChargeShortfall()', false)
+        ->assertSee('minimumChargeCoveredAmount()', false)
+        ->assertDontSee('bookingDownPaymentDeduction()', false)
+        ->assertDontSee('>DP<', false);
+});
+
 test('walk in checkout split payment must match grand total', function () {
     $admin = adminUser();
     $customer = User::factory()->create();

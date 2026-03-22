@@ -87,6 +87,32 @@ test('creating a booking does not change table status to reserved', function () 
     expect($table->status)->toBe('available');
 });
 
+test('creating a booking can persist down payment amount', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area);
+    $customer = makeBookingCustomer();
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.store'), [
+            'table_id' => $table->id,
+            'customer_id' => $customer->id,
+            'reservation_date' => now()->addDays(2)->toDateString(),
+            'reservation_time' => '20:00',
+            'has_down_payment' => '1',
+            'down_payment_amount' => 50000,
+        ])
+        ->assertRedirect(route('admin.bookings.index'));
+
+    $booking = TableReservation::where('table_id', $table->id)
+        ->where('customer_id', $customer->id)
+        ->latest('id')
+        ->first();
+
+    expect($booking)->not->toBeNull()
+        ->and((float) $booking->down_payment_amount)->toBe(50000.0);
+});
+
 test('creating a booking is blocked when customer has an active table session', function () {
     $admin = adminUser();
     $area = makeArea();
@@ -301,6 +327,28 @@ test('reserved table keeps active booking mapping for confirmed booking even if 
     expect($activeBookingsByTable)->not->toBeNull()
         ->and($activeBookingsByTable->has($table->id))->toBeTrue()
         ->and($activeBookingsByTable->get($table->id)?->id)->toBe($booking->id);
+});
+
+test('booking info modal payload includes down payment amount', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'reserved']);
+    $customer = makeBookingCustomer();
+
+    TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->addDay()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'confirmed',
+        'down_payment_amount' => 50000,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertSee('"down_payment_amount":50000', false);
 });
 
 test('pending tab conflict keys include competing bookings', function () {

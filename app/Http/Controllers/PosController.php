@@ -113,7 +113,7 @@ class PosController extends Controller
         });
 
         // Get active table sessions for booking customers
-        $tableSessions = TableSession::with(['customer.profile', 'customer.customerUser', 'table.area', 'billing', 'waiter.profile'])
+        $tableSessions = TableSession::with(['customer.profile', 'customer.customerUser', 'table.area', 'billing', 'waiter.profile', 'reservation'])
             ->where('status', 'active')
             ->whereNotNull('checked_in_at')
             ->whereNull('checked_out_at')

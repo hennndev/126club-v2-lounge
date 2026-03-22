@@ -68,7 +68,11 @@ class PrinterService
             $escpos->setTextSize(2, 2);
             $escpos->text("126\n");
             $escpos->setTextSize(1, 1);
-            $this->printVenusRingBrandText($escpos, 'One·two·six');
+            if ($this->shouldUseGraphicsBranding($printer)) {
+                $this->printVenusRingBrandText($escpos, 'One·two·six');
+            } else {
+                $escpos->text("One·two·six\n");
+            }
             $escpos->text("Ruko The Boulevard, Blok VD05.\n");
             $escpos->text("126, Jl.Ecopolis Citra Raya No.126, Mekar Bakti\n");
             $escpos->text("Kec. Cikupa, Kabupaten Tangerang, Banten.\n");
@@ -157,6 +161,11 @@ class PrinterService
         } finally {
             $escpos->close();
         }
+    }
+
+    protected function shouldUseGraphicsBranding(Printer $printer): bool
+    {
+        return $printer->connection_type !== 'network';
     }
 
     protected function printVenusRingBrandText(EscposPrinter $escpos, string $text): void

@@ -15,12 +15,14 @@ class TableReservation extends Model
         'reservation_time',
         'status',
         'note',
+        'down_payment_amount',
         'check_in_qr_code',
         'check_in_qr_expires_at',
     ];
 
     protected $casts = [
         'reservation_date' => 'date',
+        'down_payment_amount' => 'decimal:2',
         'check_in_qr_expires_at' => 'datetime',
     ];
 
