@@ -133,7 +133,7 @@
          class="rounded-xl p-4 border transition-all cursor-pointer hover:shadow-md
              {{ $isCheckedIn ? 'bg-blue-50 border-blue-300' : ($isBooked ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200 hover:border-slate-300') }}"
          @if (!$isBooked && !$isCheckedIn) @click="openModal({{ $table->id }})"
-         @elseif ($tableBooking) onclick="openBookingInfoModal({{ $tableBooking->id }})" @endif>
+         @elseif ($tableBooking) @click="openBookingInfoModal({{ $tableBooking->id }})" @endif>
 
       <!-- Card Header -->
       <div class="flex items-start justify-between mb-1">
