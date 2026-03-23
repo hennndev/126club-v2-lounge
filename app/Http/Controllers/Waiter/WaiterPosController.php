@@ -66,9 +66,13 @@ class WaiterPosController extends Controller
         if (isset($cart[$productId])) {
             $cart[$productId]['quantity']++;
         } else {
+            $displayName = filled($inventoryItem->pos_name)
+                ? (string) $inventoryItem->pos_name
+                : (string) $inventoryItem->name;
+
             $cart[$productId] = [
                 'id' => $productId,
-                'name' => $inventoryItem->name,
+                'name' => $displayName,
                 'price' => (float) $inventoryItem->price,
                 'quantity' => 1,
                 'preparation_location' => $this->resolvePreparationLocationFromPrinters($inventoryItem) ?? $setting->preparation_location ?? 'direct',
@@ -82,7 +86,10 @@ class WaiterPosController extends Controller
 
     public function updateCart(Request $request, string $productId): JsonResponse
     {
-        $validated = $request->validate(['quantity' => 'required|integer|min:0']);
+        $validated = $request->validate([
+            'quantity' => 'required|integer|min:0',
+            'notes' => 'nullable|string|max:1000',
+        ]);
 
         $cart = session()->get(self::CART_KEY, []);
 
@@ -111,6 +118,11 @@ class WaiterPosController extends Controller
             }
 
             $cart[$productId]['quantity'] = $validated['quantity'];
+
+            if ($request->has('notes')) {
+                $notes = trim((string) ($validated['notes'] ?? ''));
+                $cart[$productId]['notes'] = $notes !== '' ? $notes : null;
+            }
         }
 
         session()->put(self::CART_KEY, $cart);
@@ -242,7 +254,9 @@ class WaiterPosController extends Controller
                 OrderItem::create([
                     'order_id' => $order->id,
                     'inventory_item_id' => $inventoryItem->id,
-                    'item_name' => $inventoryItem->name,
+                    'item_name' => filled($inventoryItem->pos_name)
+                        ? (string) $inventoryItem->pos_name
+                        : (string) $inventoryItem->name,
                     'item_code' => $inventoryItem->code,
                     'quantity' => $quantity,
                     'price' => $price,
@@ -252,7 +266,9 @@ class WaiterPosController extends Controller
                     'service_charge_amount' => $itemServiceChargeAmount,
                     'preparation_location' => $preparationLocation,
                     'status' => 'pending',
-                    'notes' => null,
+                    'notes' => isset($cartItem['notes']) && trim((string) $cartItem['notes']) !== ''
+                        ? trim((string) $cartItem['notes'])
+                        : null,
                 ]);
             }
 
@@ -500,6 +516,9 @@ class WaiterPosController extends Controller
                 'name' => $item['name'],
                 'price' => (float) $item['price'],
                 'qty' => (int) $item['quantity'],
+                'notes' => isset($item['notes']) && trim((string) $item['notes']) !== ''
+                    ? trim((string) $item['notes'])
+                    : null,
             ],
         ])->all();
 

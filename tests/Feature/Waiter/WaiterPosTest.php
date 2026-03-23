@@ -5,7 +5,9 @@ use App\Models\Area;
 use App\Models\CustomerUser;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
+use App\Models\KitchenOrderItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\PosCategorySetting;
 use App\Models\Printer;
 use App\Models\Tabel;
@@ -126,6 +128,20 @@ test('waiter can add a product to cart via waiter route', function () {
         ->assertJsonPath('cart.'.$productId.'.qty', 1);
 });
 
+test('waiter add to cart uses inventory pos_name for cart display when available', function () {
+    $waiter = posWaiter();
+    $product = posProduct('food');
+    $product->update(['pos_name' => 'POS Waiter Name']);
+    $productId = 'item_'.$product->id;
+
+    actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->post(route('waiter.pos.add-to-cart', $productId))
+        ->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.'.$productId.'.name', 'POS Waiter Name');
+});
+
 test('waiter checkout creates order for their own session and clears cart', function () {
     $waiter = posWaiter();
     $customer = User::factory()->create();
@@ -155,6 +171,59 @@ test('waiter checkout creates order for their own session and clears cart', func
         ->assertJsonPath('success', true);
 
     expect(Order::where('table_session_id', $session->id)->exists())->toBeTrue();
+});
+
+test('waiter checkout persists cart item note to order and kitchen order items', function () {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-NOTE');
+    $session = posSession($table, $customer, $waiter);
+    $product = posProduct('food');
+    $kitchenPrinter = Printer::create([
+        'name' => 'Waiter Note Kitchen',
+        'location' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+    $product->printers()->sync([$kitchenPrinter->id]);
+    $productId = 'item_'.$product->id;
+    $itemNote = 'No ice, extra spicy';
+
+    actingAs($waiter)
+        ->withSession([
+            'accurate_database' => 'test',
+            WaiterPosController::CART_KEY => [
+                $productId => [
+                    'id' => $productId,
+                    'name' => $product->name,
+                    'price' => 50000.00,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                    'notes' => $itemNote,
+                ],
+            ],
+        ])
+        ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    $order = Order::query()->where('table_session_id', $session->id)->latest('id')->first();
+    $orderItem = OrderItem::query()->where('order_id', $order?->id)->latest('id')->first();
+    $kitchenOrder = KitchenOrder::query()->where('order_id', $order?->id)->latest('id')->first();
+    $kitchenOrderItem = KitchenOrderItem::query()->where('kitchen_order_id', $kitchenOrder?->id)->latest('id')->first();
+
+    expect($order)->not->toBeNull()
+        ->and($orderItem)->not->toBeNull()
+        ->and($kitchenOrder)->not->toBeNull()
+        ->and($kitchenOrderItem)->not->toBeNull()
+        ->and($orderItem?->notes)->toBe($itemNote)
+        ->and($kitchenOrderItem?->notes)->toBe($itemNote);
 });
 
 test('waiter checkout links kitchen order to customer user for booking session', function () {
@@ -472,6 +541,31 @@ test('waiter pos page lists products from pos category settings including custom
 
     expect($products->pluck('id')->all())->toContain('item_'.$product->id)
         ->and($products->where('id', 'item_'.$product->id)->first()['category'])->toBe($customCategory);
+});
+
+test('waiter pos page uses inventory pos_name as product display name', function () {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-03-NAME');
+    posSession($table, $customer, $waiter);
+
+    $product = posProduct('food');
+    $product->update([
+        'name' => 'Inventory Base Name',
+        'pos_name' => 'POS Display Name',
+    ]);
+
+    $response = actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->get(route('waiter.pos'))
+        ->assertOk();
+
+    $products = collect($response->viewData('products'));
+    $productPayload = $products->firstWhere('id', 'item_'.$product->id);
+
+    expect($productPayload)->not->toBeNull()
+        ->and($productPayload['name'])->toBe('POS Display Name');
 });
 
 test('waiter add to cart allows item group regardless of possible portions', function () {
