@@ -176,3 +176,74 @@
     </form>
   </div>
 </div>
+
+<div id="deleteOrderItemModal"
+     class="hidden fixed inset-0 bg-black bg-opacity-50 z-[80] flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-md">
+    <div class="flex items-center justify-between p-5 border-b border-gray-200">
+      <div>
+        <h3 class="text-base font-bold text-gray-900">Hapus Item Order Pending</h3>
+        <p class="text-xs text-gray-400 mt-0.5">Wajib verifikasi daily auth code</p>
+      </div>
+      <button onclick="closeDeleteOrderItemModal()"
+              class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
+        <svg class="w-5 h-5"
+             fill="none"
+             stroke="currentColor"
+             viewBox="0 0 24 24">
+          <path stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <form id="deleteOrderItemForm"
+          method="POST"
+          class="p-5 space-y-4">
+      @csrf
+      <input type="hidden"
+             id="deleteOrderItemId"
+             name="order_item_id"
+             value="">
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Order</label>
+        <p id="deleteOrderItemOrderNumber"
+           class="text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">-</p>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Item</label>
+        <p id="deleteOrderItemName"
+           class="text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">-</p>
+      </div>
+
+      <div>
+        <label for="deleteOrderItemAuthCode"
+               class="block text-xs font-semibold text-gray-500 mb-1">Daily Auth Code</label>
+        <input id="deleteOrderItemAuthCode"
+               name="delete_auth_code"
+               type="password"
+               inputmode="numeric"
+               maxlength="4"
+               required
+               class="w-full rounded-lg border-gray-300 focus:border-red-500 focus:ring-red-500 text-sm"
+               placeholder="Masukkan auth code harian">
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-1">
+        <button type="button"
+                onclick="closeDeleteOrderItemModal()"
+                class="px-3 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
+          Batal
+        </button>
+        <button type="submit"
+                class="px-3 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition">
+          Hapus Item
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

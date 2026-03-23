@@ -178,6 +178,7 @@
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Date/Time</th>
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Orders</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Total Spent</th>
+            <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Aksi</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100"
@@ -295,11 +296,69 @@
                   <span class="text-gray-300 text-sm">-</span>
                 @endif
               </td>
+              <td class="px-5 py-4 whitespace-nowrap text-right">
+                @if ($booking->tableSession?->billing)
+                  <form method="POST"
+                        action="{{ route('admin.bookings.reprintReceipt', $booking) }}"
+                        class="inline"
+                        onsubmit="const button = this.querySelector('[data-reprint-button]'); if (button) { button.disabled = true; button.textContent = 'Memproses...'; }">
+                    @csrf
+                    <button type="submit"
+                            data-reprint-button
+                            class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition disabled:opacity-60 disabled:cursor-not-allowed">
+                      Print Ulang
+                    </button>
+                  </form>
+                @else
+                  <span class="text-gray-300 text-sm">-</span>
+                @endif
+              </td>
             </tr>
           @endforeach
         </tbody>
       </table>
     </div>
+
+    @if ($bookings instanceof \Illuminate\Pagination\LengthAwarePaginator && $bookings->hasPages())
+      <div class="px-5 py-4 border-t border-gray-100">
+        <div class="flex items-center justify-between gap-4 text-sm">
+          <p class="text-gray-500">
+            Menampilkan
+            <span class="font-semibold text-gray-700">{{ $bookings->firstItem() }}</span>
+            -
+            <span class="font-semibold text-gray-700">{{ $bookings->lastItem() }}</span>
+            dari
+            <span class="font-semibold text-gray-700">{{ $bookings->total() }}</span>
+            booking
+          </p>
+
+          <div class="flex items-center gap-1.5">
+            @if ($bookings->onFirstPage())
+              <span class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed">Prev</span>
+            @else
+              <a href="{{ $bookings->previousPageUrl() }}"
+                 class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">Prev</a>
+            @endif
+
+            @foreach ($bookings->getUrlRange(max(1, $bookings->currentPage() - 2), min($bookings->lastPage(), $bookings->currentPage() + 2)) as $page => $url)
+              @if ($page === $bookings->currentPage())
+                <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-800 text-white font-semibold">{{ $page }}</span>
+              @else
+                <a href="{{ $url }}"
+                   class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">{{ $page }}</a>
+              @endif
+            @endforeach
+
+            @if ($bookings->hasMorePages())
+              <a href="{{ $bookings->nextPageUrl() }}"
+                 class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">Next</a>
+            @else
+              <span class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed">Next</span>
+            @endif
+          </div>
+        </div>
+      </div>
+    @endif
   @endif
 </div>
 

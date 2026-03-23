@@ -17,6 +17,7 @@ use App\Services\AccurateService;
 use App\Services\DashboardSyncService;
 use App\Services\PrinterService;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -89,7 +90,13 @@ class TableReservationController extends Controller
             }
         }
 
-        $bookings = $query->latest('reservation_date')->latest('reservation_time')->get();
+        $bookings = $query->latest('reservation_date')->latest('reservation_time');
+
+        if ($tab === 'history') {
+            $bookings = $bookings->paginate(10)->withQueryString();
+        } else {
+            $bookings = $bookings->get();
+        }
 
         $totalBookings = TableReservation::count();
         $pendingBookings = TableReservation::where('status', 'pending')->count();
@@ -189,8 +196,12 @@ class TableReservationController extends Controller
 
         // JSON response for waiter mobile scanner search
         if ($request->get('format') === 'json' || $request->wantsJson()) {
+            $bookingsCollection = $bookings instanceof LengthAwarePaginator
+                ? $bookings->getCollection()
+                : $bookings;
+
             return response()->json([
-                'reservations' => $bookings->map(fn ($b) => [
+                'reservations' => $bookingsCollection->map(fn ($b) => [
                     'id' => $b->id,
                     'status' => $b->status,
                     'customer' => $b->customer ? [
@@ -1422,6 +1433,102 @@ class TableReservationController extends Controller
         }
     }
 
+    public function deleteOrderItem(Request $request, TableReservation $booking)
+    {
+        $validated = $request->validate([
+            'order_item_id' => 'required|integer|exists:order_items,id',
+            'delete_auth_code' => 'required|string',
+        ]);
+
+        try {
+            DB::transaction(function () use ($booking, $validated): void {
+                $session = TableSession::query()
+                    ->where('table_reservation_id', $booking->id)
+                    ->where('status', 'active')
+                    ->latest('id')
+                    ->first();
+
+                if (! $session) {
+                    throw ValidationException::withMessages([
+                        'order_item_id' => 'Sesi aktif tidak ditemukan untuk booking ini.',
+                    ]);
+                }
+
+                $authCode = trim((string) ($validated['delete_auth_code'] ?? ''));
+                $today = now()->format('Y-m-d');
+                $authRecord = DailyAuthCode::forDate($today);
+
+                if ($authCode !== $authRecord->active_code) {
+                    throw ValidationException::withMessages([
+                        'delete_auth_code' => 'Daily auth code tidak valid.',
+                    ]);
+                }
+
+                $orderItem = OrderItem::query()
+                    ->where('id', (int) $validated['order_item_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $orderItem) {
+                    throw ValidationException::withMessages([
+                        'order_item_id' => 'Item order tidak ditemukan.',
+                    ]);
+                }
+
+                $order = Order::query()
+                    ->where('id', (int) $orderItem->order_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $order || (int) $order->table_session_id !== (int) $session->id) {
+                    throw ValidationException::withMessages([
+                        'order_item_id' => 'Item order tidak ditemukan pada sesi aktif booking ini.',
+                    ]);
+                }
+
+                if ($order->status !== 'pending') {
+                    throw ValidationException::withMessages([
+                        'order_item_id' => 'Item hanya bisa dihapus jika order masih berstatus pending.',
+                    ]);
+                }
+
+                $orderItem->delete();
+
+                $remainingItemsCount = (int) $order->items()->count();
+
+                if ($remainingItemsCount === 0) {
+                    $order->update([
+                        'status' => 'cancelled',
+                        'cancelled_at' => now(),
+                        'cancelled_by' => auth()->id(),
+                        'items_total' => 0,
+                        'total' => 0,
+                    ]);
+
+                    return;
+                }
+
+                $remainingItemsTotal = (float) $order->items()->sum('subtotal');
+                $currentDiscount = (float) ($order->discount_amount ?? 0);
+
+                if ($currentDiscount > $remainingItemsTotal) {
+                    $order->discount_amount = $remainingItemsTotal;
+                    $order->save();
+                }
+
+                $order->updateTotals();
+            });
+
+            return back()->with('success', 'Item order berhasil dihapus.');
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'order_item_id' => 'Gagal menghapus item order. '.$e->getMessage(),
+            ]);
+        }
+    }
+
     public function printRunningReceipt(TableReservation $booking)
     {
         $session = TableSession::with(['billing', 'orders.items.inventoryItem', 'table', 'customer', 'reservation'])
@@ -1509,6 +1616,50 @@ class TableReservationController extends Controller
         $customerName = $booking->customer->profile->name ?? $booking->customer->customerUser->name ?? $booking->customer->name ?? '-';
 
         return view('bookings.receipt', compact('booking', 'billing', 'allItems', 'customerName'));
+    }
+
+    public function reprintReceipt(TableReservation $booking)
+    {
+        $booking->load([
+            'tableSession.billing',
+            'tableSession.orders.items.inventoryItem',
+            'tableSession.table',
+            'tableSession.customer',
+            'tableSession.reservation',
+        ]);
+
+        $session = $booking->tableSession;
+
+        if (! $session) {
+            return back()->withErrors([
+                'error' => 'Table session tidak ditemukan untuk booking ini.',
+            ]);
+        }
+
+        $billing = $session->billing;
+
+        if (! $billing) {
+            $billing = Billing::query()
+                ->where('table_session_id', $session->id)
+                ->latest('id')
+                ->first();
+        }
+
+        if (! $billing) {
+            return back()->withErrors([
+                'error' => 'Billing tidak ditemukan untuk booking ini.',
+            ]);
+        }
+
+        $printed = $this->printClosedBillingReceipt($session, $billing);
+
+        if (! $printed) {
+            return back()->withErrors([
+                'error' => 'Print ulang struk gagal. Periksa konfigurasi printer.',
+            ]);
+        }
+
+        return back()->with('success', 'Print ulang struk berhasil dikirim ke printer.');
     }
 
     protected function hasIncompleteTransactionChecker(TableSession $session): bool

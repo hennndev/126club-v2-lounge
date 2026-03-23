@@ -10,6 +10,11 @@ use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
+use App\Services\PrinterService;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Mockery\MockInterface;
+
+use function Pest\Laravel\mock;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1342,4 +1347,161 @@ test('history tab shows ordered items for each booking customer', function () {
         ->get(route('admin.bookings.index', ['tab' => 'history']))
         ->assertOk()
         ->assertSee('Lihat Orders (1 item)');
+});
+
+test('history tab shows reprint receipt action when booking has billing', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '19:00',
+        'status' => 'completed',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now()->subHours(2),
+        'checked_out_at' => now()->subHour(),
+        'status' => 'completed',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 100000,
+        'subtotal' => 100000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 100000,
+        'paid_amount' => 100000,
+        'billing_status' => 'paid',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'history']))
+        ->assertOk()
+        ->assertSee(route('admin.bookings.reprintReceipt', $booking, false), false)
+        ->assertSee('Print Ulang');
+});
+
+test('history reprint receipt dispatches directly to configured printer', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '19:00',
+        'status' => 'completed',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now()->subHours(2),
+        'checked_out_at' => now()->subHour(),
+        'status' => 'completed',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 100000,
+        'subtotal' => 100000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 100000,
+        'paid_amount' => 100000,
+        'billing_status' => 'paid',
+    ]);
+    $session->update(['billing_id' => $billing->id]);
+
+    $printer = Printer::create([
+        'name' => 'History Reprint Printer',
+        'location' => 'cashier',
+        'printer_type' => 'cashier',
+        'connection_type' => 'network',
+        'ip' => '192.168.1.20',
+        'port' => 9100,
+        'timeout' => 30,
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
+    ]);
+
+    \App\Models\GeneralSetting::instance()->update([
+        'closed_billing_receipt_printer_id' => $printer->id,
+    ]);
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($billing, $session, $printer): void {
+        $mock->shouldReceive('printClosedBillingReceipt')
+            ->once()
+            ->withArgs(fn ($billingArg, $sessionArg, $printerArg): bool => (int) $billingArg->id === (int) $billing->id
+                && (int) $sessionArg->id === (int) $session->id
+                && (int) $printerArg->id === (int) $printer->id)
+            ->andReturnTrue();
+    });
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.reprintReceipt', $booking))
+        ->assertRedirect()
+        ->assertSessionHas('success');
+});
+
+test('history tab uses pagination for bookings', function () {
+    $admin = adminUser();
+    $area = makeArea();
+
+    for ($index = 1; $index <= 12; $index++) {
+        $table = makeTable($area, [
+            'table_number' => 'HIST-PAG-'.$index,
+            'qr_code' => 'HIST-PAG-QR-'.$index,
+            'status' => 'available',
+        ]);
+        $customer = makeBookingCustomer();
+
+        TableReservation::create([
+            'booking_code' => rand(1000, 9999),
+            'table_id' => $table->id,
+            'customer_id' => $customer->id,
+            'reservation_date' => now()->subDays($index)->toDateString(),
+            'reservation_time' => '19:00',
+            'status' => 'completed',
+        ]);
+    }
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'history']))
+        ->assertOk();
+
+    $response->assertViewHas('bookings', function ($bookings): bool {
+        return $bookings instanceof LengthAwarePaginator
+            && $bookings->perPage() === 10
+            && $bookings->total() >= 12;
+    });
+
+    $response->assertSee('page=2', false);
 });

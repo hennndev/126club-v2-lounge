@@ -347,6 +347,13 @@
             <td class="py-1.5 px-3 text-sm text-gray-500 text-center">${item.quantity}</td>
             <td class="py-1.5 pl-3 text-sm text-gray-500 text-right">Rp ${item.price.toLocaleString('id-ID')}</td>
             <td class="py-1.5 pl-3 text-sm font-medium text-gray-700 text-right">Rp ${item.subtotal.toLocaleString('id-ID')}</td>
+            <td class="py-1.5 pl-3 text-right">
+              ${order.status === 'pending' && item.status !== 'cancelled' ? `<button type="button"
+                      onclick="openDeleteOrderItemModal(${item.id}, '${String(order.order_number || '').replace(/'/g, "&#39;")}', '${String(item.item_name || '').replace(/'/g, "&#39;")}')"
+                      class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition">
+                Delete
+              </button>` : ''}
+            </td>
           </tr>`
         ).join('');
 
@@ -372,6 +379,7 @@
               <th class="px-3 py-1.5 text-center text-xs text-gray-400 font-medium">Qty</th>
               <th class="px-3 py-1.5 text-right text-xs text-gray-400 font-medium">Harga</th>
               <th class="px-3 py-1.5 text-right text-xs text-gray-400 font-medium">Subtotal</th>
+              <th class="px-3 py-1.5 text-right text-xs text-gray-400 font-medium">Aksi</th>
             </tr></thead>
             <tbody class="divide-y divide-gray-50 px-4">${itemRows}</tbody>
           </table>
@@ -509,6 +517,39 @@
     document.getElementById('cancelOrderModal')?.classList.add('hidden');
   }
 
+  function openDeleteOrderItemModal(orderItemId, orderNumber, itemName) {
+    if (!currentOrderHistorySession || !currentOrderHistorySession.booking_id) {
+      return;
+    }
+
+    const form = document.getElementById('deleteOrderItemForm');
+    const itemInput = document.getElementById('deleteOrderItemId');
+    const orderEl = document.getElementById('deleteOrderItemOrderNumber');
+    const itemEl = document.getElementById('deleteOrderItemName');
+
+    if (form) {
+      form.action = `/admin/bookings/${currentOrderHistorySession.booking_id}/delete-order-item`;
+    }
+
+    if (itemInput) {
+      itemInput.value = String(orderItemId);
+    }
+
+    if (orderEl) {
+      orderEl.textContent = orderNumber || '-';
+    }
+
+    if (itemEl) {
+      itemEl.textContent = itemName || '-';
+    }
+
+    document.getElementById('deleteOrderItemModal')?.classList.remove('hidden');
+  }
+
+  function closeDeleteOrderItemModal() {
+    document.getElementById('deleteOrderItemModal')?.classList.add('hidden');
+  }
+
   // History tab client-side filter
   ['searchInput', 'categoryFilter', 'statusFilter'].forEach(id => {
     document.getElementById(id)?.addEventListener(id === 'searchInput' ? 'input' : 'change', filterHistory);
@@ -535,6 +576,7 @@
       closeMoveTableModal();
       closeMoveOrderModal();
       closeCancelOrderModal();
+      closeDeleteOrderItemModal();
     }
   });
 
@@ -558,6 +600,9 @@
   });
   document.getElementById('moveOrderModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeMoveOrderModal();
+  });
+  document.getElementById('deleteOrderItemModal')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeDeleteOrderItemModal();
   });
   document.getElementById('cancelOrderModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeCancelOrderModal();
