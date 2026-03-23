@@ -113,6 +113,76 @@ test('booking checkout decrements inventory stock', function () {
         ->and((float) $orderItem->tax_amount)->toBe(9075.0);
 });
 
+test('booking checkout stores order item name from pos_name with fallback to name', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $area = makePosArea();
+    $table = makePosTable($area);
+
+    $itemWithPosName = makePosInventoryItem([
+        'name' => 'Inventory Name A',
+        'pos_name' => 'POS Name A',
+        'stock_quantity' => 10,
+    ]);
+
+    $itemWithoutPosName = makePosInventoryItem([
+        'name' => 'Inventory Name B',
+        'pos_name' => null,
+        'stock_quantity' => 10,
+    ]);
+
+    TableSession::create([
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $cartKeyOne = 'item_'.$itemWithPosName->id;
+    $cartKeyTwo = 'item_'.$itemWithoutPosName->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKeyOne => [
+                    'id' => $cartKeyOne,
+                    'name' => $itemWithPosName->name,
+                    'price' => (float) $itemWithPosName->price,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+                $cartKeyTwo => [
+                    'id' => $cartKeyTwo,
+                    'name' => $itemWithoutPosName->name,
+                    'price' => (float) $itemWithoutPosName->price,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'booking',
+            'customer_user_id' => $customer->id,
+            'table_id' => $table->id,
+            'discount_percentage' => 0,
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $orderId = (int) $response->json('order_id');
+    $createdItems = OrderItem::query()
+        ->where('order_id', $orderId)
+        ->get()
+        ->keyBy('inventory_item_id');
+
+    expect($createdItems->count())->toBe(2)
+        ->and($createdItems->get($itemWithPosName->id)?->item_name)->toBe('POS Name A')
+        ->and($createdItems->get($itemWithoutPosName->id)?->item_name)->toBe('Inventory Name B');
+});
+
 test('booking checkout requires waiter assignment for reservation session', function () {
     $admin = adminUser();
     $customer = User::factory()->create();

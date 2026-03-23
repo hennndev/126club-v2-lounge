@@ -333,3 +333,48 @@ test('transaction history bar print uses checker layout when bar order is missin
 
     expect($order->fresh()->bar_print_count)->toBe(1);
 });
+
+test('checker print simulation uses pos_name so naming matches cashier receipt', function () {
+    $admin = adminUser();
+
+    $checkerPrinter = makeTransactionHistoryPrinter('checker', false);
+
+    $inventoryItem = makeTransactionHistoryInventoryItem([
+        'name' => 'Inventory Base Name',
+        'pos_name' => 'POS Alias Name',
+    ]);
+
+    $order = makeTransactionHistoryOrder($admin->id, 'kitchen', ['checker']);
+
+    $kitchenOrder = KitchenOrder::create([
+        'order_id' => $order->id,
+        'order_number' => $order->order_number,
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 50000,
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+
+    KitchenOrderItem::create([
+        'kitchen_order_id' => $kitchenOrder->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'quantity' => 1,
+        'price' => 25000,
+        'is_completed' => true,
+    ]);
+
+    $logPath = storage_path('logs/printer.log');
+    file_put_contents($logPath, '');
+
+    $result = app(PrinterService::class)->printCheckerTicket(
+        $kitchenOrder->load('items.inventoryItem', 'table'),
+        $checkerPrinter,
+    );
+
+    $logContent = (string) file_get_contents($logPath);
+
+    expect($result)->toBeTrue()
+        ->and($logContent)->toContain('1x POS Alias Name')
+        ->and($logContent)->not->toContain('1x Inventory Base Name');
+});

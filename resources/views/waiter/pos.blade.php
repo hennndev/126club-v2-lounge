@@ -181,24 +181,33 @@
         <div class="space-y-3">
           <template x-for="(item, pid) in cart"
                     :key="pid">
-            <div class="flex items-center gap-3">
-              <div class="flex-1 min-w-0">
-                <p class="font-medium text-sm text-slate-900 truncate"
-                   x-text="item.name"></p>
-                <p class="text-teal-600 text-xs"
-                   x-text="'Rp ' + item.price.toLocaleString('id-ID')"></p>
+            <div class="rounded-xl border border-slate-200 p-3">
+              <div class="flex items-center gap-3">
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-sm text-slate-900 truncate"
+                     x-text="item.name"></p>
+                  <p class="text-teal-600 text-xs"
+                     x-text="'Rp ' + item.price.toLocaleString('id-ID')"></p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button @click="updateQty(pid, item.qty - 1)"
+                          class="w-7 h-7 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-sm font-bold">
+                    −
+                  </button>
+                  <span class="text-sm font-semibold w-6 text-center"
+                        x-text="item.qty"></span>
+                  <button @click="addToCartById(pid)"
+                          class="w-7 h-7 rounded-full bg-teal-600 text-white flex items-center justify-center text-sm font-bold">
+                    +
+                  </button>
+                </div>
               </div>
-              <div class="flex items-center gap-2">
-                <button @click="updateQty(pid, item.qty - 1)"
-                        class="w-7 h-7 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-sm font-bold">
-                  −
-                </button>
-                <span class="text-sm font-semibold w-6 text-center"
-                      x-text="item.qty"></span>
-                <button @click="addToCartById(pid)"
-                        class="w-7 h-7 rounded-full bg-teal-600 text-white flex items-center justify-center text-sm font-bold">
-                  +
-                </button>
+              <div class="mt-2">
+                <input type="text"
+                       :value="item.notes || ''"
+                       @change="updateNote(pid, $event.target.value)"
+                       placeholder="Note item (opsional)"
+                       class="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-400">
               </div>
             </div>
           </template>
@@ -454,7 +463,8 @@
                   this.cart[product.id] = {
                     name: product.name,
                     price: product.price,
-                    qty: 1
+                    qty: 1,
+                    notes: null,
                   };
                 }
               } else {
@@ -468,7 +478,8 @@
                 this.cart[product.id] = {
                   name: product.name,
                   price: product.price,
-                  qty: 1
+                  qty: 1,
+                  notes: null,
                 };
               }
             } finally {
@@ -521,6 +532,38 @@
             } catch (_) {
               if (this.cart[productId]) {
                 this.cart[productId].qty = newQty;
+              }
+            }
+          },
+
+          async updateNote(productId, noteValue) {
+            const currentQty = this.cart[productId]?.qty ?? 0;
+            if (currentQty <= 0) {
+              return;
+            }
+
+            try {
+              const res = await fetch(`{{ url('/waiter/pos') }}/${productId}/update-cart`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                },
+                body: JSON.stringify({
+                  quantity: currentQty,
+                  notes: noteValue,
+                }),
+              });
+
+              const data = await res.json();
+              if (data.success) {
+                this.cart = data.cart ?? this.cart;
+              } else {
+                this.flash(data.message || 'Gagal menyimpan note item.', false);
+              }
+            } catch (_) {
+              if (this.cart[productId]) {
+                this.cart[productId].notes = noteValue;
               }
             }
           },

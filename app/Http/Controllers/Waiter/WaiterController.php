@@ -177,10 +177,13 @@ class WaiterController extends Controller
             ->map(function ($item) use ($posSettings) {
                 $setting = $posSettings->get($item->category_type);
                 $isItemGroup = (bool) ($setting?->is_item_group ?? false);
+                $displayName = filled($item->pos_name)
+                    ? (string) $item->pos_name
+                    : (string) $item->name;
 
                 return [
                     'id' => 'item_'.$item->id,
-                    'name' => $item->name,
+                    'name' => $displayName,
                     'category' => $item->category_type,
                     'price' => (float) $item->price,
                     'stock' => $isItemGroup ? null : (int) ($item->stock_quantity ?? 0),
@@ -203,9 +206,12 @@ class WaiterController extends Controller
         $cart = collect($rawCart)->mapWithKeys(fn ($item, $key) => [
             $key => [
                 'id' => $item['id'],
-                'name' => $item['name'],
+                'name' => (string) ($item['name'] ?? ''),
                 'price' => (float) $item['price'],
                 'qty' => (int) $item['quantity'],
+                'notes' => isset($item['notes']) && trim((string) $item['notes']) !== ''
+                    ? trim((string) $item['notes'])
+                    : null,
             ],
         ])->all();
 

@@ -592,7 +592,9 @@ class PosController extends Controller
                     }
 
                     $inventoryItemId = $inventoryItem->id;
-                    $itemName = $inventoryItem->name;
+                    $itemName = filled($inventoryItem->pos_name)
+                        ? (string) $inventoryItem->pos_name
+                        : (string) $inventoryItem->name;
                     $itemCode = $inventoryItem->code;
                     $price = $inventoryItem->price;
                     $preparationLocation = $this->resolvePreparationLocationFromPrinters($inventoryItem);
@@ -881,7 +883,9 @@ class PosController extends Controller
                         continue;
                     }
                     $inventoryItemId = $inventoryItem->id;
-                    $itemName = $inventoryItem->name;
+                    $itemName = filled($inventoryItem->pos_name)
+                        ? (string) $inventoryItem->pos_name
+                        : (string) $inventoryItem->name;
                     $itemCode = $inventoryItem->code;
                     $price = $inventoryItem->price;
                     $preparationLocation = $this->resolvePreparationLocationFromPrinters($inventoryItem);

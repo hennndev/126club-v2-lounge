@@ -936,7 +936,9 @@ class PrinterService
                 '',
             ];
             foreach ($order->items as $item) {
-                $name = $item->inventoryItem?->name ?? 'Unknown';
+                $name = filled($item->inventoryItem?->pos_name)
+                    ? (string) $item->inventoryItem->pos_name
+                    : (($item->inventoryItem?->name ?? 'Unknown'));
                 $lines[] = "  {$item->quantity}x {$name}";
 
                 $notes = trim((string) ($item->notes ?? ''));
@@ -973,7 +975,9 @@ class PrinterService
             $escpos->setEmphasis(false);
 
             foreach ($order->items as $item) {
-                $name = $item->inventoryItem?->name ?? 'Unknown';
+                $name = filled($item->inventoryItem?->pos_name)
+                    ? (string) $item->inventoryItem->pos_name
+                    : (($item->inventoryItem?->name ?? 'Unknown'));
                 $notes = trim((string) ($item->notes ?? ''));
 
                 $escpos->setEmphasis(true);
