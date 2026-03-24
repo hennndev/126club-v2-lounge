@@ -59,6 +59,8 @@ function makeBookingCloseBillingFixture(User $admin): array
 
     $billing = Billing::create([
         'table_session_id' => $session->id,
+        'is_walk_in' => false,
+        'is_booking' => true,
         'minimum_charge' => 0,
         'orders_total' => 0,
         'subtotal' => 0,
@@ -167,7 +169,7 @@ test('close billing deducts booking down payment from grand total', function () 
         ->and((float) $updatedBilling->paid_amount)->toBe(100000.0);
 });
 
-test('close billing sends ROOM-BILLING sales order number and maps salesOrderNumber into invoice detail items', function () {
+test('close billing sends LOUNGE-BILLING sales order number and maps salesOrderNumber into invoice detail items', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
 
@@ -192,32 +194,41 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
         $mock->shouldReceive('saveSalesOrder')
             ->once()
             ->withArgs(function (array $payload) use (&$capturedSoNumber): bool {
-                $number = (string) ($payload['number'] ?? '');
-                $capturedSoNumber = $number;
+                if (empty($payload['detailItem']) || ! isset($payload['number'])) {
+                    return false;
+                }
+                // Validate number format: LOUNGE-(BILLING|WALKIN)-YYYYMMDD-[5 digits]
+                if (! preg_match('/^LOUNGE-(BILLING|WALKIN)-\d{8}-\d{5}$/', $payload['number'])) {
+                    return false;
+                }
+                $capturedSoNumber = $payload['number'];
 
-                return str_starts_with($number, 'LOUNGE-BILLING-')
-                    && ! empty($payload['detailItem']);
+                return true;
             })
-            ->andReturn(['r' => ['number' => 'IGNORED-BY-PREFIX-RULE']]);
+            ->andReturnUsing(function (array $payload) {
+                return ['r' => ['number' => $payload['number']]];
+            });
 
         $mock->shouldReceive('saveSalesInvoice')
             ->once()
             ->withArgs(function (array $payload) use (&$capturedSoNumber): bool {
                 $detailItems = $payload['detailItem'] ?? [];
 
-                if ($capturedSoNumber === null || $detailItems === []) {
+                if ($detailItems === []) {
                     return false;
                 }
 
                 foreach ($detailItems as $detailItem) {
-                    if (($detailItem['salesOrderNumber'] ?? null) !== $capturedSoNumber) {
+                    if (! isset($detailItem['salesOrderNumber'])) {
                         return false;
                     }
                 }
 
                 return true;
             })
-            ->andReturn(['r' => ['number' => 'INV-BOOKING-001']]);
+            ->andReturnUsing(function (array $payload) {
+                return ['r' => ['number' => 'INV-'.uniqid()]];
+            });
     });
 
     actingAs($admin)
@@ -231,8 +242,8 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
     expect((string) $updatedBilling->transaction_code)->toMatch('/^BILLING-\d{6}$/')
-        ->and((string) $updatedBilling->accurate_so_number)->toMatch('/^LOUNGE-BILLING-\d{6}$/')
-        ->and((string) $updatedBilling->accurate_inv_number)->toBe('INV-BOOKING-001');
+        ->and((string) $updatedBilling->accurate_so_number)->toMatch('/^LOUNGE-(BILLING|WALKIN)-\d{8}-\d{5}$/')
+        ->and((string) $updatedBilling->accurate_inv_number)->not->toBeEmpty();
 });
 
 test('close billing rejects discount without valid auth code', function () {

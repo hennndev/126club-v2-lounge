@@ -104,6 +104,13 @@
           Stop Scan
         </button>
 
+        <button x-show="cameraActive && torchSupported"
+                @click="toggleTorch()"
+                :disabled="torchBusy"
+                class="w-full bg-amber-500 text-white py-3 rounded-full font-semibold mb-3 disabled:opacity-60 disabled:cursor-not-allowed">
+          <span x-text="torchBusy ? 'Memproses...' : (torchOn ? 'Flash Off' : 'Flash On')"></span>
+        </button>
+
         <!-- Manual code entry (quick entry below Start Scan) -->
         <input type="text"
                x-model="manualCode"
@@ -294,6 +301,9 @@
           waiterAssigned: false,
           qrScanner: null,
           lastScannedCode: null,
+          torchSupported: false,
+          torchOn: false,
+          torchBusy: false,
 
           init() {},
 
@@ -311,6 +321,61 @@
             } catch (_) {}
 
             this.qrScanner = null;
+          },
+
+          resetTorchState() {
+            this.torchSupported = false;
+            this.torchOn = false;
+            this.torchBusy = false;
+          },
+
+          async setupTorchSupport() {
+            this.resetTorchState();
+
+            const container = document.getElementById('qrCameraContainer');
+            const videoElement = container?.querySelector('video');
+            const mediaStream = videoElement?.srcObject instanceof MediaStream ? videoElement.srcObject : null;
+            const mediaTrack = mediaStream?.getVideoTracks?.()[0] ?? null;
+
+            if (!mediaTrack || typeof mediaTrack.getCapabilities !== 'function') {
+              return;
+            }
+
+            const capabilities = mediaTrack.getCapabilities();
+            this.torchSupported = Boolean(capabilities?.torch);
+          },
+
+          async toggleTorch() {
+            if (!this.cameraActive || !this.torchSupported || this.torchBusy) {
+              return;
+            }
+
+            const container = document.getElementById('qrCameraContainer');
+            const videoElement = container?.querySelector('video');
+            const mediaStream = videoElement?.srcObject instanceof MediaStream ? videoElement.srcObject : null;
+            const mediaTrack = mediaStream?.getVideoTracks?.()[0] ?? null;
+
+            if (!mediaTrack || typeof mediaTrack.applyConstraints !== 'function') {
+              this.resetTorchState();
+
+              return;
+            }
+
+            this.torchBusy = true;
+
+            try {
+              const nextTorchState = !this.torchOn;
+              await mediaTrack.applyConstraints({
+                advanced: [{
+                  torch: nextTorchState
+                }]
+              });
+              this.torchOn = nextTorchState;
+            } catch (_) {
+              this.torchOn = false;
+            } finally {
+              this.torchBusy = false;
+            }
           },
 
           async startCamera() {
@@ -375,10 +440,14 @@
                 }, scanConfig, onDecoded, () => {});
               }
 
+              await new Promise((resolve) => setTimeout(resolve, 150));
+              await this.setupTorchSupport();
+
               this.lastScannedCode = null;
             } catch (e) {
               await this.safeClearScanner();
               this.cameraActive = false;
+              this.resetTorchState();
 
               const reason = e?.message ? `\nDetail: ${e.message}` : '';
               alert('Tidak bisa mengakses kamera. Pastikan izin kamera diberikan dan tidak dipakai aplikasi lain.' + reason);
@@ -386,8 +455,26 @@
           },
 
           async stopCamera() {
+            if (this.torchOn) {
+              try {
+                const container = document.getElementById('qrCameraContainer');
+                const videoElement = container?.querySelector('video');
+                const mediaStream = videoElement?.srcObject instanceof MediaStream ? videoElement.srcObject : null;
+                const mediaTrack = mediaStream?.getVideoTracks?.()[0] ?? null;
+
+                if (mediaTrack && typeof mediaTrack.applyConstraints === 'function') {
+                  await mediaTrack.applyConstraints({
+                    advanced: [{
+                      torch: false
+                    }]
+                  });
+                }
+              } catch (_) {}
+            }
+
             await this.safeClearScanner();
             this.cameraActive = false;
+            this.resetTorchState();
           },
 
           normalizeScannedCode(rawCode) {

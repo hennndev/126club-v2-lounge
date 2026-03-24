@@ -2152,12 +2152,10 @@ class PosController extends Controller
 
             $soNumber = null;
             $maxAttempts = 3;
+            $soPrefix = 'LOUNGE-WALKIN-'.now()->format('Ymd').'-';
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $soNumber_attempt = $attempt === 1
-                  ? $order->order_number
-                  : $order->order_number.'-'.$attempt;
-                // order_number already has WALKIN- prefix, just add LOUNGE-
-                $soNumberWithPrefix = 'LOUNGE-'.$soNumber_attempt;
+                $randomNumber = str_pad((string) random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+                $soNumberWithPrefix = $soPrefix.$randomNumber;
                 try {
                     $soResult = $this->accurateService->saveSalesOrder(
                         array_merge($soBasePayload, ['number' => $soNumberWithPrefix])
@@ -2178,6 +2176,7 @@ class PosController extends Controller
                 'customerNo' => $customerNo,
                 'transDate' => $transDate,
                 'memo' => 'Walk-in POS — '.$order->order_number,
+                'number' => $soNumber,
                 'detailItem' => $detailItem,
             ];
 
