@@ -259,6 +259,7 @@ class AccurateService
 
             return $result;
         } catch (\Exception $e) {
+          Log::info("error", ['message' => $e->getMessage(), 'endpoint' => $endpoint, 'action' => $action, 'data' => $data]);
             throw new Exception('Accurate Error: '.$e->getMessage());
         }
     }
@@ -697,8 +698,6 @@ class AccurateService
 
     public function saveSalesInvoice(array $data): array
     {
-        Log::info('data', ['data' => $data]);
-
         return $this->saveData('sales-invoice', $data, 'save');
     }
 

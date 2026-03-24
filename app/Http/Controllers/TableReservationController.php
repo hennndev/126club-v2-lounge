@@ -973,9 +973,6 @@ class TableReservationController extends Controller
             $customerNo = $customerUser?->customer_code;
 
             if (! $customerNo) {
-                Log::warning('Accurate Billing Sync: customerNo not found, skipping', [
-                    'booking_id' => $booking->id,
-                ]);
 
                 return;
             }
@@ -1003,43 +1000,44 @@ class TableReservationController extends Controller
                 ->toArray();
 
             if (empty($detailItem)) {
-                Log::warning('Accurate Billing Sync: no items found, skipping', [
-                    'booking_id' => $booking->id,
-                ]);
-
                 return;
             }
 
+            // Generate SO number with format ROOM-[BILLING|WALKIN]-[YYYYMMDD]-[5 random digits]
+            $randomNumber = str_pad(random_int(0, 99999), 5, '0', STR_PAD_LEFT);
+            $dateString = now()->format('Ymd');
+            $prefix = $billing->is_walk_in ? 'WALKIN' : 'BILLING';
+            $soNumber = "ROOM-{$prefix}-{$dateString}-{$randomNumber}";
+
             // 1. Save Sales Order
-            $soNumberWithPrefix = 'ROOM-'.$reference;
             $soPayload = [
                 'customerNo' => $customerNo,
                 'transDate' => $transDate,
-                'number' => $soNumberWithPrefix,
                 'memo' => 'Booking POS — '.$reference,
+                'number' => $soNumber,
                 'detailItem' => $detailItem,
             ];
 
             $soResult = $this->accurateService->saveSalesOrder($soPayload);
-            // Use the same prefixed number we sent; Accurate may return different format
-            $soNumber = $soNumberWithPrefix;
 
             // 2. Save Sales Invoice
             $invPayload = [
                 'customerNo' => $customerNo,
                 'transDate' => $transDate,
                 'memo' => 'Booking POS — '.$reference,
-                'detailItem' => $detailItem,
-            ];
-
-            if ($soNumber) {
-                $invPayload['detailItem'] = array_map(
+                'number' => $soNumber,
+                'detailItem' => array_map(
                     fn (array $item): array => array_merge($item, ['salesOrderNumber' => $soNumber]),
                     $detailItem
-                );
-            }
+                ),
+            ];
 
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);
+
+            Log::info('Accurate Billing Sync: Invoice result', [
+                'booking_id' => $booking->id,
+                'inv_result' => $invResult,
+            ]);
             $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? $soNumber;
 
             // 3. Persist Accurate numbers on the billing record
@@ -1057,6 +1055,7 @@ class TableReservationController extends Controller
             Log::error('Accurate Billing Sync: FAILED', [
                 'booking_id' => $booking->id,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
     }

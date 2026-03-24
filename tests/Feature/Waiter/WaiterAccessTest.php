@@ -34,7 +34,9 @@ test('waiter can access scanner page', function () {
         ->withSession(['accurate_database' => 'test'])
         ->get(route('waiter.scanner'))
         ->assertOk()
-        ->assertViewIs('waiter.scanner');
+        ->assertViewIs('waiter.scanner')
+        ->assertSee('Flash On', false)
+        ->assertSee('toggleTorch()', false);
 });
 
 test('waiter can access active tables page', function () {
