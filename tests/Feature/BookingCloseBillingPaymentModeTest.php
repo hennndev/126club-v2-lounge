@@ -246,6 +246,46 @@ test('close billing sends LOUNGE-BILLING sales order number and maps salesOrderN
         ->and((string) $updatedBilling->accurate_inv_number)->not->toBeEmpty();
 });
 
+test('close billing stores error message when accurate sync fails', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $customer = $booking->customer;
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '08123456781',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => 12346,
+        'customer_code' => 'CUST-BOOKING-ERR',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('saveSalesOrder')
+            ->once()
+            ->andThrow(new \Exception('Accurate temporary error'));
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect((string) $updatedBilling->accurate_so_number)->toBe('')
+        ->and((string) $updatedBilling->accurate_inv_number)->toBe('')
+        ->and((string) $updatedBilling->error_message)->toContain('Accurate temporary error');
+});
+
 test('close billing rejects discount without valid auth code', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);

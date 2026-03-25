@@ -832,6 +832,34 @@ class TableReservationController extends Controller
         }
     }
 
+    public function reSyncAccurate(TableReservation $booking)
+    {
+        $booking->loadMissing([
+            'tableSession.orders.items.inventoryItem',
+            'tableSession.billing',
+        ]);
+
+        $session = $booking->tableSession;
+        $billing = $session?->billing;
+
+        if (! $session || ! $billing) {
+            return back()->with('error', 'Billing tidak ditemukan untuk booking ini.');
+        }
+
+        if ($billing->accurate_so_number && $billing->accurate_inv_number) {
+            return back()->with('success', 'SO dan Invoice Accurate sudah tersedia.');
+        }
+
+        $this->pushBillingToAccurate($booking, $session, $billing);
+        $billing->refresh();
+
+        if (! $billing->accurate_so_number || ! $billing->accurate_inv_number) {
+            return back()->with('error', $billing->error_message ?: 'Re-sync ke Accurate gagal. Silakan coba lagi.');
+        }
+
+        return back()->with('success', 'Re-sync Accurate berhasil.');
+    }
+
     /**
      * @return array<string, float>
      */
@@ -973,6 +1001,9 @@ class TableReservationController extends Controller
             $customerNo = $customerUser?->customer_code;
 
             if (! $customerNo) {
+                $billing->update([
+                    'error_message' => 'Customer Accurate tidak ditemukan untuk booking ini.',
+                ]);
 
                 return;
             }
@@ -1000,6 +1031,10 @@ class TableReservationController extends Controller
                 ->toArray();
 
             if (empty($detailItem)) {
+                $billing->update([
+                    'error_message' => 'Item order tidak ditemukan untuk dikirim ke Accurate.',
+                ]);
+
                 return;
             }
 
@@ -1044,6 +1079,7 @@ class TableReservationController extends Controller
             $billing->update([
                 'accurate_so_number' => $soNumber,
                 'accurate_inv_number' => $invNumber,
+                'error_message' => null,
             ]);
 
             Log::info('Accurate Billing Sync: OK', [
@@ -1052,6 +1088,10 @@ class TableReservationController extends Controller
                 'inv_number' => $invNumber,
             ]);
         } catch (\Exception $e) {
+            $billing->update([
+                'error_message' => $e->getMessage(),
+            ]);
+
             Log::error('Accurate Billing Sync: FAILED', [
                 'booking_id' => $booking->id,
                 'error' => $e->getMessage(),

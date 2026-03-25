@@ -178,6 +178,7 @@
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Date/Time</th>
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Orders</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Total Spent</th>
+            <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Error Message</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Aksi</th>
           </tr>
         </thead>
@@ -296,19 +297,47 @@
                   <span class="text-gray-300 text-sm">-</span>
                 @endif
               </td>
+              <td class="px-5 py-4">
+                @if ($booking->tableSession?->billing?->error_message)
+                  <p class="text-xs text-red-600 max-w-xs break-words">
+                    {{ $booking->tableSession->billing->error_message }}
+                  </p>
+                @else
+                  <span class="text-gray-300 text-sm">-</span>
+                @endif
+              </td>
               <td class="px-5 py-4 whitespace-nowrap text-right">
                 @if ($booking->tableSession?->billing)
-                  <form method="POST"
-                        action="{{ route('admin.bookings.reprintReceipt', $booking) }}"
-                        class="inline"
-                        onsubmit="const button = this.querySelector('[data-reprint-button]'); if (button) { button.disabled = true; button.textContent = 'Memproses...'; }">
-                    @csrf
-                    <button type="submit"
-                            data-reprint-button
-                            class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition disabled:opacity-60 disabled:cursor-not-allowed">
-                      Print Ulang
-                    </button>
-                  </form>
+                  @php
+                    $billing = $booking->tableSession->billing;
+                    $isAccurateMissing = !$billing->accurate_so_number || !$billing->accurate_inv_number;
+                  @endphp
+                  <div class="inline-flex items-center gap-2">
+                    @if ($isAccurateMissing)
+                      <form method="POST"
+                            action="{{ route('admin.bookings.reSyncAccurate', $booking) }}"
+                            class="inline"
+                            onsubmit="const button = this.querySelector('[data-resync-accurate-button]'); if (button) { button.disabled = true; button.textContent = 'Sync...'; }">
+                        @csrf
+                        <button type="submit"
+                                data-resync-accurate-button
+                                class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition disabled:opacity-60 disabled:cursor-not-allowed">
+                          Re-sync Accurate
+                        </button>
+                      </form>
+                    @endif
+                    <form method="POST"
+                          action="{{ route('admin.bookings.reprintReceipt', $booking) }}"
+                          class="inline"
+                          onsubmit="const button = this.querySelector('[data-reprint-button]'); if (button) { button.disabled = true; button.textContent = 'Memproses...'; }">
+                      @csrf
+                      <button type="submit"
+                              data-reprint-button
+                              class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition disabled:opacity-60 disabled:cursor-not-allowed">
+                        Print Ulang
+                      </button>
+                    </form>
+                  </div>
                 @else
                   <span class="text-gray-300 text-sm">-</span>
                 @endif

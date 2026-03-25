@@ -37,6 +37,7 @@ class Billing extends Model
         'closing_notes',
         'accurate_so_number',
         'accurate_inv_number',
+        'error_message',
     ];
 
     protected $casts = [
