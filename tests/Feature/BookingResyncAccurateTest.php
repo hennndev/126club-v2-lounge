@@ -147,7 +147,8 @@ test('history tab shows re-sync accurate action only for billing with missing ac
         ->get(route('admin.bookings.index', ['tab' => 'history']))
         ->assertOk()
         ->assertSee('Error Message')
-        ->assertSee('Accurate sedang timeout.')
+        ->assertSee('Lihat Error')
+        ->assertSee('openHistoryErrorModal(this)', false)
         ->assertSee(route('admin.bookings.reSyncAccurate', $bookingMissing), false)
         ->assertDontSee(route('admin.bookings.reSyncAccurate', $bookingSynced), false);
 });
