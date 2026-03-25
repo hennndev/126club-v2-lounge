@@ -299,9 +299,12 @@
               </td>
               <td class="px-5 py-4">
                 @if ($booking->tableSession?->billing?->error_message)
-                  <p class="text-xs text-red-600 max-w-xs break-words">
-                    {{ $booking->tableSession->billing->error_message }}
-                  </p>
+                  <button type="button"
+                          data-error-message="{{ $booking->tableSession->billing->error_message }}"
+                          onclick="openHistoryErrorModal(this)"
+                          class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition">
+                    Lihat Error
+                  </button>
                 @else
                   <span class="text-gray-300 text-sm">-</span>
                 @endif
@@ -389,6 +392,31 @@
       </div>
     @endif
   @endif
+</div>
+
+<div id="historyErrorModal"
+     class="hidden fixed inset-0 z-[70]">
+  <div class="absolute inset-0 bg-black/40"
+       onclick="closeHistoryErrorModal()"></div>
+  <div class="relative z-[71] min-h-full flex items-center justify-center p-4">
+    <div class="w-full max-w-lg bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h3 class="text-base font-semibold text-gray-900">Error Message</h3>
+        <button type="button"
+                onclick="closeHistoryErrorModal()"
+                class="text-gray-400 hover:text-gray-600 transition">✕</button>
+      </div>
+      <div class="px-5 py-4">
+        <p id="historyErrorMessageBody"
+           class="text-sm text-red-600 whitespace-pre-wrap break-words">-</p>
+      </div>
+      <div class="px-5 py-4 border-t border-gray-100 flex justify-end">
+        <button type="button"
+                onclick="closeHistoryErrorModal()"
+                class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Tutup</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 @php
@@ -498,5 +526,28 @@
     }).join('');
 
     modal.classList.remove('hidden');
+  }
+
+  function openHistoryErrorModal(trigger) {
+    const modal = document.getElementById('historyErrorModal');
+    const body = document.getElementById('historyErrorMessageBody');
+    if (!modal || !body) {
+      return;
+    }
+
+    const message = trigger?.dataset?.errorMessage || '-';
+    body.textContent = message;
+    modal.classList.remove('hidden');
+  }
+
+  function closeHistoryErrorModal() {
+    const modal = document.getElementById('historyErrorModal');
+    const body = document.getElementById('historyErrorMessageBody');
+    if (!modal || !body) {
+      return;
+    }
+
+    body.textContent = '-';
+    modal.classList.add('hidden');
   }
 </script>
