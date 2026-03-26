@@ -128,12 +128,18 @@ Route::middleware('auth')->group(function () {
         Route::get('kitchen/fetch', [KitchenController::class, 'fetchOrders'])->name('kitchen.fetch');
         Route::patch('kitchen/item/{item}/toggle', [KitchenController::class, 'toggleItem'])->name('kitchen.toggle-item');
         Route::patch('kitchen/{order}/complete-all', [KitchenController::class, 'completeAll'])->name('kitchen.complete-all');
+        Route::post('kitchen/end-day/sync-snapshot', [KitchenController::class, 'syncSnapshot'])->name('kitchen.end-day.sync-snapshot');
+        Route::post('kitchen/end-day', [KitchenController::class, 'submitEndDay'])->name('kitchen.end-day');
+        Route::post('kitchen/end-day/{history}/reprint', [KitchenController::class, 'reprintEndDay'])->name('kitchen.end-day.reprint');
 
         // Bar Management
         Route::get('bar', [BarController::class, 'index'])->name('bar.index');
         Route::get('bar/fetch', [BarController::class, 'fetchOrders'])->name('bar.fetch');
         Route::patch('bar/item/{item}/toggle', [BarController::class, 'toggleItem'])->name('bar.toggle-item');
         Route::patch('bar/{order}/complete-all', [BarController::class, 'completeAll'])->name('bar.complete-all');
+        Route::post('bar/end-day/sync-snapshot', [BarController::class, 'syncSnapshot'])->name('bar.end-day.sync-snapshot');
+        Route::post('bar/end-day', [BarController::class, 'submitEndDay'])->name('bar.end-day');
+        Route::post('bar/end-day/{history}/reprint', [BarController::class, 'reprintEndDay'])->name('bar.end-day.reprint');
 
         // Customer Management
         Route::resource('customers', CustomerController::class)->except(['show', 'create', 'edit']);

@@ -50,6 +50,34 @@ test('general settings can save receipt printer assignments', function () {
         'is_active' => true,
     ]);
 
+    $endDayKitchenPrinter = Printer::create([
+        'name' => 'End Day Kitchen Printer',
+        'location' => 'kitchen',
+        'printer_type' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
+    ]);
+
+    $endDayBarPrinter = Printer::create([
+        'name' => 'End Day Bar Printer',
+        'location' => 'bar',
+        'printer_type' => 'bar',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
+    ]);
+
     actingAs($admin)
         ->put(route('admin.settings.general.update'), [
             'tax_percentage' => 10,
@@ -58,6 +86,8 @@ test('general settings can save receipt printer assignments', function () {
             'closed_billing_receipt_printer_id' => $closedBillingPrinter->id,
             'walk_in_receipt_printer_id' => $walkInPrinter->id,
             'end_day_receipt_printer_id' => $endDayPrinter->id,
+            'end_day_kitchen_printer_id' => $endDayKitchenPrinter->id,
+            'end_day_bar_printer_id' => $endDayBarPrinter->id,
             'auth_code_target_email' => 'approval@company.test',
         ])
         ->assertRedirect(route('admin.settings.general.index'));
@@ -67,6 +97,8 @@ test('general settings can save receipt printer assignments', function () {
     expect((int) $settings->closed_billing_receipt_printer_id)->toBe((int) $closedBillingPrinter->id)
         ->and((int) $settings->walk_in_receipt_printer_id)->toBe((int) $walkInPrinter->id)
         ->and((int) $settings->end_day_receipt_printer_id)->toBe((int) $endDayPrinter->id)
+        ->and((int) $settings->end_day_kitchen_printer_id)->toBe((int) $endDayKitchenPrinter->id)
+        ->and((int) $settings->end_day_bar_printer_id)->toBe((int) $endDayBarPrinter->id)
         ->and((string) $settings->auth_code_target_email)->toBe('approval@company.test')
         ->and((int) $settings->tax_percentage)->toBe(10)
         ->and((int) $settings->service_charge_percentage)->toBe(5)

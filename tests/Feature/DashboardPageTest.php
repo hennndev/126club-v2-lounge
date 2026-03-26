@@ -1,10 +1,17 @@
 <?php
 
 use App\Models\Area;
+use App\Models\BarOrder;
+use App\Models\BarOrderItem;
 use App\Models\Billing;
 use App\Models\Dashboard;
+use App\Models\InventoryItem;
+use App\Models\KitchenOrder;
+use App\Models\KitchenOrderItem;
 use App\Models\Tabel;
 use App\Models\TableSession;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 use function Pest\Laravel\actingAs;
 
@@ -103,4 +110,195 @@ test('dashboard sync button triggers today sync and redirects back', function ()
 
     expect((float) $dashboard->total_amount)->toBe(24200.0)
         ->and((int) $dashboard->total_transactions)->toBe(1);
+});
+
+test('dashboard uses 09:00 operational window for totals', function () {
+    $admin = adminUser();
+
+    Carbon::setTestNow(Carbon::create(2026, 3, 27, 8, 30, 0, 'Asia/Jakarta'));
+
+    Dashboard::query()->create([
+        'total_amount' => 0,
+        'total_tax' => 0,
+        'total_service_charge' => 0,
+        'total_cash' => 0,
+        'total_transfer' => 0,
+        'total_debit' => 0,
+        'total_kredit' => 0,
+        'total_qris' => 0,
+        'total_kitchen_items' => 0,
+        'total_bar_items' => 0,
+        'total_transactions' => 0,
+        'last_synced_at' => now(),
+    ]);
+
+    $insideBilling = Billing::query()->create([
+        'table_session_id' => null,
+        'minimum_charge' => 0,
+        'orders_total' => 100000,
+        'subtotal' => 100000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 100000,
+        'paid_amount' => 100000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'is_booking' => true,
+        'is_walk_in' => false,
+    ]);
+
+    $outsideBilling = Billing::query()->create([
+        'table_session_id' => null,
+        'minimum_charge' => 0,
+        'orders_total' => 50000,
+        'subtotal' => 50000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 50000,
+        'paid_amount' => 50000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'is_booking' => true,
+        'is_walk_in' => false,
+    ]);
+
+    DB::table('billings')->where('id', $insideBilling->id)->update([
+        'updated_at' => Carbon::create(2026, 3, 26, 10, 0, 0, 'Asia/Jakarta'),
+    ]);
+    DB::table('billings')->where('id', $outsideBilling->id)->update([
+        'updated_at' => Carbon::create(2026, 3, 26, 8, 0, 0, 'Asia/Jakarta'),
+    ]);
+
+    $kitchenItem = InventoryItem::query()->create([
+        'code' => 'DASH-K-ITEM',
+        'accurate_id' => 961001,
+        'name' => 'Dashboard Kitchen Item',
+        'category_type' => 'food',
+        'price' => 12000,
+        'stock_quantity' => 100,
+        'threshold' => 10,
+        'unit' => 'porsi',
+        'is_active' => true,
+        'item_produced' => false,
+        'material_produced' => false,
+    ]);
+
+    $barItem = InventoryItem::query()->create([
+        'code' => 'DASH-B-ITEM',
+        'accurate_id' => 961002,
+        'name' => 'Dashboard Bar Item',
+        'category_type' => 'beverage',
+        'price' => 9000,
+        'stock_quantity' => 100,
+        'threshold' => 10,
+        'unit' => 'gelas',
+        'is_active' => true,
+        'item_produced' => false,
+        'material_produced' => false,
+    ]);
+
+    $insideKitchenOrder = KitchenOrder::query()->create([
+        'order_id' => null,
+        'order_number' => 'DASH-K-IN',
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 24000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+    DB::table('kitchen_orders')->where('id', $insideKitchenOrder->id)->update([
+        'created_at' => Carbon::create(2026, 3, 26, 10, 30, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 26, 10, 30, 0, 'Asia/Jakarta'),
+    ]);
+    KitchenOrderItem::query()->create([
+        'kitchen_order_id' => $insideKitchenOrder->id,
+        'inventory_item_id' => $kitchenItem->id,
+        'quantity' => 2,
+        'price' => 12000,
+        'is_completed' => true,
+    ]);
+
+    $outsideKitchenOrder = KitchenOrder::query()->create([
+        'order_id' => null,
+        'order_number' => 'DASH-K-OUT',
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 36000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+    DB::table('kitchen_orders')->where('id', $outsideKitchenOrder->id)->update([
+        'created_at' => Carbon::create(2026, 3, 26, 8, 30, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 26, 8, 30, 0, 'Asia/Jakarta'),
+    ]);
+    KitchenOrderItem::query()->create([
+        'kitchen_order_id' => $outsideKitchenOrder->id,
+        'inventory_item_id' => $kitchenItem->id,
+        'quantity' => 3,
+        'price' => 12000,
+        'is_completed' => true,
+    ]);
+
+    $insideBarOrder = BarOrder::query()->create([
+        'order_id' => null,
+        'order_number' => 'DASH-B-IN',
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 18000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+    DB::table('bar_orders')->where('id', $insideBarOrder->id)->update([
+        'created_at' => Carbon::create(2026, 3, 26, 11, 0, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 26, 11, 0, 0, 'Asia/Jakarta'),
+    ]);
+    BarOrderItem::query()->create([
+        'bar_order_id' => $insideBarOrder->id,
+        'inventory_item_id' => $barItem->id,
+        'quantity' => 2,
+        'price' => 9000,
+        'is_completed' => true,
+    ]);
+
+    $outsideBarOrder = BarOrder::query()->create([
+        'order_id' => null,
+        'order_number' => 'DASH-B-OUT',
+        'customer_user_id' => null,
+        'table_id' => null,
+        'total_amount' => 27000,
+        'payment_method' => 'cash',
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+    DB::table('bar_orders')->where('id', $outsideBarOrder->id)->update([
+        'created_at' => Carbon::create(2026, 3, 26, 8, 20, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 26, 8, 20, 0, 'Asia/Jakarta'),
+    ]);
+    BarOrderItem::query()->create([
+        'bar_order_id' => $outsideBarOrder->id,
+        'inventory_item_id' => $barItem->id,
+        'quantity' => 3,
+        'price' => 9000,
+        'is_completed' => true,
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.dashboard'))
+        ->assertSuccessful()
+        ->assertSeeText('Rp 100.000')
+        ->assertSeeText('1 transaksi')
+        ->assertSeeText('4 item terjual');
+
+    Carbon::setTestNow();
 });

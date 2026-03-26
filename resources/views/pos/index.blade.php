@@ -943,19 +943,37 @@
 
           calculatedServiceCharge() {
             const bases = this.chargeableBases();
-            const serviceChargeBaseAfterDiscount = bases.serviceChargeBase * (1 - this.discountRatio());
+            const discountRatio = this.discountRatio();
+            const serviceChargeBaseAfterDiscount = bases.serviceChargeBase * (1 - discountRatio);
+            const serviceChargeRate = this.posCharges.serviceChargePercentage / 100;
 
-            return Math.round(serviceChargeBaseAfterDiscount * (this.posCharges.serviceChargePercentage / 100));
+            if (this.checkoutForm.customer_type === 'walk-in') {
+              const taxRate = this.posCharges.taxPercentage / 100;
+              let serviceChargeBaseWithTax = serviceChargeBaseAfterDiscount;
+
+              if (taxRate > 0) {
+                serviceChargeBaseWithTax += bases.taxAndServiceBase * (1 - discountRatio) * taxRate;
+              }
+
+              return Math.round(serviceChargeBaseWithTax * serviceChargeRate);
+            }
+
+            return Math.round(serviceChargeBaseAfterDiscount * serviceChargeRate);
           },
 
           calculatedTax() {
             const bases = this.chargeableBases();
             const discountRatio = this.discountRatio();
             const taxBaseAfterDiscount = bases.taxBase * (1 - discountRatio);
-            const taxAndServiceBaseAfterDiscount = bases.taxAndServiceBase * (1 - discountRatio);
-            const serviceChargeTaxable = Math.round(taxAndServiceBaseAfterDiscount * (this.posCharges.serviceChargePercentage / 100));
+            const taxRate = this.posCharges.taxPercentage / 100;
 
-            return Math.round((taxBaseAfterDiscount + serviceChargeTaxable) * (this.posCharges.taxPercentage / 100));
+            if (this.checkoutForm.customer_type === 'walk-in') {
+              return Math.round(taxBaseAfterDiscount * taxRate);
+            }
+
+            const serviceChargeTaxable = Math.round((bases.taxAndServiceBase * (1 - discountRatio)) * (this.posCharges.serviceChargePercentage / 100));
+
+            return Math.round((taxBaseAfterDiscount + serviceChargeTaxable) * taxRate);
           },
 
           payableTotal() {

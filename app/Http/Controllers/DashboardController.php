@@ -12,21 +12,24 @@ use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Services\DashboardSyncService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
 {
     public function index()
     {
-        $today = today();
+        [$windowStart, $windowEnd] = $this->resolveOperationalWindow();
         $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
 
         // --- Revenue & Transactions (paid billings today) ---
-        $todayBillings = Billing::whereDate('updated_at', $today)
+        $todayBillings = Billing::query()
             ->where('billing_status', 'paid')
             ->where(function ($query) {
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
             })
+            ->where('updated_at', '>=', $windowStart)
+            ->where('updated_at', '<', $windowEnd)
             ->when($lastCloseAt, fn ($query) => $query->where('updated_at', '>', $lastCloseAt));
 
         $revenueToday = (clone $todayBillings)->sum('grand_total');
@@ -35,13 +38,15 @@ class DashboardController extends Controller
         // Items sold today (bar + kitchen orders)
         $barItemsSold = BarOrderItem::whereHas(
             'barOrder',
-            fn ($q) => $q->whereDate('created_at', $today)
+            fn ($q) => $q->where('created_at', '>=', $windowStart)
+                ->where('created_at', '<', $windowEnd)
                 ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
         $kitchenItemsSold = KitchenOrderItem::whereHas(
             'kitchenOrder',
-            fn ($q) => $q->whereDate('created_at', $today)
+            fn ($q) => $q->where('created_at', '>=', $windowStart)
+                ->where('created_at', '<', $windowEnd)
                 ->when($lastCloseAt, fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt))
         )->sum('quantity');
 
@@ -50,7 +55,10 @@ class DashboardController extends Controller
         // --- Bookings ---
         $bookingPending = TableReservation::where('status', 'pending')->count();
         $bookingConfirmed = TableReservation::where('status', 'confirmed')->count();
-        $bookingCompleted = TableReservation::where('status', 'completed')->whereDate('updated_at', $today)->count();
+        $bookingCompleted = TableReservation::where('status', 'completed')
+            ->where('updated_at', '>=', $windowStart)
+            ->where('updated_at', '<', $windowEnd)
+            ->count();
 
         // --- Tables ---
         $totalTables = Tabel::where('is_active', true)->count();
@@ -104,5 +112,26 @@ class DashboardController extends Controller
         return redirect()
             ->route('admin.dashboard')
             ->with('success', 'Dashboard berhasil di-sync (hari ini).');
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function resolveOperationalWindow(): array
+    {
+        $now = now('Asia/Jakarta');
+        $anchor = $now->copy()->setTime(9, 0, 0);
+
+        if ($now->lt($anchor)) {
+            return [
+                $anchor->copy()->subDay(),
+                $anchor,
+            ];
+        }
+
+        return [
+            $anchor,
+            $anchor->copy()->addDay(),
+        ];
     }
 }

@@ -772,9 +772,9 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->assertJsonPath('success', true)
         ->assertJsonPath('items_total', 50000)
         ->assertJsonPath('service_charge_percentage', 10)
-        ->assertJsonPath('service_charge', 5000)
+        ->assertJsonPath('service_charge', 5550)
         ->assertJsonPath('tax_percentage', 11)
-        ->assertJsonPath('tax', 6050)
+        ->assertJsonPath('tax', 5500)
         ->assertJsonPath('total', 61050);
 
     $order = Order::query()->latest('id')->first();
@@ -789,10 +789,10 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->and((bool) $billing->is_walk_in)->toBeTrue()
         ->and((bool) $billing->is_booking)->toBeFalse()
         ->and((float) $billing->grand_total)->toBe(61050.0)
-        ->and((float) $billing->tax)->toBe(6050.0)
-        ->and((float) $billing->service_charge)->toBe(5000.0)
-        ->and((float) $order->items()->latest('id')->first()->service_charge_amount)->toBe(5000.0)
-        ->and((float) $order->items()->latest('id')->first()->tax_amount)->toBe(6050.0)
+        ->and((float) $billing->tax)->toBe(5500.0)
+        ->and((float) $billing->service_charge)->toBe(5550.0)
+        ->and((float) $order->items()->latest('id')->first()->service_charge_amount)->toBe(5550.0)
+        ->and((float) $order->items()->latest('id')->first()->tax_amount)->toBe(5500.0)
         ->and($order->payment_method)->toBe('transfer')
         ->and($order->payment_mode)->toBe('normal')
         ->and((string) $billing->transaction_code)->toMatch('/^WALKIN-\d{6}$/')

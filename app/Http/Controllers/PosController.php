@@ -618,11 +618,11 @@ class PosController extends Controller
                     }
 
                     $itemServiceChargeAmount = $includeServiceCharge
-                      ? round($subtotal * ($serviceChargePercentage / 100), 2)
-                      : 0;
+                        ? round($subtotal * ($serviceChargePercentage / 100), 2)
+                        : 0;
                     $itemTaxAmount = $includeTax
-                      ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
-                      : 0;
+                        ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
+                        : 0;
 
                     // Create Order Item
                     OrderItem::create([
@@ -907,12 +907,12 @@ class PosController extends Controller
                         $taxAndServiceBase += $subtotal;
                     }
 
-                    $itemServiceChargeAmount = $includeServiceCharge
-                      ? round($subtotal * ($serviceChargePercentage / 100), 2)
-                      : 0;
                     $itemTaxAmount = $includeTax
-                      ? round(($subtotal + ($includeServiceCharge ? $itemServiceChargeAmount : 0)) * ($taxPercentage / 100), 2)
-                      : 0;
+                        ? round($subtotal * ($taxPercentage / 100), 2)
+                        : 0;
+                    $itemServiceChargeAmount = $includeServiceCharge
+                        ? round(($subtotal + ($includeTax ? $itemTaxAmount : 0)) * ($serviceChargePercentage / 100), 2)
+                        : 0;
 
                     OrderItem::create([
                         'order_id' => $order->id,
@@ -943,7 +943,7 @@ class PosController extends Controller
                     'service_charge_base' => $serviceChargeBase,
                     'tax_base' => $taxBase,
                     'tax_and_service_base' => $taxAndServiceBase,
-                ]);
+                ], true);
 
                 if ($paymentMode === 'split') {
                     $splitTotal = round((float) ($splitCashAmount ?? 0) + (float) ($splitNonCashAmount ?? 0) + (float) ($splitSecondNonCashAmount ?? 0), 2);
@@ -1210,6 +1210,7 @@ class PosController extends Controller
         int $discountPercentage = 0,
         ?float $discountAmountOverride = null,
         ?array $chargeableBases = null,
+        bool $applyServiceChargeOnTaxBase = false,
     ): array {
         $settings = GeneralSetting::instance();
         $itemsTotalFloat = (float) $itemsTotal;
@@ -1225,9 +1226,24 @@ class PosController extends Controller
         $taxBaseAfterDiscount = max($taxBase * (1 - $discountRatio), 0);
         $taxAndServiceBaseAfterDiscount = max($taxAndServiceBase * (1 - $discountRatio), 0);
 
-        $serviceChargeAmount = round($serviceChargeBaseAfterDiscount * ((float) $settings->service_charge_percentage / 100), 2);
-        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * ((float) $settings->service_charge_percentage / 100), 2);
-        $taxAmount = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * ((float) $settings->tax_percentage / 100), 2);
+        $taxRate = (float) $settings->tax_percentage / 100;
+        $serviceChargeRate = (float) $settings->service_charge_percentage / 100;
+
+        if ($applyServiceChargeOnTaxBase) {
+            $taxAmount = round($taxBaseAfterDiscount * $taxRate, 2);
+
+            $serviceChargeBaseWithTax = $serviceChargeBaseAfterDiscount;
+            if ($taxRate > 0) {
+                $serviceChargeBaseWithTax += $taxAndServiceBaseAfterDiscount * $taxRate;
+            }
+
+            $serviceChargeAmount = round($serviceChargeBaseWithTax * $serviceChargeRate, 2);
+        } else {
+            $serviceChargeAmount = round($serviceChargeBaseAfterDiscount * $serviceChargeRate, 2);
+            $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * $serviceChargeRate, 2);
+            $taxAmount = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * $taxRate, 2);
+        }
+
         $grandTotal = $subtotalAfterDiscount + $serviceChargeAmount + $taxAmount;
 
         return [

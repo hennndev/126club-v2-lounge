@@ -4,6 +4,7 @@ use App\Models\Area;
 use App\Models\Billing;
 use App\Models\CustomerUser;
 use App\Models\DailyAuthCode;
+use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -373,6 +374,34 @@ test('close billing applies nominal discount with valid auth code', function () 
 
     expect((float) $updatedBilling->discount_amount)->toBe(15000.0)
         ->and((float) $updatedBilling->grand_total)->toBe(105000.0);
+});
+
+test('close billing calculates service charge based on subtotal plus tax when tax is active', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 5,
+        'tax_percentage' => 10,
+    ]);
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('receipt.service_charge', 6600)
+        ->assertJsonPath('receipt.tax', 12000)
+        ->assertJsonPath('receipt.grand_total', 138600);
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect((float) $updatedBilling->service_charge)->toBe(6600.0)
+        ->and((float) $updatedBilling->tax)->toBe(12000.0)
+        ->and((float) $updatedBilling->grand_total)->toBe(138600.0);
 });
 
 test('close billing works with normal non-cash payment and reference number', function () {

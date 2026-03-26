@@ -28,6 +28,8 @@ class GeneralSettingController extends Controller
             'closed_billing_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'walk_in_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'end_day_receipt_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
+            'end_day_kitchen_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
+            'end_day_bar_printer_id' => ['nullable', 'integer', 'exists:printers,id'],
             'auth_code_target_email' => ['nullable', 'email'],
         ]);
 

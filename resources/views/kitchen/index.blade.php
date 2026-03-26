@@ -38,8 +38,27 @@
       </button>
     </div>
 
+    <div class="flex items-center gap-2 mb-6">
+      <button @click="activeTab = 'orders'"
+              :class="activeTab === 'orders' ? 'bg-slate-800 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
+              class="px-4 py-2 rounded-xl text-sm font-medium transition">
+        Order
+      </button>
+      <button @click="activeTab = 'end-day'"
+              :class="activeTab === 'end-day' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
+              class="px-4 py-2 rounded-xl text-sm font-medium transition">
+        End Day
+      </button>
+      <button @click="activeTab = 'history'"
+              :class="activeTab === 'history' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
+              class="px-4 py-2 rounded-xl text-sm font-medium transition">
+        History
+      </button>
+    </div>
+
     <!-- Stats -->
-    <div class="grid grid-cols-4 gap-4 mb-6">
+    <div x-show="activeTab === 'orders'"
+         class="grid grid-cols-4 gap-4 mb-6">
       <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
         <p class="text-3xl font-bold text-gray-900"
            x-text="stats.total"></p>
@@ -63,7 +82,8 @@
     </div>
 
     <!-- Tabs -->
-    <div class="flex items-center gap-2 mb-6">
+    <div x-show="activeTab === 'orders'"
+         class="flex items-center gap-2 mb-6">
       <button @click="filterByStatus(null)"
               :class="currentStatus === null ? 'bg-slate-800 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
               class="px-4 py-2 rounded-xl text-sm font-medium transition">
@@ -82,7 +102,7 @@
     </div>
 
     <!-- Empty State -->
-    <div x-show="orders.length === 0 && !isLoading"
+    <div x-show="activeTab === 'orders' && orders.length === 0 && !isLoading"
          class="bg-orange-50 border-2 border-dashed border-orange-200 rounded-2xl p-16 text-center">
       <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
         <svg class="w-8 h-8 text-orange-500"
@@ -100,7 +120,7 @@
     </div>
 
     <!-- Order Cards Grid -->
-    <div x-show="orders.length > 0"
+    <div x-show="activeTab === 'orders' && orders.length > 0"
          class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <template x-for="order in orders"
                 :key="order.id">
@@ -277,6 +297,149 @@
       </template>
     </div>
 
+    <div x-show="activeTab === 'end-day'"
+         class="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
+      <h2 class="text-lg font-semibold text-gray-900">End Day Kitchen</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-orange-200 bg-orange-50 p-4">
+          <p class="text-sm text-orange-700">Total Item Kitchen (Berjalan)</p>
+          <p class="text-3xl font-bold text-orange-800 mt-1">{{ number_format((int) ($kitchenEndDayPreview['total_items'] ?? 0), 0, ',', '.') }}</p>
+        </div>
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p class="text-sm text-gray-600">Last Synced</p>
+          <p class="text-lg font-semibold text-gray-900 mt-1">{{ $kitchenEndDayPreview['last_synced_at']?->format('d/m/Y H:i') ?? '-' }}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <form action="{{ route('admin.kitchen.end-day.sync-snapshot') }}"
+              method="POST">
+          @csrf
+          <button type="submit"
+                  class="inline-flex items-center rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition">
+            Sync Snapshot
+          </button>
+        </form>
+        <form action="{{ route('admin.kitchen.end-day') }}"
+              method="POST">
+          @csrf
+          <button type="submit"
+                  class="inline-flex items-center rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition">
+            Submit End Day Kitchen
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div x-show="activeTab === 'history'"
+         class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">History End Day Kitchen</h2>
+        <p class="text-xs text-gray-500 mt-1">Klik baris history untuk melihat detail item dan quantity.</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">End Day</th>
+              <th class="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Item</th>
+              <th class="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Last Synced</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-100">
+            @forelse ($kitchenRecapHistories as $history)
+              <tr @click="openHistoryDetail({{ $history->id }})"
+                  class="cursor-pointer hover:bg-orange-50 transition">
+                <td class="px-5 py-3 text-sm text-gray-800">{{ $history->end_day?->format('d/m/Y') ?? '-' }}</td>
+                <td class="px-5 py-3 text-sm text-gray-900 text-right font-semibold">{{ number_format((int) $history->total_items, 0, ',', '.') }}</td>
+                <td class="px-5 py-3 text-sm text-gray-600">{{ $history->last_synced_at?->format('d/m/Y H:i') ?? '-' }}</td>
+              </tr>
+            @empty
+              <tr>
+                <td colspan="3"
+                    class="px-5 py-8 text-center text-sm text-gray-500">Belum ada history end day kitchen.</td>
+              </tr>
+            @endforelse
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div x-show="showHistoryDetailModal"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         style="display: none;"
+         class="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4"
+         @click.self="closeHistoryDetail()">
+      <div class="w-full max-w-lg bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900">Detail Item Kitchen</h3>
+            <p class="text-xs text-gray-500"
+               x-text="selectedHistoryDetail ? ('End Day ' + selectedHistoryDetail.end_day) : ''"></p>
+          </div>
+          <button type="button"
+                  @click="closeHistoryDetail()"
+                  class="text-gray-500 hover:text-gray-700 transition">
+            <svg class="w-5 h-5"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="p-5">
+          <div x-show="selectedHistoryDetail && selectedHistoryDetail.items.length > 0"
+               class="space-y-2">
+            <template x-for="item in (selectedHistoryDetail?.items || [])"
+                      :key="`${item.name}-${item.quantity}`">
+              <div class="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2.5">
+                <p class="text-sm text-gray-800"
+                   x-text="item.name"></p>
+                <p class="text-sm font-semibold text-orange-600"
+                   x-text="item.quantity"></p>
+              </div>
+            </template>
+          </div>
+          <p x-show="selectedHistoryDetail && selectedHistoryDetail.items.length === 0"
+             class="text-sm text-gray-500 text-center py-6">
+            Tidak ada detail item untuk end day ini.
+          </p>
+
+          <div class="mt-4 flex justify-end">
+            <button type="button"
+                    @click="reprintHistoryDetail()"
+                    :disabled="isReprintingHistory || !selectedHistoryDetail"
+                    class="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition">
+              <svg x-show="isReprintingHistory"
+                   class="w-4 h-4 animate-spin"
+                   fill="none"
+                   viewBox="0 0 24 24"
+                   style="display: none;">
+                <circle class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"></circle>
+                <path class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span x-text="isReprintingHistory ? 'Reprint...' : 'Reprint'">Reprint</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div x-show="showToast"
          x-transition:enter="transition ease-out duration-300"
@@ -359,6 +522,7 @@
                 })->values(),
         ) !!},
         stats: {!! json_encode(['total' => $totalOrders, 'baru' => $baruOrders, 'proses' => $prosesOrders, 'selesai' => $selesaiOrders]) !!},
+        activeTab: 'orders',
         currentStatus: null,
         isLoading: false,
         processingItemId: null,
@@ -367,6 +531,25 @@
         toastMessage: '',
         toastType: 'success',
         pollInterval: null,
+        showHistoryDetailModal: false,
+        selectedHistoryDetail: null,
+        isReprintingHistory: false,
+        historyDetails: {!! json_encode(
+            $kitchenRecapHistories->map(function ($history) {
+                    return [
+                        'id' => $history->id,
+                        'end_day' => $history->end_day?->format('d/m/Y') ?? '-',
+                        'total_items' => (int) $history->total_items,
+                        'last_synced_at' => $history->last_synced_at?->format('d/m/Y H:i') ?? '-',
+                        'items' => $history->endayItems->map(function ($item) {
+                                return [
+                                    'name' => $item->inventoryItem?->name ?? 'Unknown',
+                                    'quantity' => (int) $item->quantity,
+                                ];
+                            })->values(),
+                    ];
+                })->values(),
+        ) !!},
 
         init() {
           // Start polling for updates every 30 seconds
@@ -415,6 +598,52 @@
         filterByStatus(status) {
           this.currentStatus = status;
           this.fetchOrders();
+        },
+
+        openHistoryDetail(historyId) {
+          const selected = this.historyDetails.find(history => history.id === historyId);
+          if (!selected) {
+            return;
+          }
+
+          this.selectedHistoryDetail = selected;
+          this.showHistoryDetailModal = true;
+        },
+
+        closeHistoryDetail() {
+          this.showHistoryDetailModal = false;
+          this.selectedHistoryDetail = null;
+        },
+
+        async reprintHistoryDetail() {
+          if (!this.selectedHistoryDetail || this.isReprintingHistory) {
+            return;
+          }
+
+          this.isReprintingHistory = true;
+
+          try {
+            const response = await fetch(`{{ route('admin.kitchen.end-day.reprint', '__HISTORY_ID__') }}`.replace('__HISTORY_ID__', this.selectedHistoryDetail.id), {
+              method: 'POST',
+              headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+              }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+              this.showToastMessage(data.message || 'Reprint berhasil diproses.', 'success');
+            } else {
+              this.showToastMessage(data.message || 'Reprint gagal diproses.', 'error');
+            }
+          } catch (error) {
+            console.error('Error reprinting kitchen history:', error);
+            this.showToastMessage('Reprint gagal diproses.', 'error');
+          } finally {
+            this.isReprintingHistory = false;
+          }
         },
 
         async toggleItem(itemId, orderId) {
