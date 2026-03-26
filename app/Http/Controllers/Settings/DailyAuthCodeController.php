@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Mail\DailyAuthCodeDeliveryMail;
 use App\Models\DailyAuthCode;
+use App\Models\GeneralSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
 
 class DailyAuthCodeController extends Controller
@@ -77,6 +80,33 @@ class DailyAuthCodeController extends Controller
 
         return response()->json([
             'valid' => $request->code === $record->active_code,
+        ]);
+    }
+
+    public function sendEmail(Request $request): JsonResponse
+    {
+        $settings = GeneralSetting::instance();
+        $targetEmail = trim((string) $settings->auth_code_target_email);
+
+        if ($targetEmail === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Email tujuan auth code belum diatur di General Setting.',
+            ], 422);
+        }
+
+        $record = DailyAuthCode::forDate(now()->format('Y-m-d'));
+        $requestedBy = auth()->user()?->name ?? 'System';
+
+        Mail::to($targetEmail)->send(new DailyAuthCodeDeliveryMail(
+            code: $record->active_code,
+            requestedBy: $requestedBy,
+            requestedAt: now()->format('d M Y H:i:s')
+        ));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Auth code berhasil dikirim ke email tujuan.',
         ]);
     }
 }

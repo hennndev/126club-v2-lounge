@@ -175,6 +175,7 @@ Route::middleware('auth')->group(function () {
             Route::post('/override', [DailyAuthCodeController::class, 'override'])->name('override');
             Route::delete('/override', [DailyAuthCodeController::class, 'clearOverride'])->name('clear-override');
             Route::post('/verify', [DailyAuthCodeController::class, 'verify'])->name('verify');
+            Route::post('/send-email', [DailyAuthCodeController::class, 'sendEmail'])->name('send-email');
         });
 
         // Tier Settings

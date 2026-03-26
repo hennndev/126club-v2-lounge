@@ -13,6 +13,7 @@ class GeneralSetting extends Model
         'closed_billing_receipt_printer_id',
         'walk_in_receipt_printer_id',
         'end_day_receipt_printer_id',
+        'auth_code_target_email',
     ];
 
     protected function casts(): array
