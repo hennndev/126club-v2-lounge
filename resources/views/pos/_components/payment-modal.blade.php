@@ -197,6 +197,12 @@
                    x-model="checkoutForm.discount_auth_code"
                    placeholder="Masukkan auth code"
                    class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+            <button type="button"
+                    @click="requestAuthCodeEmail()"
+                    :disabled="isRequestingAuthCodeEmail"
+                    class="mt-2 inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    x-text="isRequestingAuthCodeEmail ? 'Mengirim...' : 'Request Auth Code'">
+            </button>
           </div>
         </div>
 

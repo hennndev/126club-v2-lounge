@@ -186,6 +186,13 @@
                  maxlength="4"
                  placeholder="Masukkan auth code"
                  class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent">
+          <button type="button"
+                  onclick="requestAuthCodeEmailBooking()"
+                  id="cbRequestAuthCodeBtn"
+                  class="mt-2 inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled>
+            Request Auth Code
+          </button>
         </div>
       </div>
 
@@ -382,9 +389,11 @@
 
 <script>
   const cbVerifyAuthCodeUrl = @json(route('admin.settings.daily-auth-code.verify'));
+  const cbSendAuthCodeEmailUrl = @json(route('admin.settings.daily-auth-code.send-email'));
   let closeBillingBookingId = null;
   let cbCurrentGrandTotal = 0;
   let cbCheckerIncomplete = false;
+  let isRequestingAuthCodeEmailBooking = false;
 
   function formatRupiah(value) {
     return 'Rp ' + new Intl.NumberFormat('id-ID').format(value || 0);
@@ -417,10 +426,15 @@
     const percentageBlock = document.getElementById('cbDiscountPercentageBlock');
     const nominalBlock = document.getElementById('cbDiscountNominalBlock');
     const authBlock = document.getElementById('cbDiscountAuthBlock');
+    const requestBtn = document.getElementById('cbRequestAuthCodeBtn');
 
     percentageBlock.classList.toggle('hidden', discountType !== 'percentage');
     nominalBlock.classList.toggle('hidden', discountType !== 'nominal');
     authBlock.classList.toggle('hidden', discountType === 'none');
+
+    if (requestBtn) {
+      requestBtn.disabled = false;
+    }
   }
 
   function onSplitInput(which, event) {
@@ -639,6 +653,44 @@
     if (Math.abs(diff) > 0.01) {
       summary.classList.remove('border-gray-200', 'bg-gray-50', 'text-gray-700');
       summary.classList.add('border-red-200', 'bg-red-50', 'text-red-700');
+    }
+  }
+
+  async function requestAuthCodeEmailBooking() {
+    if (isRequestingAuthCodeEmailBooking) return;
+
+    isRequestingAuthCodeEmailBooking = true;
+    const btn = document.getElementById('cbRequestAuthCodeBtn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Mengirim...';
+    btn.disabled = true;
+
+    try {
+      const response = await fetch(cbSendAuthCodeEmailUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          source: 'booking-close-discount'
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert('Auth code telah dikirim ke email yang terdaftar.');
+      } else {
+        alert(data.message || 'Gagal mengirim auth code.');
+      }
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      isRequestingAuthCodeEmailBooking = false;
+      btn.textContent = originalText;
+      btn.disabled = false;
     }
   }
 

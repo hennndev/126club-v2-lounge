@@ -248,6 +248,8 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
         ->assertSee('Discount (Opsional)', false)
         ->assertSee('Split Bill', false)
         ->assertSee('Auth Code Diskon (4 digit)', false)
+        ->assertSee('Request Auth Code', false)
+        ->assertSee('requestAuthCodeEmail()', false)
         ->assertSee('x-show="calculatedServiceCharge() > 0"', false)
         ->assertSee('x-show="calculatedTax() > 0"', false)
         ->assertDontSee('x-text="receiptData?.tableDisplay"', false)

@@ -40,6 +40,7 @@
         checkout: "{{ route('admin.pos.checkout') }}",
         printReceiptBase: "{{ url('admin/pos/print-receipt') }}",
         verifyAuthCode: "{{ route('admin.settings.daily-auth-code.verify') }}",
+        sendAuthCodeEmail: "{{ route('admin.settings.daily-auth-code.send-email') }}",
         walkInSearchCustomers: "{{ route('admin.pos.walk-in.search-customers') }}",
         walkInCreateCustomer: "{{ route('admin.pos.walk-in.create-customer') }}",
         receiptBase: "{{ url('admin/pos/orders') }}",
@@ -188,6 +189,7 @@
           historyLoading: false,
           showCustomerTypeModal: false,
           showCheckoutModal: false,
+          isRequestingAuthCodeEmail: false,
           showConfirmModal: false,
           showReceiptModal: false,
           receiptData: null,
@@ -737,6 +739,48 @@
             const digits = String(value || '').replace(/[^0-9]/g, '');
 
             return digits ? Number(digits) : 0;
+          },
+
+          async requestAuthCodeEmail() {
+            if (this.checkoutForm.discount_type === 'none') {
+              this.showToastMessage('Pilih diskon terlebih dahulu sebelum request auth code.', 'error');
+
+              return;
+            }
+
+            if (this.isRequestingAuthCodeEmail) {
+              return;
+            }
+
+            this.isRequestingAuthCodeEmail = true;
+
+            try {
+              const response = await fetch(posRoutes.sendAuthCodeEmail, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                },
+                body: JSON.stringify({
+                  source: 'pos-walk-in-discount',
+                }),
+              });
+
+              const data = await response.json();
+
+              if (!response.ok || !data.success) {
+                this.showToastMessage(data.message || 'Gagal mengirim auth code ke email.', 'error');
+
+                return;
+              }
+
+              this.showToastMessage(data.message || 'Auth code berhasil dikirim ke email.', 'success');
+            } catch (error) {
+              this.showToastMessage('Gagal mengirim auth code ke email.', 'error');
+            } finally {
+              this.isRequestingAuthCodeEmail = false;
+            }
           },
 
           validateWalkInPaymentFields() {
