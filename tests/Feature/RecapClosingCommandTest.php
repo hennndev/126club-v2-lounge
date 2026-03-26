@@ -41,6 +41,8 @@ test('recap close command snapshots dashboard totals into recap history and rese
     $dashboard = Dashboard::query()->findOrFail(1);
 
     expect($history)->not->toBeNull()
+        ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
+        ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((float) $history->total_amount)->toBe(250000.0)
         ->and((float) $history->total_tax)->toBe(15000.0)
         ->and((float) $history->total_service_charge)->toBe(10000.0)
@@ -107,6 +109,8 @@ test('recap close command skips when recap for the same day already exists', fun
     $dashboard = Dashboard::query()->findOrFail(1);
 
     expect(RecapHistory::query()->count())->toBe(1)
+        ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
+        ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((float) $dashboard->total_amount)->toBe(99000.0)
         ->and((int) $dashboard->total_kitchen_items)->toBe(3)
         ->and((int) $dashboard->total_bar_items)->toBe(2)
@@ -123,6 +127,8 @@ test('recap close command reports no data when dashboard totals are empty', func
     $dashboard = Dashboard::query()->findOrFail(1);
 
     expect(RecapHistory::query()->count())->toBe(0)
+        ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
+        ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((float) $dashboard->total_amount)->toBe(0.0)
         ->and((int) $dashboard->total_transactions)->toBe(0);
 });

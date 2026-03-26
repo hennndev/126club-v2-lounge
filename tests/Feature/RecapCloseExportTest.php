@@ -43,6 +43,8 @@ test('manual close export uses today as end day when closed at night', function 
 
     expect($history)->not->toBeNull()
         ->and($history->end_day?->toDateString())->toBe('2026-03-18')
+        ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
+        ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((int) $history->total_kitchen_items)->toBe(4)
         ->and((int) $history->total_bar_items)->toBe(2)
         ->and((float) $dashboard->total_amount)->toBe(0.0)
@@ -82,6 +84,8 @@ test('manual close export uses yesterday as end day when closed in morning befor
 
     expect($history)->not->toBeNull()
         ->and($history->end_day?->toDateString())->toBe('2026-03-17')
+        ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
+        ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((int) $history->total_kitchen_items)->toBe(5)
         ->and((int) $history->total_bar_items)->toBe(3)
         ->and((float) $dashboard->total_amount)->toBe(0.0)
@@ -121,6 +125,8 @@ test('manual close export uses today as end day when closed at exactly 9am', fun
 
     expect($history)->not->toBeNull()
         ->and($history->end_day?->toDateString())->toBe('2026-03-18')
+        ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
+        ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((int) $history->total_kitchen_items)->toBe(2)
         ->and((int) $history->total_bar_items)->toBe(1)
         ->and((float) $dashboard->total_amount)->toBe(0.0)

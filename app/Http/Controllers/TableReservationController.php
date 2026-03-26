@@ -882,9 +882,17 @@ class TableReservationController extends Controller
         $taxBaseAfterDiscount = max($bases['tax_base'] * (1 - $discountRatio), 0);
         $taxAndServiceBaseAfterDiscount = max($bases['tax_and_service_base'] * (1 - $discountRatio), 0);
 
-        $serviceCharge = round($serviceChargeBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
-        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
-        $tax = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+        $taxRate = ((float) $settings->tax_percentage) / 100;
+        $serviceChargeRate = ((float) $settings->service_charge_percentage) / 100;
+
+        $tax = round($taxBaseAfterDiscount * $taxRate, 2);
+
+        $serviceChargeBaseWithTax = $serviceChargeBaseAfterDiscount;
+        if ($taxRate > 0) {
+            $serviceChargeBaseWithTax += $taxAndServiceBaseAfterDiscount * $taxRate;
+        }
+
+        $serviceCharge = round($serviceChargeBaseWithTax * $serviceChargeRate, 2);
         $grandTotalBeforeDownPayment = $subtotalAfterDiscount + $serviceCharge + $tax;
         $downPaymentAmount = min(max($downPaymentAmount, 0), $grandTotalBeforeDownPayment);
 

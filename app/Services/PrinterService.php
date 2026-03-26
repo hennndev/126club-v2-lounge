@@ -1180,4 +1180,86 @@ class PrinterService
 
         return $lines;
     }
+
+    /**
+     * @param  array<int, array{name: string, quantity: int}>  $items
+     */
+    public function printEndDayKitchenSummary(array $items, string $endDay, Printer $printer): bool
+    {
+        return $this->printEndDayItemSummary('KITCHEN', $items, $endDay, $printer);
+    }
+
+    /**
+     * @param  array<int, array{name: string, quantity: int}>  $items
+     */
+    public function printEndDayBarSummary(array $items, string $endDay, Printer $printer): bool
+    {
+        return $this->printEndDayItemSummary('BAR', $items, $endDay, $printer);
+    }
+
+    /**
+     * @param  array<int, array{name: string, quantity: int}>  $items
+     */
+    protected function printEndDayItemSummary(string $section, array $items, string $endDay, Printer $printer): bool
+    {
+        $width = max((int) ($printer->width ?: 42), 32);
+        $separator = str_repeat('-', $width);
+        $totalQty = collect($items)->sum('quantity');
+
+        $lines = [
+            "END DAY {$section}",
+            'Tanggal: '.$endDay,
+            'Dicetak: '.now()->format('d/m/Y H:i:s'),
+            "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
+            $separator,
+        ];
+
+        foreach ($items as $item) {
+            $lines[] = (string) $item['name'];
+            $lines[] = $this->formatClosedBillingPair('Qty', number_format((int) $item['quantity'], 0, ',', '.'), $width);
+            $lines[] = str_repeat('-', $width);
+        }
+
+        $lines[] = $this->formatClosedBillingPair('TOTAL ITEM', number_format((int) $totalQty, 0, ',', '.'), $width);
+
+        if ($printer->connection_type === 'log') {
+            $this->logPrint("END DAY {$section}", [...$lines, 'Status : SUCCESS (LOG MODE)']);
+
+            return true;
+        }
+
+        $connector = $this->createConnector($printer);
+        $escpos = new EscposPrinter($connector);
+
+        try {
+            $escpos->setJustification(EscposPrinter::JUSTIFY_CENTER);
+            $escpos->setEmphasis(true);
+            $escpos->text("END DAY {$section}\n");
+            $escpos->setEmphasis(false);
+            $escpos->text('Tanggal: '.$endDay."\n");
+            $escpos->text(now()->format('d/m/Y H:i:s')."\n");
+            $escpos->setJustification(EscposPrinter::JUSTIFY_LEFT);
+            $escpos->text($separator."\n");
+
+            foreach ($items as $item) {
+                $escpos->setEmphasis(true);
+                $escpos->text(((string) $item['name'])."\n");
+                $escpos->setEmphasis(false);
+                $escpos->text($this->formatClosedBillingPair('Qty', number_format((int) $item['quantity'], 0, ',', '.'), $width)."\n");
+                $escpos->text(str_repeat('-', $width)."\n");
+            }
+
+            $escpos->setEmphasis(true);
+            $escpos->text($this->formatClosedBillingPair('TOTAL ITEM', number_format((int) $totalQty, 0, ',', '.'), $width)."\n");
+            $escpos->setEmphasis(false);
+            $escpos->feed(3);
+            $escpos->cut();
+
+            $this->logPrint("END DAY {$section} PREVIEW", [...$lines, 'Status : SUCCESS (SENT TO PRINTER)']);
+
+            return true;
+        } finally {
+            $escpos->close();
+        }
+    }
 }
