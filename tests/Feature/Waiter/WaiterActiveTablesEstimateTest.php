@@ -172,5 +172,5 @@ test('active tables estimate does not become negative when discount exceeds tota
         ->assertViewIs('waiter.active-tables')
         ->assertSee('Rp 50.000')
         ->assertSee('Diskon')
-        ->assertSeeInOrder(['Estimasi Total', 'Rp 0']);
+        ->assertSeeInOrder(['Estimasi Total', 'Rp 1.050']);
 });

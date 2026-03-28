@@ -2,6 +2,7 @@
 
 use App\Models\Area;
 use App\Models\Billing;
+use App\Models\Event;
 use App\Models\InventoryItem;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -238,6 +239,128 @@ test('confirming a second booking for the same table and date fails', function (
 
     $bookingB->refresh();
     expect($bookingB->status)->toBe('pending'); // still pending, not confirmed
+});
+
+test('checking in booking applies active event adjustment to minimum charge and shows it in active tab', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['minimum_charge' => 100000]);
+    $customer = makeBookingCustomer();
+    $reservationDate = now()->addDay()->toDateString();
+
+    Event::create([
+        'name' => 'Saturday Party',
+        'slug' => 'saturday-party-'.uniqid(),
+        'description' => 'Event test adjustment',
+        'start_date' => $reservationDate,
+        'end_date' => $reservationDate,
+        'start_time' => '18:00',
+        'end_time' => '23:00',
+        'is_active' => true,
+        'price_adjustment_type' => 'percentage',
+        'price_adjustment_value' => 10,
+    ]);
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => $reservationDate,
+        'reservation_time' => '20:00',
+        'status' => 'confirmed',
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.bookings.updateStatus', $booking), ['status' => 'checked_in'])
+        ->assertRedirect(route('admin.bookings.index'));
+
+    $session = TableSession::query()
+        ->where('table_reservation_id', $booking->id)
+        ->where('status', 'active')
+        ->first();
+
+    expect($session)->not->toBeNull();
+
+    $billing = $session?->billing;
+
+    expect($billing)->not->toBeNull()
+        ->and((float) ($billing?->minimum_charge ?? 0))->toBe(110000.0);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'active']))
+        ->assertOk()
+        ->assertSee('Saturday Party')
+        ->assertSee('Rp 110.000')
+        ->assertSee('Min Event: Rp 110.000');
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'all']))
+        ->assertOk()
+        ->assertSee('Event: Saturday Party')
+        ->assertSee('"event_name":"Saturday Party"', false);
+});
+
+test('close billing trigger includes adjusted minimum charge from event', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['minimum_charge' => 100000]);
+    $customer = makeBookingCustomer();
+    $reservationDate = now()->addDay()->toDateString();
+
+    Event::create([
+        'name' => 'Night Party',
+        'slug' => 'night-party-'.uniqid(),
+        'description' => 'Event test adjustment',
+        'start_date' => $reservationDate,
+        'end_date' => $reservationDate,
+        'start_time' => '18:00',
+        'end_time' => '23:00',
+        'is_active' => true,
+        'price_adjustment_type' => 'percentage',
+        'price_adjustment_value' => 10,
+    ]);
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => $reservationDate,
+        'reservation_time' => '20:00',
+        'status' => 'confirmed',
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.bookings.updateStatus', $booking), ['status' => 'checked_in'])
+        ->assertRedirect(route('admin.bookings.index'));
+
+    $session = TableSession::query()
+        ->where('table_reservation_id', $booking->id)
+        ->where('status', 'active')
+        ->first();
+
+    expect($session)->not->toBeNull();
+
+    Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'pending',
+        'items_total' => 150000,
+        'discount_amount' => 0,
+        'total' => 150000,
+        'ordered_at' => now(),
+    ]);
+
+    // Min charge 100k + 10% = 110k (event is only adjustment, not a separate line)
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'active']))
+        ->assertOk()
+        ->assertSee('data-minimum-charge="110000"', false);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'all']))
+        ->assertOk()
+        ->assertSee('Min Rp 110');
 });
 
 test('completing a booking sets table status back to available', function () {

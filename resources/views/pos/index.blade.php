@@ -887,14 +887,16 @@
 
           discountAmount() {
             if (this.checkoutForm.customer_type === 'walk-in') {
+              const discountBase = this.walkInPreDiscountTotal();
+
               if (this.checkoutForm.discount_type === 'percentage') {
-                const amount = this.cartTotal * (this.getWalkInDiscountPercentage() / 100);
+                const amount = discountBase * (this.getWalkInDiscountPercentage() / 100);
 
                 return Math.round(amount);
               }
 
               if (this.checkoutForm.discount_type === 'nominal') {
-                return Math.min(Math.round(this.getWalkInDiscountNominal()), Math.round(this.cartTotal));
+                return Math.min(Math.round(this.getWalkInDiscountNominal()), Math.round(discountBase));
               }
 
               return 0;
@@ -904,6 +906,10 @@
           },
 
           finalTotal() {
+            if (this.checkoutForm.customer_type === 'walk-in') {
+              return this.cartTotal;
+            }
+
             return this.cartTotal - this.discountAmount();
           },
 
@@ -943,40 +949,58 @@
 
           calculatedServiceCharge() {
             const bases = this.chargeableBases();
-            const discountRatio = this.discountRatio();
-            const serviceChargeBaseAfterDiscount = bases.serviceChargeBase * (1 - discountRatio);
             const serviceChargeRate = this.posCharges.serviceChargePercentage / 100;
 
             if (this.checkoutForm.customer_type === 'walk-in') {
               const taxRate = this.posCharges.taxPercentage / 100;
-              let serviceChargeBaseWithTax = serviceChargeBaseAfterDiscount;
+              let serviceChargeBaseWithTax = bases.serviceChargeBase;
 
               if (taxRate > 0) {
-                serviceChargeBaseWithTax += bases.taxAndServiceBase * (1 - discountRatio) * taxRate;
+                serviceChargeBaseWithTax += bases.taxAndServiceBase * taxRate;
               }
 
               return Math.round(serviceChargeBaseWithTax * serviceChargeRate);
             }
+
+            const discountRatio = this.discountRatio();
+            const serviceChargeBaseAfterDiscount = bases.serviceChargeBase * (1 - discountRatio);
 
             return Math.round(serviceChargeBaseAfterDiscount * serviceChargeRate);
           },
 
           calculatedTax() {
             const bases = this.chargeableBases();
-            const discountRatio = this.discountRatio();
-            const taxBaseAfterDiscount = bases.taxBase * (1 - discountRatio);
             const taxRate = this.posCharges.taxPercentage / 100;
 
             if (this.checkoutForm.customer_type === 'walk-in') {
-              return Math.round(taxBaseAfterDiscount * taxRate);
+              return Math.round(bases.taxBase * taxRate);
             }
+
+            const discountRatio = this.discountRatio();
+            const taxBaseAfterDiscount = bases.taxBase * (1 - discountRatio);
 
             const serviceChargeTaxable = Math.round((bases.taxAndServiceBase * (1 - discountRatio)) * (this.posCharges.serviceChargePercentage / 100));
 
             return Math.round((taxBaseAfterDiscount + serviceChargeTaxable) * taxRate);
           },
 
+          walkInPreDiscountTotal() {
+            return this.cartTotal + this.calculatedServiceCharge() + this.calculatedTax();
+          },
+
+          subTotalBeforeDiscount() {
+            if (this.checkoutForm.customer_type === 'walk-in') {
+              return this.walkInPreDiscountTotal();
+            }
+
+            return this.finalTotal() + this.calculatedServiceCharge() + this.calculatedTax() + this.discountAmount();
+          },
+
           payableTotal() {
+            if (this.checkoutForm.customer_type === 'walk-in') {
+              return this.walkInPreDiscountTotal() - this.discountAmount();
+            }
+
             return this.finalTotal() + this.calculatedServiceCharge() + this.calculatedTax();
           },
 
@@ -1459,8 +1483,8 @@
               '<hr class="sep">' +
               ((d.itemsTotal || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Subtotal: ' + this.formatCurrency(d.itemsTotal || 0) + '</p>' : '') +
               ((d.discountAmount || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Diskon: -' + this.formatCurrency(d.discountAmount || 0) + '</p>' : '') +
-              ((d.serviceCharge || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Service Charge (' + (d.serviceChargePercentage || 0) + '%): ' + this.formatCurrency(d.serviceCharge || 0) + '</p>' : '') +
               ((d.tax || 0) > 0 ? '<p style="text-align:right;margin:2px 0">PPN (' + (d.taxPercentage || 0) + '%): ' + this.formatCurrency(d.tax || 0) + '</p>' : '') +
+              ((d.serviceCharge || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Service Charge (' + (d.serviceChargePercentage || 0) + '%): ' + this.formatCurrency(d.serviceCharge || 0) + '</p>' : '') +
               '<p style="text-align:right;font-weight:bold">TOTAL: ' + d.formattedTotal + '</p>' +
               '<hr class="sep">' +
               '<p style="text-align:center;margin-top:8px">Terima kasih!</p>';

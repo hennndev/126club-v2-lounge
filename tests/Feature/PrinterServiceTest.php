@@ -1,7 +1,10 @@
 <?php
 
 use App\Models\BarOrder;
+use App\Models\Billing;
 use App\Models\KitchenOrder;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\Tabel;
 use App\Services\PrinterService;
@@ -93,4 +96,56 @@ it('prints kitchen ticket with correct item names from inventoryItem relationshi
     $log = file_get_contents(storage_path('logs/printer.log'));
 
     expect($log)->toContain('2x Test Food');
+});
+
+it('prints walk-in billing simulation with discount row after subtotal', function () {
+    $orderItem = new OrderItem;
+    $orderItem->item_name = 'Test Food Lounge';
+    $orderItem->quantity = 1;
+    $orderItem->price = 5000000;
+    $orderItem->subtotal = 5000000;
+
+    $order = new Order;
+    $order->order_number = 'WALKIN-TEST-01';
+    $order->ordered_at = now();
+    $order->setRelation('items', collect([$orderItem]));
+    $order->setRelation('customer', null);
+    $order->setRelation('createdBy', null);
+
+    $billing = new Billing;
+    $billing->transaction_code = 'WALKIN-000001';
+    $billing->updated_at = now();
+    $billing->minimum_charge = 0;
+    $billing->subtotal = 5000000;
+    $billing->tax = 550000;
+    $billing->tax_percentage = 11;
+    $billing->service_charge = 277500;
+    $billing->service_charge_percentage = 5;
+    $billing->discount_amount = 582750;
+    $billing->grand_total = 5244750;
+    $billing->payment_mode = 'normal';
+    $billing->payment_method = 'cash';
+
+    $printer = Printer::make([
+        'name' => 'Walkin Test',
+        'connection_type' => 'log',
+        'width' => 42,
+    ]);
+
+    $result = (new PrinterService)->printWalkInBillingReceipt($order, $billing, $printer);
+
+    $log = (string) file_get_contents(storage_path('logs/printer.log'));
+
+    $subTotalPos = strpos($log, 'Sub Total');
+    $discountPos = strpos($log, 'Diskon');
+    $remainingPos = strpos($log, 'Sisa Bayar');
+
+    expect($result)->toBeTrue()
+        ->and($log)->toContain('WALK-IN RECEIPT')
+        ->and($log)->toContain('- Rp 582.750')
+        ->and($subTotalPos)->not->toBeFalse()
+        ->and($discountPos)->not->toBeFalse()
+        ->and($remainingPos)->not->toBeFalse()
+        ->and($discountPos > $subTotalPos)->toBeTrue()
+        ->and($remainingPos > $discountPos)->toBeTrue();
 });

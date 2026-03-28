@@ -223,43 +223,47 @@
   <hr class="sep">
 
   <!-- Totals -->
-  @if (($billing?->minimum_charge ?? 0) > 0)
-    <div class="total-row">
-      <span>Minimum Charge</span>
-      <span>Rp {{ number_format($billing->minimum_charge, 0, ',', '.') }}</span>
-    </div>
-  @endif
+  @php
+    $totalBillAmount = (float) ($billing?->subtotal ?? 0);
+    $taxAmount = (float) ($billing?->tax ?? 0);
+    $serviceChargeAmount = (float) ($billing?->service_charge ?? 0);
+    $subTotalAmount = $totalBillAmount + $taxAmount + $serviceChargeAmount;
+    $downPaymentAmount = (float) ($booking?->down_payment_amount ?? 0);
+  @endphp
+
   <div class="total-row">
-    <span>Subtotal</span>
-    <span>Rp {{ number_format($billing?->subtotal ?? 0, 0, ',', '.') }}</span>
+    <span>Total Bill</span>
+    <span>Rp {{ number_format($totalBillAmount, 0, ',', '.') }}</span>
   </div>
-  @if (($billing?->discount_amount ?? 0) > 0)
+
+  @if ($taxAmount > 0)
     <div class="total-row">
-      <span>Diskon</span>
-      <span>- Rp {{ number_format($billing->discount_amount, 0, ',', '.') }}</span>
+      <span>PPN ({{ (int) ($billing?->tax_percentage ?? 0) }}%)</span>
+      <span>Rp {{ number_format($taxAmount, 0, ',', '.') }}</span>
     </div>
   @endif
-  @if (($booking?->down_payment_amount ?? 0) > 0)
+
+  @if ($serviceChargeAmount > 0)
+    <div class="total-row">
+      <span>Service Charge ({{ (int) ($billing?->service_charge_percentage ?? 0) }}%)</span>
+      <span>Rp {{ number_format($serviceChargeAmount, 0, ',', '.') }}</span>
+    </div>
+  @endif
+
+  <div class="total-row">
+    <span>Sub Total</span>
+    <span>Rp {{ number_format($subTotalAmount, 0, ',', '.') }}</span>
+  </div>
+
+  @if ($downPaymentAmount > 0)
     <div class="total-row">
       <span>DP</span>
-      <span>- Rp {{ number_format($booking->down_payment_amount, 0, ',', '.') }}</span>
-    </div>
-  @endif
-  @if (($billing?->service_charge ?? 0) > 0)
-    <div class="total-row">
-      <span>Service Charge ({{ (int) ($billing->service_charge_percentage ?? 0) }}%)</span>
-      <span>Rp {{ number_format($billing->service_charge, 0, ',', '.') }}</span>
-    </div>
-  @endif
-  @if (($billing?->tax ?? 0) > 0)
-    <div class="total-row">
-      <span>PPN ({{ (int) ($billing->tax_percentage ?? 0) }}%)</span>
-      <span>Rp {{ number_format($billing->tax, 0, ',', '.') }}</span>
+      <span>- Rp {{ number_format($downPaymentAmount, 0, ',', '.') }}</span>
     </div>
   @endif
 
   <div class="two-col grand-total">
-    <span>TOTAL</span>
+    <span>Sisa Bayar</span>
     <span>Rp {{ number_format($billing?->grand_total ?? 0, 0, ',', '.') }}</span>
   </div>
 

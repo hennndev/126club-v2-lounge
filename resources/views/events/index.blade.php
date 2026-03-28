@@ -323,18 +323,93 @@
     <script>
       const events = @json($events);
 
+      function formatRupiahValue(value) {
+        const numericValue = Number(String(value || '').replace(/[^\d]/g, ''));
+
+        if (!Number.isFinite(numericValue) || numericValue <= 0) {
+          return '';
+        }
+
+        return `Rp ${new Intl.NumberFormat('id-ID').format(numericValue)}`;
+      }
+
+      function normalizePercentageValue(value) {
+        const normalized = String(value || '').replace(',', '.').replace(/[^\d.]/g, '');
+        const parts = normalized.split('.');
+
+        if (parts.length <= 1) {
+          return parts[0] || '';
+        }
+
+        return `${parts.shift()}.${parts.join('')}`;
+      }
+
+      function normalizeFixedValue(value) {
+        return String(value || '').replace(/[^\d]/g, '');
+      }
+
+      function getPriceAdjustmentInput() {
+        return document.getElementById('price_adjustment_value');
+      }
+
+      function getPriceAdjustmentType() {
+        return document.getElementById('price_adjustment_type').value;
+      }
+
+      function updatePriceInputDisplay() {
+        const priceInput = getPriceAdjustmentInput();
+        const type = getPriceAdjustmentType();
+
+        if (type === 'percentage') {
+          priceInput.value = normalizePercentageValue(priceInput.value);
+          return;
+        }
+
+        const normalizedFixedValue = normalizeFixedValue(priceInput.value);
+        priceInput.value = formatRupiahValue(normalizedFixedValue);
+      }
+
+      function normalizePriceInputForSubmit() {
+        const priceInput = getPriceAdjustmentInput();
+        const type = getPriceAdjustmentType();
+
+        if (type === 'percentage') {
+          priceInput.value = normalizePercentageValue(priceInput.value);
+          return;
+        }
+
+        priceInput.value = normalizeFixedValue(priceInput.value);
+      }
+
+      function setPriceAdjustmentInputValue(value) {
+        const priceInput = getPriceAdjustmentInput();
+        const type = getPriceAdjustmentType();
+
+        if (type === 'percentage') {
+          priceInput.value = normalizePercentageValue(value);
+          return;
+        }
+
+        priceInput.value = formatRupiahValue(value);
+      }
+
       function updatePriceLabel() {
         const type = document.getElementById('price_adjustment_type').value;
         const label = document.getElementById('priceLabel');
         const help = document.getElementById('priceHelp');
+        const priceInput = getPriceAdjustmentInput();
 
         if (type === 'percentage') {
           label.textContent = 'Nilai Kenaikan (%)';
           help.textContent = 'Dari harga minimum charge normal';
+          priceInput.placeholder = 'Contoh: 10';
         } else {
           label.textContent = 'Nilai Kenaikan (Rp)';
           help.textContent = 'Ditambahkan ke harga minimum charge';
+          priceInput.placeholder = 'Contoh: Rp 100.000';
         }
+
+        updatePriceInputDisplay();
       }
 
       function openModal(mode, eventId = null) {
@@ -363,7 +438,7 @@
             document.getElementById('start_time').value = event.start_time || '';
             document.getElementById('end_time').value = event.end_time || '';
             document.getElementById('price_adjustment_type').value = event.price_adjustment_type;
-            document.getElementById('price_adjustment_value').value = event.price_adjustment_value;
+            setPriceAdjustmentInputValue(event.price_adjustment_value);
             document.getElementById('is_active').checked = event.is_active;
             updatePriceLabel();
           }
@@ -429,6 +504,14 @@
 
       document.getElementById('deleteModal').addEventListener('click', function(e) {
         if (e.target === this) closeDeleteModal();
+      });
+
+      document.getElementById('price_adjustment_value').addEventListener('input', function() {
+        updatePriceInputDisplay();
+      });
+
+      document.getElementById('eventForm').addEventListener('submit', function() {
+        normalizePriceInputForSubmit();
       });
     </script>
   @endpush

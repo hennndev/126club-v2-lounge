@@ -81,19 +81,19 @@
           <span class="font-semibold text-orange-500"
                 x-text="'-' + formatCurrency(receiptData?.discountAmount || 0)"></span>
         </div>
-        <div x-show="(receiptData?.serviceCharge || 0) > 0"
-             class="flex justify-between">
-          <span class="text-gray-500"
-                x-text="'Service Charge (' + (receiptData?.serviceChargePercentage || 0) + '%)'"></span>
-          <span class="font-semibold text-gray-800"
-                x-text="formatCurrency(receiptData?.serviceCharge || 0)"></span>
-        </div>
         <div x-show="(receiptData?.tax || 0) > 0"
              class="flex justify-between">
           <span class="text-gray-500"
                 x-text="'PPN (' + (receiptData?.taxPercentage || 0) + '%)'"></span>
           <span class="font-semibold text-gray-800"
                 x-text="formatCurrency(receiptData?.tax || 0)"></span>
+        </div>
+        <div x-show="(receiptData?.serviceCharge || 0) > 0"
+             class="flex justify-between">
+          <span class="text-gray-500"
+                x-text="'Service Charge (' + (receiptData?.serviceChargePercentage || 0) + '%)'"></span>
+          <span class="font-semibold text-gray-800"
+                x-text="formatCurrency(receiptData?.serviceCharge || 0)"></span>
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500">Waktu</span>

@@ -404,6 +404,83 @@ test('close billing calculates service charge based on subtotal plus tax when ta
         ->and((float) $updatedBilling->grand_total)->toBe(138600.0);
 });
 
+test('close billing calculates percentage discount after tax and service charge', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
+    DailyAuthCode::query()->updateOrCreate(
+        ['date' => now()->format('Y-m-d')],
+        [
+            'code' => '1357',
+            'override_code' => null,
+            'generated_at' => now(),
+        ],
+    );
+
+    actingAs($admin)
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'discount_type' => 'percentage',
+            'discount_percentage' => 10,
+            'discount_auth_code' => '1357',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect((float) $updatedBilling->tax)->toBe(13200.0)
+        ->and((float) $updatedBilling->service_charge)->toBe(13320.0)
+        ->and((float) $updatedBilling->discount_amount)->toBe(14652.0)
+        ->and((float) $updatedBilling->grand_total)->toBe(131868.0);
+});
+
+test('booking receipt displays closed billing schema with tax, service charge, subtotal, dp, and remaining payment', function () {
+    $admin = adminUser();
+    [$booking, $session, $billing] = makeBookingCloseBillingFixture($admin);
+
+    $booking->update([
+        'down_payment_amount' => 500000,
+    ]);
+
+    $billing->update([
+        'subtotal' => 1500000,
+        'tax_percentage' => 10,
+        'tax' => 150000,
+        'service_charge_percentage' => 8,
+        'service_charge' => 132000,
+        'grand_total' => 1282000,
+        'paid_amount' => 1282000,
+        'billing_status' => 'paid',
+        'transaction_code' => 'BILLING-000001',
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $response = actingAs($admin)->get(route('admin.bookings.receipt', $booking));
+
+    $response
+        ->assertSuccessful()
+        ->assertSee('Total Bill', false)
+        ->assertSee('PPN (10%)', false)
+        ->assertSee('Service Charge (8%)', false)
+        ->assertSee('Sub Total', false)
+        ->assertSee('DP', false)
+        ->assertSee('Sisa Bayar', false)
+        ->assertSee('Rp 1.500.000', false)
+        ->assertSee('Rp 150.000', false)
+        ->assertSee('Rp 132.000', false)
+        ->assertSee('Rp 1.782.000', false)
+        ->assertSee('- Rp 500.000', false)
+        ->assertSee('Rp 1.282.000', false);
+});
+
 test('close billing works with normal non-cash payment and reference number', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);

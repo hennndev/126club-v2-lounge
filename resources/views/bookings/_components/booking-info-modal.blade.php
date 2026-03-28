@@ -61,6 +61,16 @@
           <p id="biModalDownPayment"
              class="text-sm text-gray-700 mt-0.5">Rp 0</p>
         </div>
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Event</p>
+          <p id="biModalEvent"
+             class="text-sm text-gray-700 mt-0.5">—</p>
+        </div>
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Min. Charge Event</p>
+          <p id="biModalEventMinimumCharge"
+             class="text-sm text-gray-700 mt-0.5">—</p>
+        </div>
       </div>
       <div id="biModalNoteWrap"
            class="hidden">

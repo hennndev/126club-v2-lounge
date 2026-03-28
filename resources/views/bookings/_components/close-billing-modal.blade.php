@@ -44,12 +44,29 @@
       <!-- Billing Summary -->
       <div class="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
         <div class="flex justify-between text-gray-600">
-          <span>Minimum Charge</span>
-          <span id="cbMinimumCharge">Rp 0</span>
+          <span>Total Bill</span>
+          <span id="cbTotalBill">Rp 0</span>
+        </div>
+        <div class="flex justify-between text-gray-600"
+             id="cbTaxRow">
+          <span id="cbTaxLabel">PPN</span>
+          <span id="cbTax">Rp 0</span>
+        </div>
+        <div class="flex justify-between text-gray-600"
+             id="cbServiceChargeRow">
+          <span id="cbServiceChargeLabel">Service Charge</span>
+          <span id="cbServiceCharge">Rp 0</span>
         </div>
         <div class="flex justify-between text-gray-600">
-          <span>Orders Total</span>
-          <span id="cbOrdersTotal">Rp 0</span>
+          <span>Sub Total</span>
+          <span id="cbSubTotal">Rp 0</span>
+        </div>
+        <div class="flex justify-between text-gray-600"
+             id="cbDownPaymentRow"
+             style="display:none!important">
+          <span>DP</span>
+          <span id="cbDownPayment"
+                class="text-green-600">Rp 0</span>
         </div>
         <div class="flex justify-between text-gray-600"
              id="cbDiscountRow"
@@ -58,25 +75,8 @@
           <span id="cbDiscount"
                 class="text-green-600">- Rp 0</span>
         </div>
-        <div class="flex justify-between text-gray-600"
-             id="cbDownPaymentRow"
-             style="display:none!important">
-          <span>DP</span>
-          <span id="cbDownPayment"
-                class="text-green-600">- Rp 0</span>
-        </div>
-        <div class="flex justify-between text-gray-600"
-             id="cbServiceChargeRow">
-          <span id="cbServiceChargeLabel">Service Charge</span>
-          <span id="cbServiceCharge">Rp 0</span>
-        </div>
-        <div class="flex justify-between text-gray-600"
-             id="cbTaxRow">
-          <span id="cbTaxLabel">PPN</span>
-          <span id="cbTax">Rp 0</span>
-        </div>
         <div class="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-900 text-base">
-          <span>TOTAL</span>
+          <span>Sisa Bayar</span>
           <span id="cbGrandTotal">Rp 0</span>
         </div>
       </div>
@@ -394,6 +394,8 @@
   let cbCurrentGrandTotal = 0;
   let cbCheckerIncomplete = false;
   let isRequestingAuthCodeEmailBooking = false;
+  let cbCurrentSubTotal = 0;
+  let cbCurrentDownPayment = 0;
 
   function formatRupiah(value) {
     return 'Rp ' + new Intl.NumberFormat('id-ID').format(value || 0);
@@ -516,8 +518,17 @@
 
     const fmt = v => formatRupiah(v || 0);
 
-    document.getElementById('cbMinimumCharge').textContent = fmt(minimumCharge);
-    document.getElementById('cbOrdersTotal').textContent = fmt(ordersTotal);
+    // Total Bill adalah max(minimum_charge, orders_total) tanpa diskon
+    const totalBill = Math.max(minimumCharge, ordersTotal);
+    document.getElementById('cbTotalBill').textContent = fmt(totalBill);
+
+    const subTotal = totalBill + taxAmount + serviceChargeAmount;
+
+    // Final amount setelah diskon dipotong dari subtotal
+    const subTotalAfterDiscount = subTotal - discountAmount;
+
+    // Sisa Bayar = SubTotal setelah diskon - DP
+    const sistaBayar = Math.max(subTotalAfterDiscount - downPaymentAmount, 0);
 
     const discountRow = document.getElementById('cbDiscountRow');
     if (discountAmount > 0) {
@@ -529,13 +540,11 @@
 
     const downPaymentRow = document.getElementById('cbDownPaymentRow');
     if (downPaymentAmount > 0) {
-      document.getElementById('cbDownPayment').textContent = '- ' + fmt(downPaymentAmount);
+      document.getElementById('cbDownPayment').textContent = fmt(downPaymentAmount);
       downPaymentRow.style.removeProperty('display');
     } else {
       downPaymentRow.style.setProperty('display', 'none', 'important');
     }
-
-    const subtotal = Math.max(minimumCharge, ordersTotal);
 
     const serviceLabel = serviceChargePercentage > 0 ?
       `Service Charge (${serviceChargePercentage}%)` :
@@ -548,11 +557,14 @@
     document.getElementById('cbTaxLabel').textContent = taxLabel;
     document.getElementById('cbServiceCharge').textContent = fmt(serviceChargeAmount);
     document.getElementById('cbTax').textContent = fmt(taxAmount);
+    document.getElementById('cbSubTotal').textContent = fmt(subTotal);
 
-    // Grand total
-    const computedGrandTotal = Number(trigger?.dataset?.grandTotal || 0);
-    cbCurrentGrandTotal = computedGrandTotal;
-    document.getElementById('cbGrandTotal').textContent = fmt(computedGrandTotal);
+    // Store current values for discount recalculation
+    cbCurrentSubTotal = subTotal;
+    cbCurrentDownPayment = downPaymentAmount;
+
+    cbCurrentGrandTotal = sistaBayar;
+    document.getElementById('cbGrandTotal').textContent = fmt(sistaBayar);
 
     document.getElementById('cbServiceChargeRow').style.display = serviceChargeAmount > 0 ? 'flex' : 'none';
     document.getElementById('cbTaxRow').style.display = taxAmount > 0 ? 'flex' : 'none';
@@ -590,7 +602,7 @@
     setDiscountNominalInput(0);
     document.getElementById('cb_discount_auth_code').value = '';
     setSplitInput('cash', 0);
-    setSplitInput('non_cash_amount', computedGrandTotal);
+    setSplitInput('non_cash_amount', sistaBayar);
     setSplitInput('second_non_cash_amount', 0);
     document.getElementById('cb_split_non_cash_method').value = 'debit';
     document.getElementById('cb_split_second_non_cash_method').value = 'debit';
@@ -654,6 +666,32 @@
       summary.classList.remove('border-gray-200', 'bg-gray-50', 'text-gray-700');
       summary.classList.add('border-red-200', 'bg-red-50', 'text-red-700');
     }
+  }
+
+  function updateGrandTotalFromDiscount() {
+    const discountType = getDiscountType();
+    let discountAmount = 0;
+
+    if (discountType === 'percentage') {
+      const percentage = Number(document.getElementById('cb_discount_percentage')?.value || 0);
+      discountAmount = Math.round((cbCurrentSubTotal * percentage) / 100);
+    } else if (discountType === 'nominal') {
+      discountAmount = Number(document.getElementById('cb_discount_nominal')?.value || 0);
+    }
+
+    const sistaBayar = Math.max(cbCurrentSubTotal - cbCurrentDownPayment - discountAmount, 0);
+    cbCurrentGrandTotal = sistaBayar;
+
+    // Update Sisa Bayar display
+    const fmt = v => formatRupiah(v || 0);
+    document.getElementById('cbGrandTotal').textContent = fmt(sistaBayar);
+
+    // Reset split payment to max amount
+    setSplitInput('cash', 0);
+    setSplitInput('non_cash_amount', sistaBayar);
+    setSplitInput('second_non_cash_amount', 0);
+
+    updateSplitSummary();
   }
 
   async function requestAuthCodeEmailBooking() {
@@ -911,6 +949,11 @@
   document.getElementById('cb_discount_nominal_display').addEventListener('input', (event) => {
     const enteredAmount = extractNumber(event.target.value);
     setDiscountNominalInput(enteredAmount);
+    updateGrandTotalFromDiscount();
+  });
+
+  document.getElementById('cb_discount_percentage').addEventListener('input', (event) => {
+    updateGrandTotalFromDiscount();
   });
 
   document.getElementById('cb_split_cash_display').addEventListener('input', (event) => onSplitInput('cash', event));

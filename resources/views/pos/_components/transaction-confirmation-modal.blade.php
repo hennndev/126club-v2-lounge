@@ -140,23 +140,31 @@
           <span>Subtotal</span>
           <span x-text="formatCurrency(cartTotal)"></span>
         </div>
-        <template x-if="checkoutForm.discountPercentage > 0">
-          <div class="flex justify-between text-sm text-orange-400">
-            <span x-text="'Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)'"></span>
-            <span x-text="'-' + formatCurrency(discountAmount())"></span>
-          </div>
-        </template>
+        <div x-show="calculatedTax() > 0"
+             style="display: none;"
+             class="flex justify-between text-sm text-gray-300">
+          <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
+          <span x-text="formatCurrency(calculatedTax())"></span>
+        </div>
         <div x-show="calculatedServiceCharge() > 0"
              style="display: none;"
              class="flex justify-between text-sm text-gray-300">
           <span x-text="'Service Charge (' + posCharges.serviceChargePercentage + '%)'"></span>
           <span x-text="formatCurrency(calculatedServiceCharge())"></span>
         </div>
-        <div x-show="calculatedTax() > 0"
+        <div class="flex justify-between text-sm text-gray-300">
+          <span>Sub Total</span>
+          <span x-text="formatCurrency(subTotalBeforeDiscount())"></span>
+        </div>
+        <div x-show="discountAmount() > 0"
              style="display: none;"
-             class="flex justify-between text-sm text-gray-300">
-          <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
-          <span x-text="formatCurrency(calculatedTax())"></span>
+             class="flex justify-between text-sm text-orange-400">
+          <span x-text="checkoutForm.customer_type === 'walk-in'
+                ? (checkoutForm.discount_type === 'percentage'
+                  ? 'Diskon (' + getWalkInDiscountPercentage() + '%)'
+                  : 'Diskon Nominal')
+                : ('Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)')"></span>
+          <span x-text="'-' + formatCurrency(discountAmount())"></span>
         </div>
         <div class="border-t border-gray-700 pt-2 flex justify-between font-bold text-white">
           <span>Total Pembayaran</span>
@@ -178,7 +186,7 @@
                   stroke-width="2"
                   d="M13 16h-1v-4h-1m1-4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
           </svg>
-          <p class="text-xs text-emerald-700">Khusus walk-in: PPN dihitung dulu dari subtotal setelah diskon. Jika item kena PPN &amp; service charge, maka service charge dihitung dari subtotal setelah diskon + komponen PPN item tersebut.</p>
+          <p class="text-xs text-emerald-700">Khusus walk-in: PPN dan service charge dihitung terlebih dahulu, lalu diskon dipotong dari subtotal tersebut.</p>
         </div>
       </template>
 

@@ -933,11 +933,20 @@ class PosController extends Controller
                     $this->decrementInventoryStock($inventoryItem, $quantity);
                 }
 
+                $baseTotalsForDiscount = $this->calculateWalkInTotals($itemsTotal, 0, 0, [
+                    'service_charge_base' => $serviceChargeBase,
+                    'tax_base' => $taxBase,
+                    'tax_and_service_base' => $taxAndServiceBase,
+                ], true);
+
+                $discountBaseTotal = (float) ($baseTotalsForDiscount['discount_base_total'] ?? $itemsTotal);
                 $requestedDiscountAmount = match ($discountType) {
-                    'percentage' => round($itemsTotal * ($discountPercentage / 100), 2),
+                    'percentage' => round($discountBaseTotal * ($discountPercentage / 100), 2),
                     'nominal' => round($discountNominal, 2),
                     default => 0,
                 };
+
+                $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $discountBaseTotal);
 
                 $totals = $this->calculateWalkInTotals($itemsTotal, 0, $requestedDiscountAmount, [
                     'service_charge_base' => $serviceChargeBase,
@@ -1126,19 +1135,14 @@ class PosController extends Controller
 
         $ordersTotal = (float) $orders->sum(fn ($order) => (float) ($order->total ?? 0));
         $subtotal = max($minimumCharge, $ordersTotal);
-        $discountAmount = min(max($discountAmount, 0), $subtotal);
-        $subtotalAfterDiscount = max($subtotal - $discountAmount, 0);
 
         $bases = $this->resolveSessionChargeableBases($orders);
-        $discountRatio = $ordersTotal > 0 ? min(max($discountAmount / $ordersTotal, 0), 1) : 0;
-
-        $serviceChargeBaseAfterDiscount = max($bases['service_charge_base'] * (1 - $discountRatio), 0);
-        $taxBaseAfterDiscount = max($bases['tax_base'] * (1 - $discountRatio), 0);
-        $taxAndServiceBaseAfterDiscount = max($bases['tax_and_service_base'] * (1 - $discountRatio), 0);
-
-        $serviceCharge = round($serviceChargeBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
-        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
-        $tax = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+        $serviceCharge = round(max($bases['service_charge_base'], 0) * (((float) $settings->service_charge_percentage) / 100), 2);
+        $serviceChargeTaxableAmount = round(max($bases['tax_and_service_base'], 0) * (((float) $settings->service_charge_percentage) / 100), 2);
+        $tax = round((max($bases['tax_base'], 0) + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+        $discountBaseTotal = $subtotal + $serviceCharge + $tax;
+        $discountAmount = min(max($discountAmount, 0), $discountBaseTotal);
+        $subtotalAfterDiscount = max($subtotal - min($discountAmount, $subtotal), 0);
 
         return [
             'orders_total' => $ordersTotal,
@@ -1146,11 +1150,12 @@ class PosController extends Controller
             'subtotal' => $subtotal,
             'discount_amount' => $discountAmount,
             'subtotal_after_discount' => $subtotalAfterDiscount,
+            'discount_base_total' => $discountBaseTotal,
             'service_charge_percentage' => (float) $settings->service_charge_percentage,
             'service_charge' => $serviceCharge,
             'tax_percentage' => (float) $settings->tax_percentage,
             'tax' => $tax,
-            'grand_total' => $subtotalAfterDiscount + $serviceCharge + $tax,
+            'grand_total' => max($discountBaseTotal - $discountAmount, 0),
         ];
     }
 
@@ -1214,41 +1219,42 @@ class PosController extends Controller
     ): array {
         $settings = GeneralSetting::instance();
         $itemsTotalFloat = (float) $itemsTotal;
-        $discountAmount = $discountAmountOverride ?? (float) round($itemsTotalFloat * $discountPercentage / 100);
-        $subtotalAfterDiscount = max($itemsTotalFloat - (float) $discountAmount, 0);
-        $discountRatio = $itemsTotalFloat > 0 ? min(max((float) $discountAmount / $itemsTotalFloat, 0), 1) : 0;
 
         $serviceChargeBase = (float) ($chargeableBases['service_charge_base'] ?? $itemsTotalFloat);
         $taxBase = (float) ($chargeableBases['tax_base'] ?? $itemsTotalFloat);
         $taxAndServiceBase = (float) ($chargeableBases['tax_and_service_base'] ?? $serviceChargeBase);
 
-        $serviceChargeBaseAfterDiscount = max($serviceChargeBase * (1 - $discountRatio), 0);
-        $taxBaseAfterDiscount = max($taxBase * (1 - $discountRatio), 0);
-        $taxAndServiceBaseAfterDiscount = max($taxAndServiceBase * (1 - $discountRatio), 0);
-
         $taxRate = (float) $settings->tax_percentage / 100;
         $serviceChargeRate = (float) $settings->service_charge_percentage / 100;
 
         if ($applyServiceChargeOnTaxBase) {
-            $taxAmount = round($taxBaseAfterDiscount * $taxRate, 2);
+            $taxAmount = round(max($taxBase, 0) * $taxRate, 2);
 
-            $serviceChargeBaseWithTax = $serviceChargeBaseAfterDiscount;
+            $serviceChargeBaseWithTax = max($serviceChargeBase, 0);
             if ($taxRate > 0) {
-                $serviceChargeBaseWithTax += $taxAndServiceBaseAfterDiscount * $taxRate;
+                $serviceChargeBaseWithTax += max($taxAndServiceBase, 0) * $taxRate;
             }
 
             $serviceChargeAmount = round($serviceChargeBaseWithTax * $serviceChargeRate, 2);
         } else {
-            $serviceChargeAmount = round($serviceChargeBaseAfterDiscount * $serviceChargeRate, 2);
-            $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * $serviceChargeRate, 2);
-            $taxAmount = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * $taxRate, 2);
+            $serviceChargeAmount = round(max($serviceChargeBase, 0) * $serviceChargeRate, 2);
+            $serviceChargeTaxableAmount = round(max($taxAndServiceBase, 0) * $serviceChargeRate, 2);
+            $taxAmount = round((max($taxBase, 0) + $serviceChargeTaxableAmount) * $taxRate, 2);
         }
 
-        $grandTotal = $subtotalAfterDiscount + $serviceChargeAmount + $taxAmount;
+        $discountBaseTotal = $itemsTotalFloat + $serviceChargeAmount + $taxAmount;
+        $discountAmount = $discountAmountOverride ?? (float) round($discountBaseTotal * $discountPercentage / 100);
+        $discountAmount = min(max((float) $discountAmount, 0), $discountBaseTotal);
+
+        $subtotalAfterDiscount = $applyServiceChargeOnTaxBase
+            ? $itemsTotalFloat
+            : max($itemsTotalFloat - min($discountAmount, $itemsTotalFloat), 0);
+        $grandTotal = max($discountBaseTotal - $discountAmount, 0);
 
         return [
             'discount_amount' => (float) $discountAmount,
             'subtotal_after_discount' => $subtotalAfterDiscount,
+            'discount_base_total' => $discountBaseTotal,
             'service_charge_percentage' => (float) $settings->service_charge_percentage,
             'service_charge' => $serviceChargeAmount,
             'tax_percentage' => (float) $settings->tax_percentage,

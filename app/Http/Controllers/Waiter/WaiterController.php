@@ -67,19 +67,15 @@ class WaiterController extends Controller
         $orders = $session->orders->where('status', '!=', 'cancelled')->values();
         $ordersTotal = (float) $orders->sum(fn ($order) => (float) ($order->total ?? 0));
         $subtotal = $ordersTotal;
-        $discountAmount = min(max($discountAmount, 0), $subtotal);
-        $subtotalAfterDiscount = max($subtotal - $discountAmount, 0);
 
         $bases = $this->resolveChargeableBases($orders);
-        $discountRatio = $ordersTotal > 0 ? min(max($discountAmount / $ordersTotal, 0), 1) : 0;
+        $serviceCharge = round(max($bases['service_charge_base'], 0) * (((float) $settings->service_charge_percentage) / 100), 2);
+        $serviceChargeTaxableAmount = round(max($bases['tax_and_service_base'], 0) * (((float) $settings->service_charge_percentage) / 100), 2);
+        $tax = round((max($bases['tax_base'], 0) + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
 
-        $serviceChargeBaseAfterDiscount = max($bases['service_charge_base'] * (1 - $discountRatio), 0);
-        $taxBaseAfterDiscount = max($bases['tax_base'] * (1 - $discountRatio), 0);
-        $taxAndServiceBaseAfterDiscount = max($bases['tax_and_service_base'] * (1 - $discountRatio), 0);
-
-        $serviceCharge = round($serviceChargeBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
-        $serviceChargeTaxableAmount = round($taxAndServiceBaseAfterDiscount * (((float) $settings->service_charge_percentage) / 100), 2);
-        $tax = round(($taxBaseAfterDiscount + $serviceChargeTaxableAmount) * (((float) $settings->tax_percentage) / 100), 2);
+        $discountBaseTotal = $subtotal + $serviceCharge + $tax;
+        $discountAmount = min(max($discountAmount, 0), $discountBaseTotal);
+        $subtotalAfterDiscount = max($subtotal - min($discountAmount, $subtotal), 0);
 
         return [
             'orders_total' => $ordersTotal,
@@ -87,11 +83,12 @@ class WaiterController extends Controller
             'subtotal' => $subtotal,
             'discount_amount' => $discountAmount,
             'subtotal_after_discount' => $subtotalAfterDiscount,
+            'discount_base_total' => $discountBaseTotal,
             'service_charge_percentage' => (float) $settings->service_charge_percentage,
             'service_charge' => $serviceCharge,
             'tax_percentage' => (float) $settings->tax_percentage,
             'tax' => $tax,
-            'grand_total' => $subtotalAfterDiscount + $serviceCharge + $tax,
+            'grand_total' => max($discountBaseTotal - $discountAmount, 0),
         ];
     }
 

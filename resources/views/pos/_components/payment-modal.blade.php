@@ -408,14 +408,30 @@
         <div x-show="checkoutForm.minimumCharge > 0"
              style="display: none;"
              class="border-t border-gray-700 pt-1 flex justify-between text-sm text-gray-300">
-          <span>Orders</span>
-          <span x-text="formatCurrency(checkoutForm.ordersTotal + cartTotal)"></span>
+          <span>Total Bill</span>
+          <span x-text="formatCurrency(finalTotal())"></span>
         </div>
         <div x-show="checkoutForm.minimumCharge === 0"
              style="display: none;"
              class="flex justify-between text-sm text-gray-300">
-          <span>Subtotal</span>
-          <span x-text="formatCurrency(cartTotal)"></span>
+          <span>Total Bill</span>
+          <span x-text="formatCurrency(finalTotal())"></span>
+        </div>
+        <div x-show="calculatedTax() > 0"
+             style="display: none;"
+             class="flex justify-between text-sm text-gray-300">
+          <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
+          <span x-text="formatCurrency(calculatedTax())"></span>
+        </div>
+        <div x-show="calculatedServiceCharge() > 0"
+             style="display: none;"
+             class="flex justify-between text-sm text-gray-300">
+          <span x-text="'Service Charge (' + posCharges.serviceChargePercentage + '%)'"></span>
+          <span x-text="formatCurrency(calculatedServiceCharge())"></span>
+        </div>
+        <div class="flex justify-between text-sm text-gray-300">
+          <span>Sub Total</span>
+          <span x-text="formatCurrency(subTotalBeforeDiscount())"></span>
         </div>
         <div x-show="discountAmount() > 0"
              style="display: none;"
@@ -427,20 +443,8 @@
                 : ('Diskon Tier ' + checkoutForm.tierName + ' (' + checkoutForm.discountPercentage + '%)')"></span>
           <span x-text="'-' + formatCurrency(discountAmount())"></span>
         </div>
-        <div x-show="calculatedServiceCharge() > 0"
-             style="display: none;"
-             class="flex justify-between text-sm text-gray-300">
-          <span x-text="'Service Charge (' + posCharges.serviceChargePercentage + '%)'"></span>
-          <span x-text="formatCurrency(calculatedServiceCharge())"></span>
-        </div>
-        <div x-show="calculatedTax() > 0"
-             style="display: none;"
-             class="flex justify-between text-sm text-gray-300">
-          <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
-          <span x-text="formatCurrency(calculatedTax())"></span>
-        </div>
         <div class="border-t border-gray-700 pt-2.5 flex justify-between font-bold text-white">
-          <span class="text-base">Total Tagihan Order</span>
+          <span class="text-base">Sisa Bayar</span>
           <span class="text-base"
                 x-text="formatCurrency(payableTotal())"></span>
         </div>

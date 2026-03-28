@@ -1,11 +1,15 @@
 <?php
 
+use App\Models\Area;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\KitchenOrderItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Printer;
+use App\Models\Tabel;
+use App\Models\TableSession;
+use App\Models\User;
 use App\Services\PrinterService;
 use Mockery\MockInterface;
 
@@ -377,4 +381,82 @@ test('checker print simulation uses pos_name so naming matches cashier receipt',
     expect($result)->toBeTrue()
         ->and($logContent)->toContain('1x POS Alias Name')
         ->and($logContent)->not->toContain('1x Inventory Base Name');
+});
+
+test('checker print simulation shows waiter below table for booking orders', function () {
+    $admin = adminUser();
+    $waiter = User::factory()->create(['name' => 'Waiter Simulasi']);
+    $customer = User::factory()->create();
+
+    $area = Area::create([
+        'code' => 'TH-AREA-'.uniqid(),
+        'name' => 'TH Area '.uniqid(),
+        'is_active' => true,
+        'sort_order' => 1,
+    ]);
+
+    $table = Tabel::create([
+        'area_id' => $area->id,
+        'table_number' => 'TH-TBL-'.uniqid(),
+        'qr_code' => 'TH-QR-'.uniqid(),
+        'capacity' => 4,
+        'status' => 'occupied',
+        'is_active' => true,
+    ]);
+
+    $session = TableSession::create([
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'waiter_id' => $waiter->id,
+        'session_code' => 'TH-SES-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $checkerPrinter = makeTransactionHistoryPrinter('checker', false);
+    $inventoryItem = makeTransactionHistoryInventoryItem();
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'TH-BOOKING-'.uniqid(),
+        'status' => 'pending',
+        'items_total' => 25000,
+        'discount_amount' => 0,
+        'total' => 25000,
+        'ordered_at' => now(),
+    ]);
+
+    $kitchenOrder = KitchenOrder::create([
+        'order_id' => $order->id,
+        'order_number' => $order->order_number,
+        'customer_user_id' => null,
+        'table_id' => $table->id,
+        'total_amount' => 25000,
+        'status' => 'selesai',
+        'progress' => 100,
+    ]);
+
+    KitchenOrderItem::create([
+        'kitchen_order_id' => $kitchenOrder->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'quantity' => 1,
+        'price' => 25000,
+        'is_completed' => true,
+    ]);
+
+    $logPath = storage_path('logs/printer.log');
+    file_put_contents($logPath, '');
+
+    $result = app(PrinterService::class)->printCheckerTicket(
+        $kitchenOrder->load('items.inventoryItem', 'table', 'order.tableSession.waiter.profile'),
+        $checkerPrinter,
+    );
+
+    $logContent = (string) file_get_contents($logPath);
+
+    expect($result)->toBeTrue()
+        ->and($logContent)->toContain('Table : '.$table->table_number)
+        ->and($logContent)->toContain('Waiter: Waiter Simulasi');
 });

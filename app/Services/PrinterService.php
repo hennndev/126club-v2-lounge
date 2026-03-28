@@ -99,28 +99,34 @@ class PrinterService
                 $escpos->text(str_repeat('-', $width)."\n");
             }
 
-            if ($payload['minimum_charge'] > 0) {
-                $escpos->text($this->formatClosedBillingPair('Minimum Charge', 'Rp '.number_format((float) $payload['minimum_charge'], 0, ',', '.'), $width)."\n");
+            $downPaymentAmount = (float) ($payload['down_payment_amount'] ?? 0);
+            $totalBill = (float) ($payload['subtotal'] ?? 0);
+            $discountAmount = (float) ($payload['discount_amount'] ?? 0);
+            $tax = (float) ($payload['tax'] ?? 0);
+            $serviceCharge = (float) ($payload['service_charge'] ?? 0);
+            $subTotal = $totalBill + $tax + $serviceCharge;
+
+            $escpos->text($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format($totalBill, 0, ',', '.'), $width)."\n");
+
+            if ($tax > 0) {
+                $escpos->text($this->formatClosedBillingPair('PPN ('.(int) $payload['tax_percentage'].'%)', 'Rp '.number_format($tax, 0, ',', '.'), $width)."\n");
             }
 
-            $downPaymentAmount = (float) ($payload['down_payment_amount'] ?? 0);
-            $displaySubtotal = max((float) $payload['subtotal'] - $downPaymentAmount, 0);
-            $escpos->text($this->formatClosedBillingPair('Subtotal', 'Rp '.number_format($displaySubtotal, 0, ',', '.'), $width)."\n");
+            if ($serviceCharge > 0) {
+                $escpos->text($this->formatClosedBillingPair('Service Charge ('.(int) $payload['service_charge_percentage'].'%)', 'Rp '.number_format($serviceCharge, 0, ',', '.'), $width)."\n");
+            }
+
+            $escpos->text($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format($subTotal, 0, ',', '.'), $width)."\n");
+
+            if ($discountAmount > 0) {
+                $escpos->text($this->formatClosedBillingPair('Diskon', '- Rp '.number_format($discountAmount, 0, ',', '.'), $width)."\n");
+            }
 
             if ($downPaymentAmount > 0) {
                 $escpos->text($this->formatClosedBillingPair('DP', 'Rp '.number_format($downPaymentAmount, 0, ',', '.'), $width)."\n");
             }
-
-            if ($payload['service_charge'] > 0) {
-                $escpos->text($this->formatClosedBillingPair('Service Charge ('.(int) $payload['service_charge_percentage'].'%)', 'Rp '.number_format((float) $payload['service_charge'], 0, ',', '.'), $width)."\n");
-            }
-
-            if ($payload['tax'] > 0) {
-                $escpos->text($this->formatClosedBillingPair('PPN ('.(int) $payload['tax_percentage'].'%)', 'Rp '.number_format((float) $payload['tax'], 0, ',', '.'), $width)."\n");
-            }
-
             $escpos->setEmphasis(true);
-            $escpos->text($this->formatClosedBillingPair('TOTAL', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width)."\n");
+            $escpos->text($this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width)."\n");
             $escpos->setEmphasis(false);
 
             $escpos->text($separator."\n");
@@ -719,6 +725,7 @@ class PrinterService
             'items' => $items,
             'minimum_charge' => (float) ($billing->minimum_charge ?? 0),
             'subtotal' => (float) ($billing->subtotal ?? 0),
+            'discount_amount' => (float) ($billing->discount_amount ?? 0),
             'service_charge' => (float) ($billing->service_charge ?? 0),
             'service_charge_percentage' => (float) ($billing->service_charge_percentage ?? 0),
             'tax' => (float) ($billing->tax ?? 0),
@@ -777,6 +784,7 @@ class PrinterService
             'items' => $items,
             'minimum_charge' => (float) ($billing->minimum_charge ?? 0),
             'subtotal' => (float) ($billing->subtotal ?? 0),
+            'discount_amount' => (float) ($billing->discount_amount ?? 0),
             'service_charge' => (float) ($billing->service_charge ?? 0),
             'service_charge_percentage' => (float) ($billing->service_charge_percentage ?? 0),
             'tax' => (float) ($billing->tax ?? 0),
@@ -831,35 +839,42 @@ class PrinterService
             $lines[] = str_repeat('-', $width);
         }
 
-        if ((float) $payload['minimum_charge'] > 0) {
-            $lines[] = $this->formatClosedBillingPair('Minimum Charge', 'Rp '.number_format((float) $payload['minimum_charge'], 0, ',', '.'), $width);
+        $downPaymentAmount = (float) ($payload['down_payment_amount'] ?? 0);
+        $totalBill = (float) ($payload['subtotal'] ?? 0);
+        $discountAmount = (float) ($payload['discount_amount'] ?? 0);
+        $tax = (float) ($payload['tax'] ?? 0);
+        $serviceCharge = (float) ($payload['service_charge'] ?? 0);
+        $subTotal = $totalBill + $tax + $serviceCharge;
+
+        $lines[] = $this->formatClosedBillingPair('Total Bill', 'Rp '.number_format($totalBill, 0, ',', '.'), $width);
+
+        if ($tax > 0) {
+            $lines[] = $this->formatClosedBillingPair(
+                'PPN ('.(int) $payload['tax_percentage'].'%)',
+                'Rp '.number_format($tax, 0, ',', '.'),
+                $width
+            );
         }
 
-        $downPaymentAmount = (float) ($payload['down_payment_amount'] ?? 0);
-        $displaySubtotal = max((float) $payload['subtotal'] - $downPaymentAmount, 0);
-        $lines[] = $this->formatClosedBillingPair('Subtotal', 'Rp '.number_format($displaySubtotal, 0, ',', '.'), $width);
+        if ($serviceCharge > 0) {
+            $lines[] = $this->formatClosedBillingPair(
+                'Service Charge ('.(int) $payload['service_charge_percentage'].'%)',
+                'Rp '.number_format($serviceCharge, 0, ',', '.'),
+                $width
+            );
+        }
+
+        $lines[] = $this->formatClosedBillingPair('Sub Total', 'Rp '.number_format($subTotal, 0, ',', '.'), $width);
+
+        if ($discountAmount > 0) {
+            $lines[] = $this->formatClosedBillingPair('Diskon', '- Rp '.number_format($discountAmount, 0, ',', '.'), $width);
+        }
 
         if ($downPaymentAmount > 0) {
             $lines[] = $this->formatClosedBillingPair('DP', 'Rp '.number_format($downPaymentAmount, 0, ',', '.'), $width);
         }
 
-        if ((float) $payload['service_charge'] > 0) {
-            $lines[] = $this->formatClosedBillingPair(
-                'Service Charge ('.(int) $payload['service_charge_percentage'].'%)',
-                'Rp '.number_format((float) $payload['service_charge'], 0, ',', '.'),
-                $width
-            );
-        }
-
-        if ((float) $payload['tax'] > 0) {
-            $lines[] = $this->formatClosedBillingPair(
-                'PPN ('.(int) $payload['tax_percentage'].'%)',
-                'Rp '.number_format((float) $payload['tax'], 0, ',', '.'),
-                $width
-            );
-        }
-
-        $lines[] = $this->formatClosedBillingPair('TOTAL', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width);
+        $lines[] = $this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) $payload['grand_total'], 0, ',', '.'), $width);
         $lines[] = $separator;
         $lines[] = $this->formatClosedBillingPair('Metode Pembayaran', (string) $payload['payment_method'], $width);
 
@@ -927,10 +942,14 @@ class PrinterService
      */
     public function printCheckerTicket(KitchenOrder|BarOrder $order, Printer $printer): bool
     {
+        $order->loadMissing(['order.tableSession.waiter.profile']);
+        $waiterName = $this->resolveBookingWaiterName($order);
+
         if ($printer->connection_type === 'log') {
             $lines = [
                 "Order : #{$order->order_number}",
                 'Table : '.($order->table?->table_number ?? 'N/A'),
+                ...(filled($waiterName) ? ["Waiter: {$waiterName}"] : []),
                 'Time  : '.now()->format('H:i'),
                 "Printer: {$printer->name} ({$printer->location}) #{$printer->id}",
                 '',
@@ -967,6 +986,9 @@ class PrinterService
 
             $tableName = $order->table?->table_number ?? 'N/A';
             $escpos->text("Table: {$tableName}\n");
+            if (filled($waiterName)) {
+                $escpos->text("Waiter: {$waiterName}\n");
+            }
             $escpos->text('Time: '.now()->format('H:i')."\n");
             $escpos->text(str_repeat('-', $printer->width)."\n");
 
@@ -1003,6 +1025,19 @@ class PrinterService
         } finally {
             $escpos->close();
         }
+    }
+
+    protected function resolveBookingWaiterName(KitchenOrder|BarOrder $order): ?string
+    {
+        $waiter = $order->order?->tableSession?->waiter;
+
+        if (! $waiter) {
+            return null;
+        }
+
+        return $waiter->profile?->name
+            ?? $waiter->name
+            ?? null;
     }
 
     /**

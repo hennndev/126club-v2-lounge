@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Billing;
 use App\Models\CustomerUser;
 use App\Models\DailyAuthCode;
+use App\Models\Event;
 use App\Models\GeneralSetting;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -148,6 +149,47 @@ class TableReservationController extends Controller
             ];
         });
 
+        $activeSessionEventAdjustments = $activeSessions->mapWithKeys(function (TableSession $session) {
+            $reservationDate = $session->reservation?->reservation_date;
+            $activeEvent = $this->resolveActiveEventForDate($reservationDate);
+
+            if (! $activeEvent) {
+                return [$session->id => null];
+            }
+
+            $baseMinimumCharge = (float) ($session->table?->minimum_charge ?? 0);
+            $adjustedMinimumCharge = $this->applyEventAdjustmentToMinimumCharge($baseMinimumCharge, $activeEvent);
+
+            return [$session->id => [
+                'event_name' => (string) $activeEvent->name,
+                'adjustment_type' => (string) $activeEvent->price_adjustment_type,
+                'adjustment_value' => (float) $activeEvent->price_adjustment_value,
+                'adjustment_label' => (string) $activeEvent->getPriceAdjustmentFormatted(),
+                'base_minimum_charge' => $baseMinimumCharge,
+                'adjusted_minimum_charge' => $adjustedMinimumCharge,
+            ]];
+        });
+
+        $activeBookingEventAdjustments = $activeBookingsByTable->mapWithKeys(function (TableReservation $booking) {
+            $activeEvent = $this->resolveActiveEventForDate($booking->reservation_date);
+
+            if (! $activeEvent) {
+                return [$booking->id => null];
+            }
+
+            $baseMinimumCharge = (float) ($booking->table?->minimum_charge ?? 0);
+            $adjustedMinimumCharge = $this->applyEventAdjustmentToMinimumCharge($baseMinimumCharge, $activeEvent);
+
+            return [$booking->id => [
+                'event_name' => (string) $activeEvent->name,
+                'adjustment_type' => (string) $activeEvent->price_adjustment_type,
+                'adjustment_value' => (float) $activeEvent->price_adjustment_value,
+                'adjustment_label' => (string) $activeEvent->getPriceAdjustmentFormatted(),
+                'base_minimum_charge' => $baseMinimumCharge,
+                'adjusted_minimum_charge' => $adjustedMinimumCharge,
+            ]];
+        });
+
         $todayPendingBookings = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser'])
             ->where('status', 'pending')
             ->orderBy('reservation_date')
@@ -238,6 +280,8 @@ class TableReservationController extends Controller
             'bookedTablesCount',
             'checkedInTablesCount',
             'activeSessionChargePreviews',
+            'activeSessionEventAdjustments',
+            'activeBookingEventAdjustments',
             'historyTotalCount',
             'historyCompletedCount',
             'historyForceClosedCount',
@@ -427,7 +471,10 @@ class TableReservationController extends Controller
                             'status' => 'active',
                         ]);
 
-                        $minimumCharge = $booking->table?->minimum_charge ?? 0;
+                        $minimumCharge = $this->calculateBookingMinimumCharge(
+                            (float) ($booking->table?->minimum_charge ?? 0),
+                            $booking->reservation_date,
+                        );
                         $billing = Billing::create([
                             'table_session_id' => $session->id,
                             'is_walk_in' => false,
@@ -557,14 +604,14 @@ class TableReservationController extends Controller
                     (float) ($booking->down_payment_amount ?? 0),
                 );
 
-                $subtotalForDiscount = (float) $baseTotals['subtotal'];
+                $discountBaseTotal = (float) ($baseTotals['discount_base_total'] ?? $baseTotals['grand_total_before_down_payment']);
                 $requestedDiscountAmount = match ($discountType) {
-                    'percentage' => round($subtotalForDiscount * ($discountPercentage / 100), 2),
+                    'percentage' => round($discountBaseTotal * ($discountPercentage / 100), 2),
                     'nominal' => round($discountNominal, 2),
                     default => 0,
                 };
 
-                $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $subtotalForDiscount);
+                $requestedDiscountAmount = min(max($requestedDiscountAmount, 0), $discountBaseTotal);
 
                 if ($requestedDiscountAmount > 0) {
                     if ($discountAuthCode === '') {
@@ -860,6 +907,45 @@ class TableReservationController extends Controller
         return back()->with('success', 'Re-sync Accurate berhasil.');
     }
 
+    protected function calculateBookingMinimumCharge(float $baseMinimumCharge, mixed $reservationDate): float
+    {
+        $activeEvent = $this->resolveActiveEventForDate($reservationDate);
+
+        if (! $activeEvent) {
+            return $baseMinimumCharge;
+        }
+
+        return $this->applyEventAdjustmentToMinimumCharge($baseMinimumCharge, $activeEvent);
+    }
+
+    protected function resolveActiveEventForDate(mixed $reservationDate): ?Event
+    {
+        if (blank($reservationDate)) {
+            return null;
+        }
+
+        $dateString = $reservationDate instanceof \Carbon\Carbon
+            ? $reservationDate->toDateString()
+            : (string) $reservationDate;
+
+        return Event::query()
+            ->where('is_active', true)
+            ->whereDate('start_date', '<=', $dateString)
+            ->whereDate('end_date', '>=', $dateString)
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    protected function applyEventAdjustmentToMinimumCharge(float $baseMinimumCharge, Event $event): float
+    {
+        return match ($event->price_adjustment_type) {
+            'percentage' => round($baseMinimumCharge * (1 + ((float) $event->price_adjustment_value / 100)), 2),
+            'fixed' => round($baseMinimumCharge + (float) $event->price_adjustment_value, 2),
+            default => $baseMinimumCharge,
+        };
+    }
+
     /**
      * @return array<string, float>
      */
@@ -872,28 +958,24 @@ class TableReservationController extends Controller
 
         $ordersTotal = (float) $orders->sum(fn ($order) => (float) ($order->total ?? 0));
         $subtotal = max($minimumCharge, $ordersTotal);
-        $discountAmount = min(max($discountAmount, 0), $subtotal);
-        $subtotalAfterDiscount = max($subtotal - $discountAmount, 0);
 
         $bases = $this->resolveSessionChargeableBases($orders);
-        $discountRatio = $ordersTotal > 0 ? min(max($discountAmount / $ordersTotal, 0), 1) : 0;
-
-        $serviceChargeBaseAfterDiscount = max($bases['service_charge_base'] * (1 - $discountRatio), 0);
-        $taxBaseAfterDiscount = max($bases['tax_base'] * (1 - $discountRatio), 0);
-        $taxAndServiceBaseAfterDiscount = max($bases['tax_and_service_base'] * (1 - $discountRatio), 0);
 
         $taxRate = ((float) $settings->tax_percentage) / 100;
         $serviceChargeRate = ((float) $settings->service_charge_percentage) / 100;
 
-        $tax = round($taxBaseAfterDiscount * $taxRate, 2);
+        $tax = round(max($bases['tax_base'], 0) * $taxRate, 2);
 
-        $serviceChargeBaseWithTax = $serviceChargeBaseAfterDiscount;
+        $serviceChargeBaseWithTax = max($bases['service_charge_base'], 0);
         if ($taxRate > 0) {
-            $serviceChargeBaseWithTax += $taxAndServiceBaseAfterDiscount * $taxRate;
+            $serviceChargeBaseWithTax += max($bases['tax_and_service_base'], 0) * $taxRate;
         }
 
         $serviceCharge = round($serviceChargeBaseWithTax * $serviceChargeRate, 2);
-        $grandTotalBeforeDownPayment = $subtotalAfterDiscount + $serviceCharge + $tax;
+        $discountBaseTotal = $subtotal + $serviceCharge + $tax;
+        $discountAmount = min(max($discountAmount, 0), $discountBaseTotal);
+        $subtotalAfterDiscount = max($subtotal - min($discountAmount, $subtotal), 0);
+        $grandTotalBeforeDownPayment = max($discountBaseTotal - $discountAmount, 0);
         $downPaymentAmount = min(max($downPaymentAmount, 0), $grandTotalBeforeDownPayment);
 
         return [
@@ -902,6 +984,7 @@ class TableReservationController extends Controller
             'subtotal' => $subtotal,
             'discount_amount' => $discountAmount,
             'subtotal_after_discount' => $subtotalAfterDiscount,
+            'discount_base_total' => $discountBaseTotal,
             'service_charge_percentage' => (float) $settings->service_charge_percentage,
             'service_charge' => $serviceCharge,
             'tax_percentage' => (float) $settings->tax_percentage,

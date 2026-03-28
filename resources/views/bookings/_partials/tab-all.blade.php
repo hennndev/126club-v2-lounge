@@ -14,6 +14,9 @@
               'reservation_date' => $b->reservation_date,
               'reservation_time' => $b->reservation_time,
               'down_payment_amount' => (float) ($b->down_payment_amount ?? 0),
+              'event_name' => $activeBookingEventAdjustments[$b->id]['event_name'] ?? null,
+              'event_adjustment_label' => $activeBookingEventAdjustments[$b->id]['adjustment_label'] ?? null,
+              'event_adjusted_minimum_charge' => (float) ($activeBookingEventAdjustments[$b->id]['adjusted_minimum_charge'] ?? 0),
               'note' => $b->note,
           ],
       ],
@@ -129,6 +132,8 @@
       $bookingStatus = (string) ($tableBooking?->status ?? '');
       $isCheckedIn = $bookingStatus === 'checked_in' || $table->status === 'occupied';
       $isBooked = !$isCheckedIn && ($bookingStatus === 'confirmed' || $table->status === 'reserved');
+      $bookingEventAdjustment = $tableBooking ? $activeBookingEventAdjustments[$tableBooking->id] ?? null : null;
+      $displayMinimumCharge = (float) ($bookingEventAdjustment['adjusted_minimum_charge'] ?? ($table->minimum_charge ?? 0));
     @endphp
     <div x-show="selectedCategory === null || selectedCategory === {{ $table->area_id }}"
          class="rounded-xl p-4 border transition-all cursor-pointer hover:shadow-md
@@ -151,16 +156,22 @@
       <!-- Meta -->
       <p class="text-sm text-slate-500 mb-3">
         {{ $table->area->name ?? '-' }} &middot; {{ $table->capacity }} seats
-        @if ($table->minimum_charge)
-          &middot; Min Rp {{ number_format($table->minimum_charge / 1000, 0, ',', '.') }}k
+        @if ($displayMinimumCharge > 0)
+          &middot; Min Rp {{ number_format($displayMinimumCharge / 1000, 0, ',', '.') }}k
         @endif
       </p>
+      @if ($bookingEventAdjustment)
+        <p class="text-xs font-medium text-purple-700 -mt-2 mb-3">
+          Event: {{ $bookingEventAdjustment['event_name'] }} ({{ $bookingEventAdjustment['adjustment_label'] }})
+        </p>
+      @endif
 
       <!-- Footer -->
       @if ($isCheckedIn && $tableBooking)
         @php
           $billing = $tableBooking->tableSession?->billing;
           $sessionChargePreview = $tableBooking->tableSession ? $activeSessionChargePreviews[$tableBooking->tableSession->id] ?? null : null;
+          $sessionEventAdjustment = $tableBooking->tableSession ? $activeSessionEventAdjustments[$tableBooking->tableSession->id] ?? null : null;
           $ordersForEligibility = (float) ($sessionChargePreview['orders_total'] ?? ($billing?->orders_total ?? 0));
           $checkerItems = $tableBooking->tableSession?->orders?->flatMap->items?->where('status', '!=', 'cancelled') ?? collect();
           $checkerTotalItems = $checkerItems->count();

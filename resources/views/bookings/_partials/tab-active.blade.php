@@ -93,8 +93,11 @@
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Check-in</th>
             <th class="px-5 py-3 text-center text-sm font-semibold text-gray-600">Pax</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Min. Charge</th>
+            <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">DP</th>
+            <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Event</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Orders</th>
-            <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Total (Live)</th>
+            <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Service Charge</th>
+            <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">PPN</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Aksi</th>
           </tr>
         </thead>
@@ -122,6 +125,9 @@
               // Billing state: check both DP and minimum charge
               $downPaymentAmount = (float) ($reservation?->down_payment_amount ?? 0);
               $minimumCharge = (float) ($billing->minimum_charge ?? 0);
+              $eventAdjustment = $activeSessionEventAdjustments[$session->id] ?? null;
+              $eventAdjustedMinimumCharge = (float) ($eventAdjustment['adjusted_minimum_charge'] ?? $minimumCharge);
+              $eventBaseMinimumCharge = (float) ($eventAdjustment['base_minimum_charge'] ?? $minimumCharge);
               $requiredAmount = $downPaymentAmount > 0 ? $downPaymentAmount : $minimumCharge;
               $canClose = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $ordersForEligibility >= $requiredAmount;
               $belowMinCharge = $billing && in_array($billing->billing_status, ['draft', 'finalized']) && $ordersForEligibility < $requiredAmount;
@@ -241,14 +247,37 @@
 
               {{-- Min charge --}}
               <td class="px-5 py-4 whitespace-nowrap text-right">
+                <div class="text-base text-gray-700 font-semibold">
+                  Rp {{ number_format($minimumCharge, 0, ',', '.') }}
+                </div>
+              </td>
+
+              {{-- DP --}}
+              <td class="px-5 py-4 whitespace-nowrap text-right">
                 @if ($downPaymentAmount > 0)
                   <div class="text-base text-gray-700 font-semibold">
-                    DP: Rp {{ number_format($downPaymentAmount, 0, ',', '.') }}
+                    Rp {{ number_format($downPaymentAmount, 0, ',', '.') }}
                   </div>
                 @else
-                  <div class="text-base text-gray-700">
-                    Rp {{ number_format($minimumCharge, 0, ',', '.') }}
+                  <div class="text-sm text-gray-400">—</div>
+                @endif
+              </td>
+
+              {{-- Event --}}
+              <td class="px-5 py-4">
+                @if ($eventAdjustment)
+                  <div class="text-sm font-semibold text-purple-700">{{ $eventAdjustment['event_name'] }}</div>
+                  <div class="text-xs text-purple-600 mt-0.5">{{ $eventAdjustment['adjustment_label'] }}</div>
+                  @if ($eventAdjustedMinimumCharge > $eventBaseMinimumCharge)
+                    <div class="text-xs text-gray-500 mt-0.5">
+                      Base: Rp {{ number_format($eventBaseMinimumCharge, 0, ',', '.') }}
+                    </div>
+                  @endif
+                  <div class="text-xs text-gray-500 mt-0.5">
+                    Min Event: Rp {{ number_format($minimumCharge, 0, ',', '.') }}
                   </div>
+                @else
+                  <div class="text-sm text-gray-400">—</div>
                 @endif
               </td>
 
@@ -259,21 +288,31 @@
                 </div>
               </td>
 
-              {{-- Live total --}}
+              {{-- Service charge --}}
               <td class="px-5 py-4 whitespace-nowrap text-right">
-                <div class="text-base font-bold text-gray-900">
-                  Rp {{ number_format($computedGrandTotal, 0, ',', '.') }}
+                @php
+                  $serviceChargeAmount = (float) ($chargePreview['service_charge'] ?? 0);
+                  $serviceChargePercentage = (float) ($chargePreview['service_charge_percentage'] ?? 0);
+                @endphp
+                <div class="text-base text-gray-900 font-semibold">
+                  Rp {{ number_format($serviceChargeAmount, 0, ',', '.') }}
                 </div>
-                @if ($belowMinCharge)
-                  <div class="text-sm text-amber-600 mt-0.5">
-                    @if ($downPaymentAmount > 0)
-                      DP: Rp {{ number_format($downPaymentAmount, 0, ',', '.') }}
-                    @else
-                      Min. Rp {{ number_format($minimumCharge, 0, ',', '.') }}
-                    @endif
-                  </div>
-                @elseif ($billing?->billing_status === 'paid')
-                  <div class="text-sm text-green-600 mt-0.5">Lunas</div>
+                @if ($serviceChargeAmount > 0)
+                  <div class="text-xs text-gray-500 mt-0.5">{{ rtrim(rtrim(number_format($serviceChargePercentage, 2, '.', ''), '0'), '.') }}%</div>
+                @endif
+              </td>
+
+              {{-- Tax / PPN --}}
+              <td class="px-5 py-4 whitespace-nowrap text-right">
+                @php
+                  $taxAmount = (float) ($chargePreview['tax'] ?? 0);
+                  $taxPercentage = (float) ($chargePreview['tax_percentage'] ?? 0);
+                @endphp
+                <div class="text-base text-gray-900 font-semibold">
+                  Rp {{ number_format($taxAmount, 0, ',', '.') }}
+                </div>
+                @if ($taxAmount > 0)
+                  <div class="text-xs text-gray-500 mt-0.5">{{ rtrim(rtrim(number_format($taxPercentage, 2, '.', ''), '0'), '.') }}%</div>
                 @endif
               </td>
 

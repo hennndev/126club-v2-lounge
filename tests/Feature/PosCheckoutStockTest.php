@@ -3,6 +3,7 @@
 use App\Models\Area;
 use App\Models\Billing;
 use App\Models\CustomerUser;
+use App\Models\DailyAuthCode;
 use App\Models\GeneralSetting;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
@@ -257,6 +258,58 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
         ->assertSee('Memproses...', false);
 });
 
+test('walk in payment summary shows ppn row before service charge row', function () {
+    $admin = adminUser();
+
+    $response = actingAs($admin)->get(route('admin.pos.index'));
+
+    $response->assertOk()
+        ->assertSeeInOrder([
+            'x-show="calculatedTax() > 0"',
+            'x-show="calculatedServiceCharge() > 0"',
+        ], false);
+});
+
+test('walk in payment summary shows discount row after subtotal row', function () {
+    $admin = adminUser();
+
+    $response = actingAs($admin)->get(route('admin.pos.index'));
+
+    $response->assertOk()
+        ->assertSeeInOrder([
+            '<span>Sub Total</span>',
+            'x-show="discountAmount() > 0"',
+            '<span class="text-base">Sisa Bayar</span>',
+        ], false);
+});
+
+test('walk in confirmation summary shows ppn row before service charge row', function () {
+    $admin = adminUser();
+
+    $response = actingAs($admin)->get(route('admin.pos.index'));
+
+    $response->assertOk()
+        ->assertSeeInOrder([
+            '<span>Subtotal</span>',
+            'x-show="calculatedTax() > 0"',
+            'x-show="calculatedServiceCharge() > 0"',
+            '<span>Total Pembayaran</span>',
+        ], false);
+});
+
+test('walk in confirmation summary shows discount row after subtotal row', function () {
+    $admin = adminUser();
+
+    $response = actingAs($admin)->get(route('admin.pos.index'));
+
+    $response->assertOk()
+        ->assertSeeInOrder([
+            '<span>Sub Total</span>',
+            'x-show="discountAmount() > 0"',
+            '<span>Total Pembayaran</span>',
+        ], false);
+});
+
 test('pos payment modal keeps minimum-charge shortfall expression and does not show dp row', function () {
     $admin = adminUser();
     actingAs($admin)
@@ -320,6 +373,83 @@ test('walk in checkout split payment must match grand total', function () {
         ->assertUnprocessable()
         ->assertJsonPath('success', false)
         ->assertJsonPath('message', 'Total split harus sama dengan grand total.');
+});
+
+test('walk in checkout calculates percentage discount after tax and service charge', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081888888888',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => null,
+        'customer_code' => null,
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
+    $inventoryItem = makePosInventoryItem([
+        'stock_quantity' => 12,
+        'include_tax' => true,
+        'include_service_charge' => true,
+    ]);
+
+    DailyAuthCode::query()->updateOrCreate(
+        ['date' => now()->format('Y-m-d')],
+        [
+            'code' => '9753',
+            'override_code' => null,
+            'generated_at' => now(),
+        ],
+    );
+
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 2,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'walk-in',
+            'walk_in_customer_id' => $customer->id,
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'discount_type' => 'percentage',
+            'discount_percentage' => 10,
+            'discount_auth_code' => '9753',
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('items_total', 50000)
+        ->assertJsonPath('tax', 5500)
+        ->assertJsonPath('service_charge', 5550)
+        ->assertJsonPath('discount_amount', 6105)
+        ->assertJsonPath('total', 54945);
+
+    $billing = Billing::query()->latest('id')->first();
+
+    expect($billing)->not->toBeNull()
+        ->and((float) $billing->grand_total)->toBe(54945.0)
+        ->and((float) $billing->discount_amount)->toBe(6105.0);
 });
 
 test('walk in checkout supports split non-cash and non-cash payment', function () {

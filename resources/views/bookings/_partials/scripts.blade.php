@@ -173,6 +173,10 @@
     document.getElementById('biModalTime').textContent =
       booking.reservation_time ? booking.reservation_time.substring(0, 5) : '—';
     document.getElementById('biModalDownPayment').textContent = formatRupiah(booking.down_payment_amount || 0);
+    document.getElementById('biModalEvent').textContent = booking.event_name ?
+      `${booking.event_name}${booking.event_adjustment_label ? ` (${booking.event_adjustment_label})` : ''}` : '—';
+    document.getElementById('biModalEventMinimumCharge').textContent = Number(booking.event_adjusted_minimum_charge || 0) > 0 ?
+      formatRupiah(booking.event_adjusted_minimum_charge) : '—';
 
     if (booking.note) {
       document.getElementById('biModalNote').textContent = booking.note;

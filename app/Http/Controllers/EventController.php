@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Event;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use Carbon\Carbon;
 
 class EventController extends Controller
 {
@@ -35,7 +35,7 @@ class EventController extends Controller
         }
 
         $events = $query->latest()->get();
-        
+
         $today = Carbon::today();
         $totalEvents = Event::count();
         $todayEvents = Event::where('start_date', '<=', $today)
@@ -55,6 +55,10 @@ class EventController extends Controller
 
     public function store(Request $request)
     {
+        $request->merge([
+            'is_active' => $request->boolean('is_active'),
+        ]);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -62,26 +66,30 @@ class EventController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
             'start_time' => 'nullable',
             'end_time' => 'nullable',
-            'is_active' => 'boolean',
+            'is_active' => 'required|boolean',
             'price_adjustment_type' => 'required|in:percentage,fixed',
             'price_adjustment_value' => 'required|numeric|min:0',
         ]);
 
         try {
             $validated['slug'] = Str::slug($validated['name']);
-            $validated['is_active'] = $request->has('is_active');
-            
+
             Event::create($validated);
+
             return redirect()->route('admin.events.index')
                 ->with('success', 'Event berhasil ditambahkan');
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal menambahkan event: ' . $e->getMessage()])
+            return back()->withErrors(['error' => 'Gagal menambahkan event: '.$e->getMessage()])
                 ->withInput();
         }
     }
 
     public function update(Request $request, Event $event)
     {
+        $request->merge([
+            'is_active' => $request->boolean('is_active'),
+        ]);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -89,20 +97,20 @@ class EventController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
             'start_time' => 'nullable',
             'end_time' => 'nullable',
-            'is_active' => 'boolean',
+            'is_active' => 'required|boolean',
             'price_adjustment_type' => 'required|in:percentage,fixed',
             'price_adjustment_value' => 'required|numeric|min:0',
         ]);
 
         try {
             $validated['slug'] = Str::slug($validated['name']);
-            $validated['is_active'] = $request->has('is_active');
-            
+
             $event->update($validated);
+
             return redirect()->route('admin.events.index')
                 ->with('success', 'Event berhasil diupdate');
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal mengupdate event: ' . $e->getMessage()])
+            return back()->withErrors(['error' => 'Gagal mengupdate event: '.$e->getMessage()])
                 ->withInput();
         }
     }
@@ -111,23 +119,24 @@ class EventController extends Controller
     {
         try {
             $event->delete();
+
             return redirect()->route('admin.events.index')
                 ->with('success', 'Event berhasil dihapus');
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal menghapus event: ' . $e->getMessage()]);
+            return back()->withErrors(['error' => 'Gagal menghapus event: '.$e->getMessage()]);
         }
     }
 
     public function toggleStatus(Event $event)
     {
         try {
-            $event->update(['is_active' => !$event->is_active]);
-            
+            $event->update(['is_active' => ! $event->is_active]);
+
             $message = $event->is_active ? 'Event berhasil diaktifkan' : 'Event berhasil dinonaktifkan';
-            
+
             return redirect()->route('admin.events.index')->with('success', $message);
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Gagal mengubah status event: ' . $e->getMessage()]);
+            return back()->withErrors(['error' => 'Gagal mengubah status event: '.$e->getMessage()]);
         }
     }
 }
