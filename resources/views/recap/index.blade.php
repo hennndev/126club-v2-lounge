@@ -14,6 +14,12 @@
         </div>
       @endif
 
+      @if (session('success'))
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {{ session('success') }}
+        </div>
+      @endif
+
       <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -155,6 +161,7 @@
             <p class="text-sm font-medium text-gray-500">Total Pembayaran QRIS</p>
             <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($paymentMethodTotals['qris'] ?? 0, 0, ',', '.') }}</p>
           </div>
+
         </div>
 
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -205,6 +212,37 @@
                           @empty
                             <p class="text-xs text-gray-500">Tidak ada item.</p>
                           @endforelse
+
+                          <div class="rounded border border-gray-200 bg-white p-2 space-y-1 text-[11px]">
+                            <div class="flex items-center justify-between text-gray-700">
+                              <span>Total Bill</span>
+                              <span>Rp {{ number_format($transaction['total_bill'] ?? 0, 0, ',', '.') }}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-amber-700">
+                              <span>PPN</span>
+                              <span>Rp {{ number_format($transaction['tax_total'] ?? 0, 0, ',', '.') }}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-orange-700">
+                              <span>Service Charge</span>
+                              <span>Rp {{ number_format($transaction['service_charge_total'] ?? 0, 0, ',', '.') }}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-gray-700 font-medium border-t border-dashed border-gray-200 pt-1">
+                              <span>Sub Total</span>
+                              <span>Rp {{ number_format($transaction['sub_total'] ?? 0, 0, ',', '.') }}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-rose-700">
+                              <span>Diskon</span>
+                              <span>- Rp {{ number_format($transaction['discount_amount'] ?? 0, 0, ',', '.') }}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-indigo-700">
+                              <span>DP</span>
+                              <span>Rp {{ number_format($transaction['down_payment_amount'] ?? 0, 0, ',', '.') }}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-gray-900 font-semibold border-t border-dashed border-gray-200 pt-1">
+                              <span>Sisa Bayar</span>
+                              <span>Rp {{ number_format($transaction['total'] ?? 0, 0, ',', '.') }}</span>
+                            </div>
+                          </div>
                         </div>
                       </details>
                     </td>
@@ -307,6 +345,7 @@
               @php
                 $historyPayload = [
                     'export_url' => route('admin.recap.history.export', $history),
+                    'reprint_url' => route('admin.recap.history.reprint', $history),
                     'end_day' => $history->end_day?->format('d/m/Y') ?? '-',
                     'last_synced_at' => $history->last_synced_at?->format('d/m/Y H:i') ?? '-',
                     'total_transactions' => number_format($history->total_transactions, 0, ',', '.'),
@@ -397,6 +436,16 @@
                    class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700">
                   Export History (.xlsx)
                 </a>
+
+                <form method="POST"
+                      :action="selectedHistory?.reprint_url ?? '#'">
+                  @csrf
+                  <button type="submit"
+                          class="inline-flex items-center justify-center rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-900"
+                          :disabled="!selectedHistory">
+                    Reprint
+                  </button>
+                </form>
 
                 <button type="button"
                         @click="showHistoryModal = false"

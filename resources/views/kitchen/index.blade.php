@@ -413,7 +413,15 @@
             Tidak ada detail item untuk end day ini.
           </p>
 
-          <div class="mt-4 flex justify-end">
+          <div class="mt-4 flex justify-end gap-2">
+            <a :href="selectedHistoryDetail?.preview_url ?? '#'"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="inline-flex items-center rounded-xl border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-600 hover:bg-orange-50 transition"
+               :class="!selectedHistoryDetail ? 'pointer-events-none opacity-50' : ''">
+              Preview Print
+            </a>
+
             <button type="button"
                     @click="reprintHistoryDetail()"
                     :disabled="isReprintingHistory || !selectedHistoryDetail"
@@ -513,7 +521,7 @@
                                 return [
                                     'id' => $item->id,
                                     'recipe_id' => $item->bom_recipe_id,
-                                    'item_name' => $item->inventoryItem?->name ?? 'Unknown',
+                                    'item_name' => $item->inventoryItem?->pos_name ?? ($item->inventoryItem?->name ?? 'Unknown'),
                                     'quantity' => $item->quantity,
                                     'is_completed' => $item->is_completed,
                                 ];
@@ -541,9 +549,10 @@
                         'end_day' => $history->end_day?->format('d/m/Y') ?? '-',
                         'total_items' => (int) $history->total_items,
                         'last_synced_at' => $history->last_synced_at?->format('d/m/Y H:i') ?? '-',
+                        'preview_url' => route('admin.kitchen.end-day.preview', $history),
                         'items' => $history->endayItems->map(function ($item) {
                                 return [
-                                    'name' => $item->inventoryItem?->name ?? 'Unknown',
+                                    'name' => $item->inventoryItem?->pos_name ?? ($item->inventoryItem?->name ?? 'Unknown'),
                                     'quantity' => (int) $item->quantity,
                                 ];
                             })->values(),

@@ -579,6 +579,86 @@ test('bar end day history can be reprinted', function () {
         ->assertJsonPath('success', true);
 });
 
+test('kitchen end day history preview page shows item details', function () {
+    $admin = adminUser();
+
+    $inventoryItem = InventoryItem::query()->create([
+        'code' => 'K-PREVIEW-ITEM',
+        'accurate_id' => 930101,
+        'name' => 'Sop Buntut',
+        'category_type' => 'food',
+        'price' => 40000,
+        'stock_quantity' => 100,
+        'threshold' => 10,
+        'unit' => 'porsi',
+        'is_active' => true,
+        'item_produced' => false,
+        'material_produced' => false,
+    ]);
+
+    $history = RecapHistoryKitchen::query()->create([
+        'end_day' => now()->toDateString(),
+        'total_items' => 2,
+        'last_synced_at' => now(),
+    ]);
+
+    EndayKitchenItem::query()->create([
+        'recap_history_kitchen_id' => $history->id,
+        'end_day' => now()->toDateString(),
+        'inventory_item_id' => $inventoryItem->id,
+        'quantity' => 2,
+    ]);
+
+    actingAs($admin)
+        ->withSession(['accurate_database' => 'test'])
+        ->get(route('admin.kitchen.end-day.preview', $history))
+        ->assertSuccessful()
+        ->assertSeeText('Preview Print Struk - End Day Kitchen')
+        ->assertSeeText('Reprint Sekarang')
+        ->assertSeeText('Sop Buntut')
+        ->assertSeeText('2');
+});
+
+test('bar end day history preview page shows item details', function () {
+    $admin = adminUser();
+
+    $inventoryItem = InventoryItem::query()->create([
+        'code' => 'B-PREVIEW-ITEM',
+        'accurate_id' => 930102,
+        'name' => 'Lemon Tea',
+        'category_type' => 'beverage',
+        'price' => 20000,
+        'stock_quantity' => 100,
+        'threshold' => 10,
+        'unit' => 'gelas',
+        'is_active' => true,
+        'item_produced' => false,
+        'material_produced' => false,
+    ]);
+
+    $history = RecapHistoryBar::query()->create([
+        'end_day' => now()->toDateString(),
+        'total_items' => 3,
+        'last_synced_at' => now(),
+    ]);
+
+    EndayBarItem::query()->create([
+        'recap_history_bar_id' => $history->id,
+        'end_day' => now()->toDateString(),
+        'inventory_item_id' => $inventoryItem->id,
+        'quantity' => 3,
+    ]);
+
+    actingAs($admin)
+        ->withSession(['accurate_database' => 'test'])
+        ->get(route('admin.bar.end-day.preview', $history))
+        ->assertSuccessful()
+        ->assertSeeText('Preview Print Struk - End Day Bar')
+        ->assertSeeText('Reprint Sekarang')
+        ->assertSeeText('Lemon Tea')
+        ->assertSeeText('3');
+});
+
 test('kitchen end day tab shows data from daily snapshot parent-child', function () {
     $admin = adminUser();
 

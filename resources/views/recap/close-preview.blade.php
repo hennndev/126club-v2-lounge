@@ -98,14 +98,16 @@
           Save PDF
         </button>
 
-        <form method="POST"
-              action="{{ route('admin.recap.close-export') }}">
-          @csrf
-          <button type="submit"
-                  class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-            Tutup End Day
-          </button>
-        </form>
+        @unless ($isReprintPreview ?? false)
+          <form method="POST"
+                action="{{ route('admin.recap.close-export') }}">
+            @csrf
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+              Tutup End Day
+            </button>
+          </form>
+        @endunless
       </div>
     </div>
     <div class="mx-auto max-w-5xl px-4 pb-3">
@@ -158,6 +160,8 @@
           <div class="flex items-center justify-between gap-2"><span class="label">Debit</span><span class="value">Rp {{ number_format($paymentMethodTotals['debit'] ?? 0, 0, ',', '.') }}</span></div>
           <div class="flex items-center justify-between gap-2"><span class="label">Kredit</span><span class="value">Rp {{ number_format($paymentMethodTotals['kredit'] ?? 0, 0, ',', '.') }}</span></div>
           <div class="flex items-center justify-between gap-2"><span class="label">QRIS</span><span class="value">Rp {{ number_format($paymentMethodTotals['qris'] ?? 0, 0, ',', '.') }}</span></div>
+          <div class="flex items-center justify-between gap-2"><span class="label">Total Diskon</span><span class="value">Rp {{ number_format($totalDiscount ?? 0, 0, ',', '.') }}</span></div>
+          <div class="flex items-center justify-between gap-2"><span class="label">Total DP</span><span class="value">Rp {{ number_format($totalDownPayment ?? 0, 0, ',', '.') }}</span></div>
         </div>
       </section>
 
@@ -191,6 +195,16 @@
                 <span class="label">Qty: {{ $transaction['items_count'] }}</span>
                 <span class="value">Rp {{ number_format($transaction['total'], 0, ',', '.') }}</span>
               </div>
+
+              <div class="mt-1.5 space-y-1 border-t border-dashed border-gray-300 pt-1.5">
+                <div class="flex items-center justify-between"><span class="label">Total Bill</span><span class="value">Rp {{ number_format($transaction['total_bill'] ?? 0, 0, ',', '.') }}</span></div>
+                <div class="flex items-center justify-between"><span class="label">PPN</span><span class="value">Rp {{ number_format($transaction['tax_total'] ?? 0, 0, ',', '.') }}</span></div>
+                <div class="flex items-center justify-between"><span class="label">Service Charge</span><span class="value">Rp {{ number_format($transaction['service_charge_total'] ?? 0, 0, ',', '.') }}</span></div>
+                <div class="flex items-center justify-between"><span class="label">Sub Total</span><span class="value">Rp {{ number_format($transaction['sub_total'] ?? 0, 0, ',', '.') }}</span></div>
+                <div class="flex items-center justify-between"><span class="label">Diskon</span><span class="value">- Rp {{ number_format($transaction['discount_amount'] ?? 0, 0, ',', '.') }}</span></div>
+                <div class="flex items-center justify-between"><span class="label">DP</span><span class="value">Rp {{ number_format($transaction['down_payment_amount'] ?? 0, 0, ',', '.') }}</span></div>
+                <div class="flex items-center justify-between border-t border-dashed border-gray-300 pt-1"><span class="label">Sisa Bayar</span><span class="value">Rp {{ number_format($transaction['total'] ?? 0, 0, ',', '.') }}</span></div>
+              </div>
             </div>
           @empty
             <p class="text-center text-[10px] text-gray-500">Tidak ada transaksi kasir pada rentang ini.</p>
@@ -207,6 +221,7 @@
     const recapPrintPayload = {
       start_datetime: @json($selectedStartDatetime),
       end_datetime: @json($selectedEndDatetime),
+      recap_history_id: @json(($reprintHistoryId ?? 0) > 0 ? (int) $reprintHistoryId : null),
     };
 
     async function triggerEndDayPrint() {

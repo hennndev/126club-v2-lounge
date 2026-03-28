@@ -130,6 +130,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('kitchen/{order}/complete-all', [KitchenController::class, 'completeAll'])->name('kitchen.complete-all');
         Route::post('kitchen/end-day/sync-snapshot', [KitchenController::class, 'syncSnapshot'])->name('kitchen.end-day.sync-snapshot');
         Route::post('kitchen/end-day', [KitchenController::class, 'submitEndDay'])->name('kitchen.end-day');
+        Route::get('kitchen/end-day/{history}/preview', [KitchenController::class, 'previewEndDay'])->name('kitchen.end-day.preview');
         Route::post('kitchen/end-day/{history}/reprint', [KitchenController::class, 'reprintEndDay'])->name('kitchen.end-day.reprint');
 
         // Bar Management
@@ -139,6 +140,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('bar/{order}/complete-all', [BarController::class, 'completeAll'])->name('bar.complete-all');
         Route::post('bar/end-day/sync-snapshot', [BarController::class, 'syncSnapshot'])->name('bar.end-day.sync-snapshot');
         Route::post('bar/end-day', [BarController::class, 'submitEndDay'])->name('bar.end-day');
+        Route::get('bar/end-day/{history}/preview', [BarController::class, 'previewEndDay'])->name('bar.end-day.preview');
         Route::post('bar/end-day/{history}/reprint', [BarController::class, 'reprintEndDay'])->name('bar.end-day.reprint');
 
         // Customer Management
@@ -165,6 +167,7 @@ Route::middleware('auth')->group(function () {
         Route::get('recap/export', [RecapController::class, 'export'])->name('recap.export');
         Route::post('recap/close-export', [RecapController::class, 'closeAndExport'])->name('recap.close-export');
         Route::get('recap/history/{recapHistory}/export', [RecapController::class, 'exportHistory'])->name('recap.history.export');
+        Route::post('recap/history/{recapHistory}/reprint', [RecapController::class, 'reprintHistory'])->name('recap.history.reprint');
 
         // Waiter Performance
         Route::get('waiter-performance', [WaiterPerformanceController::class, 'index'])->name('waiter-performance.index');
