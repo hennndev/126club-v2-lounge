@@ -32,7 +32,7 @@ class RecapController extends Controller
         ]);
 
         [$startAt, $endAt] = $this->resolveRange($validated);
-        $recapData = $this->buildRecapData($startAt, $endAt);
+        $recapData = $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false));
 
         return view('recap.index', $recapData);
     }
@@ -60,13 +60,23 @@ class RecapController extends Controller
             'date' => ['nullable', 'date'],
             'start_datetime' => ['nullable', 'date'],
             'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
+            'reprint' => ['nullable', 'boolean'],
+            'recap_history_id' => ['nullable', 'integer', 'exists:recap_history,id'],
         ]);
 
         [$startAt, $endAt] = $this->resolveRange($validated);
-        $recapData = $this->buildRecapData($startAt, $endAt);
+        $recapHistory = ! empty($validated['recap_history_id'])
+            ? RecapHistory::query()->find((int) $validated['recap_history_id'])
+            : null;
+
+        $recapData = $recapHistory
+            ? $this->buildRecapDataFromHistory($recapHistory)
+            : $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false));
 
         return view('recap.close-preview', array_merge($recapData, [
             'printedAt' => now(),
+            'isReprintPreview' => (bool) ($validated['reprint'] ?? false),
+            'reprintHistoryId' => (int) ($validated['recap_history_id'] ?? 0),
         ]));
     }
 
@@ -76,10 +86,17 @@ class RecapController extends Controller
             'date' => ['nullable', 'date'],
             'start_datetime' => ['nullable', 'date'],
             'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
+            'recap_history_id' => ['nullable', 'integer', 'exists:recap_history,id'],
         ]);
 
         [$startAt, $endAt] = $this->resolveRange($validated);
-        $recapData = $this->buildRecapData($startAt, $endAt);
+        $recapHistory = ! empty($validated['recap_history_id'])
+            ? RecapHistory::query()->find((int) $validated['recap_history_id'])
+            : null;
+
+        $recapData = $recapHistory
+            ? $this->buildRecapDataFromHistory($recapHistory)
+            : $this->buildRecapData($startAt, $endAt);
 
         $printer = $this->resolveEndDayPrinter();
 
@@ -142,10 +159,49 @@ class RecapController extends Controller
         );
     }
 
-    private function buildRecapData(Carbon $startAt, Carbon $endAt): array
+    public function reprintHistory(RecapHistory $recapHistory, PrinterService $printerService): RedirectResponse
     {
+        if (! $recapHistory->end_day) {
+            return back()->with('error', 'Tanggal end day history tidak valid.');
+        }
+
+        [$startAt, $endAt] = $this->resolveEndDayWindow($recapHistory->end_day->copy());
+
+        $printer = $this->resolveEndDayPrinter();
+
+        if (! $printer) {
+            return back()->with('error', 'Printer End Day belum dikonfigurasi atau tidak aktif.');
+        }
+
+        $recapData = $this->buildRecapDataFromHistory($recapHistory);
+
+        try {
+            $printerService->printEndDayRecap($recapData, $printer);
+
+            $message = "Reprint history end day berhasil dikirim ke printer {$printer->name}.";
+
+            if ($printer->connection_type === 'log') {
+                $message .= ' (LOG MODE)';
+            }
+
+            return redirect()->route('admin.recap.close-preview', [
+                'start_datetime' => $startAt->format('Y-m-d\TH:i'),
+                'end_datetime' => $endAt->format('Y-m-d\TH:i'),
+                'reprint' => 1,
+                'recap_history_id' => $recapHistory->id,
+            ])->with('success', $message);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Gagal reprint history End Day: '.$e->getMessage());
+        }
+    }
+
+    private function buildRecapData(Carbon $startAt, Carbon $endAt, bool $includeClosedEndDayData = false): array
+    {
+        $isSelectedEndDayClosed = ! $includeClosedEndDayData
+            && $this->isSelectedEndDayClosed($startAt);
+
         $orders = Order::query()
-            ->with(['items.inventoryItem', 'tableSession.customer.profile', 'customer.user'])
+            ->with(['items.inventoryItem', 'tableSession.customer.profile', 'tableSession.reservation', 'customer.user'])
             ->where('status', '!=', 'cancelled')
             ->where(function ($query) use ($startAt, $endAt): void {
                 $query->whereBetween('ordered_at', [$startAt, $endAt])
@@ -156,6 +212,10 @@ class RecapController extends Controller
             })
             ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
             ->get();
+
+        if ($isSelectedEndDayClosed) {
+            $orders = collect();
+        }
 
         $billingsBySessionId = Billing::query()
             ->whereIn('table_session_id', $orders->pluck('table_session_id')->filter()->unique()->values())
@@ -185,6 +245,22 @@ class RecapController extends Controller
                     ?? $billing?->payment_reference_number
                     ?? $billing?->split_non_cash_reference_number;
 
+                $itemsSubtotal = (float) $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0));
+                $itemTaxTotal = (float) $orderItems->sum(fn ($item) => (float) ($item->tax_amount ?? 0));
+                $itemServiceChargeTotal = (float) $orderItems->sum(fn ($item) => (float) ($item->service_charge_amount ?? 0));
+
+                $totalBill = $billing
+                    ? max((float) ($billing->minimum_charge ?? 0), (float) ($billing->orders_total ?? 0))
+                    : $itemsSubtotal;
+                $taxTotal = $billing ? (float) ($billing->tax ?? 0) : $itemTaxTotal;
+                $serviceChargeTotal = $billing ? (float) ($billing->service_charge ?? 0) : $itemServiceChargeTotal;
+                $subTotal = $totalBill + $taxTotal + $serviceChargeTotal;
+
+                $discountAmount = (float) ($billing?->discount_amount ?? $order->discount_amount ?? 0);
+                $downPaymentAmount = (float) ($order->tableSession?->reservation?->down_payment_amount ?? 0);
+
+                $remainingTotal = max($subTotal - $discountAmount - $downPaymentAmount, 0);
+
                 return [
                     'timestamp' => $eventTime,
                     'datetime' => $eventTime?->format('d/m/Y H:i') ?? '-',
@@ -195,11 +271,17 @@ class RecapController extends Controller
                     'payment_method' => $this->formatPaymentMethod($paymentMethod, $paymentMode),
                     'payment_reference_number' => $paymentReferenceNumber,
                     'items_count' => $orderItems->count(),
+                    'total_bill' => $totalBill,
+                    'tax_total' => $taxTotal,
+                    'service_charge_total' => $serviceChargeTotal,
+                    'sub_total' => $subTotal,
+                    'discount_amount' => $discountAmount,
+                    'down_payment_amount' => $downPaymentAmount,
                     'order_status' => (string) $order->status,
                     'billing_status' => (string) ($billing?->billing_status ?? ''),
                     'items' => $orderItems
                         ->map(fn ($item): array => [
-                            'name' => (string) ($item->item_name ?? '-'),
+                            'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? $item->item_name ?? '-'),
                             'quantity' => (int) ($item->quantity ?? 0),
                             'price' => (float) ($item->price ?? 0),
                             'subtotal' => (float) ($item->subtotal ?? 0),
@@ -208,7 +290,7 @@ class RecapController extends Controller
                         ])
                         ->values()
                         ->all(),
-                    'total' => (float) $order->total,
+                    'total' => $remainingTotal,
                 ];
             })
             ->filter(function (array $transaction): bool {
@@ -231,90 +313,102 @@ class RecapController extends Controller
             })
             ->values();
 
+        $totalDiscount = (float) $cashierTransactions->sum('discount_amount');
+        $totalDownPayment = (float) $cashierTransactions->sum('down_payment_amount');
+
         $dashboardAggregate = Dashboard::query()->find(1);
+
         $recapHistories = RecapHistory::query()
             ->latest('end_day')
             ->limit(10)
             ->get();
 
         $paymentMethodTotals = [
-            'cash' => (float) ($dashboardAggregate?->total_cash ?? 0),
-            'transfer' => (float) ($dashboardAggregate?->total_transfer ?? 0),
-            'debit' => (float) ($dashboardAggregate?->total_debit ?? 0),
-            'kredit' => (float) ($dashboardAggregate?->total_kredit ?? 0),
-            'qris' => (float) ($dashboardAggregate?->total_qris ?? 0),
+            'cash' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_cash ?? 0),
+            'transfer' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_transfer ?? 0),
+            'debit' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_debit ?? 0),
+            'kredit' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_kredit ?? 0),
+            'qris' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_qris ?? 0),
         ];
 
-        $kitchenItems = KitchenOrderItem::query()
-            ->with(['inventoryItem', 'kitchenOrder.order'])
-            ->whereHas('kitchenOrder', function ($query) use ($startAt, $endAt): void {
-                $query->whereBetween('created_at', [$startAt, $endAt]);
-            })
-            ->get()
-            ->map(function (KitchenOrderItem $item): array {
-                $eventTime = $item->kitchenOrder?->order?->ordered_at
-                    ?? $item->kitchenOrder?->created_at
-                    ?? $item->created_at;
+        $kitchenItems = $isSelectedEndDayClosed
+            ? collect()
+            : KitchenOrderItem::query()
+                ->with(['inventoryItem', 'kitchenOrder.order'])
+                ->whereHas('kitchenOrder', function ($query) use ($startAt, $endAt): void {
+                    $query->whereBetween('created_at', [$startAt, $endAt]);
+                })
+                ->get()
+                ->map(function (KitchenOrderItem $item): array {
+                    $eventTime = $item->kitchenOrder?->order?->ordered_at
+                        ?? $item->kitchenOrder?->created_at
+                        ?? $item->created_at;
 
-                return [
-                    'timestamp' => $eventTime,
-                    'datetime' => $eventTime?->format('d/m/Y H:i') ?? '-',
-                    'order_number' => $item->kitchenOrder?->order_number ?? '-',
-                    'item_name' => $item->inventoryItem?->name ?? 'Unknown Item',
-                    'qty' => (int) $item->quantity,
-                ];
-            })
-            ->sortBy(fn (array $event) => $event['timestamp'] ?? now())
-            ->values();
+                    return [
+                        'timestamp' => $eventTime,
+                        'datetime' => $eventTime?->format('d/m/Y H:i') ?? '-',
+                        'order_number' => $item->kitchenOrder?->order_number ?? '-',
+                        'item_name' => $item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? 'Unknown Item',
+                        'qty' => (int) $item->quantity,
+                    ];
+                })
+                ->sortBy(fn (array $event) => $event['timestamp'] ?? now())
+                ->values();
 
-        $barItems = BarOrderItem::query()
-            ->with(['inventoryItem', 'barOrder.order'])
-            ->whereHas('barOrder', function ($query) use ($startAt, $endAt): void {
-                $query->whereBetween('created_at', [$startAt, $endAt]);
-            })
-            ->get()
-            ->map(function (BarOrderItem $item): array {
-                $eventTime = $item->barOrder?->order?->ordered_at
-                    ?? $item->barOrder?->created_at
-                    ?? $item->created_at;
+        $barItems = $isSelectedEndDayClosed
+            ? collect()
+            : BarOrderItem::query()
+                ->with(['inventoryItem', 'barOrder.order'])
+                ->whereHas('barOrder', function ($query) use ($startAt, $endAt): void {
+                    $query->whereBetween('created_at', [$startAt, $endAt]);
+                })
+                ->get()
+                ->map(function (BarOrderItem $item): array {
+                    $eventTime = $item->barOrder?->order?->ordered_at
+                        ?? $item->barOrder?->created_at
+                        ?? $item->created_at;
 
-                return [
-                    'timestamp' => $eventTime,
-                    'datetime' => $eventTime?->format('d/m/Y H:i') ?? '-',
-                    'order_number' => $item->barOrder?->order_number ?? '-',
-                    'item_name' => $item->inventoryItem?->name ?? 'Unknown Item',
-                    'qty' => (int) $item->quantity,
-                ];
-            })
-            ->sortBy(fn (array $event) => $event['timestamp'] ?? now())
-            ->values();
+                    return [
+                        'timestamp' => $eventTime,
+                        'datetime' => $eventTime?->format('d/m/Y H:i') ?? '-',
+                        'order_number' => $item->barOrder?->order_number ?? '-',
+                        'item_name' => $item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? 'Unknown Item',
+                        'qty' => (int) $item->quantity,
+                    ];
+                })
+                ->sortBy(fn (array $event) => $event['timestamp'] ?? now())
+                ->values();
 
         return [
             'selectedDate' => $startAt->toDateString(),
             'selectedStartDatetime' => $startAt->format('Y-m-d\TH:i'),
             'selectedEndDatetime' => $endAt->format('Y-m-d\TH:i'),
             'cashierTransactions' => $cashierTransactions,
-            'cashierCount' => (int) ($dashboardAggregate?->total_transactions ?? 0),
-            'cashierRevenue' => (float) ($dashboardAggregate?->total_amount ?? 0),
-            'totalTax' => (float) ($dashboardAggregate?->total_tax ?? 0),
-            'totalServiceCharge' => (float) ($dashboardAggregate?->total_service_charge ?? 0),
-            'totalCash' => (float) ($dashboardAggregate?->total_cash ?? 0),
+            'cashierCount' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_transactions ?? 0),
+            'cashierRevenue' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_amount ?? 0),
+            'totalTax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
+            'totalServiceCharge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
+            'totalDiscount' => $totalDiscount,
+            'totalDownPayment' => $totalDownPayment,
+            'totalCash' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_cash ?? 0),
             'paymentMethodTotals' => $paymentMethodTotals,
             'kitchenItems' => $kitchenItems,
-            'kitchenQtyTotal' => (int) $kitchenItems->sum('qty'),
+            'kitchenQtyTotal' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_kitchen_items ?? 0),
             'barItems' => $barItems,
-            'barQtyTotal' => (int) $barItems->sum('qty'),
+            'barQtyTotal' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_bar_items ?? 0),
             'dashboardPreview' => [
-                'total_tax' => (float) ($dashboardAggregate?->total_tax ?? 0),
-                'total_service_charge' => (float) ($dashboardAggregate?->total_service_charge ?? 0),
-                'total_cash' => (float) ($dashboardAggregate?->total_cash ?? 0),
-                'total_transfer' => (float) ($dashboardAggregate?->total_transfer ?? 0),
-                'total_debit' => (float) ($dashboardAggregate?->total_debit ?? 0),
-                'total_kredit' => (float) ($dashboardAggregate?->total_kredit ?? 0),
-                'total_qris' => (float) ($dashboardAggregate?->total_qris ?? 0),
-                'total_kitchen_items' => (int) ($dashboardAggregate?->total_kitchen_items ?? 0),
-                'total_bar_items' => (int) ($dashboardAggregate?->total_bar_items ?? 0),
-                'total_transactions' => (int) ($dashboardAggregate?->total_transactions ?? 0),
+                'total_tax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
+                'total_service_charge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
+                'total_discount' => $totalDiscount,
+                'total_down_payment' => $totalDownPayment,
+                'total_cash' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_cash ?? 0),
+                'total_transfer' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_transfer ?? 0),
+                'total_debit' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_debit ?? 0),
+                'total_kredit' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_kredit ?? 0),
+                'total_qris' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_qris ?? 0),
+                'total_kitchen_items' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_kitchen_items ?? 0),
+                'total_bar_items' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_bar_items ?? 0),
+                'total_transactions' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_transactions ?? 0),
             ],
             'recapHistories' => $recapHistories,
         ];
@@ -336,6 +430,77 @@ class RecapController extends Controller
         return Printer::active()->byType('cashier')->first()
             ?? Printer::active()->default()->first()
             ?? Printer::active()->first();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildRecapDataFromHistory(RecapHistory $recapHistory): array
+    {
+        if (! $recapHistory->end_day) {
+            return [
+                'selectedStartDatetime' => '-',
+                'selectedEndDatetime' => '-',
+                'cashierCount' => 0,
+                'cashierRevenue' => 0.0,
+                'totalTax' => 0.0,
+                'totalServiceCharge' => 0.0,
+                'totalDiscount' => 0.0,
+                'totalDownPayment' => 0.0,
+                'paymentMethodTotals' => [
+                    'cash' => 0.0,
+                    'transfer' => 0.0,
+                    'debit' => 0.0,
+                    'kredit' => 0.0,
+                    'qris' => 0.0,
+                ],
+                'kitchenQtyTotal' => 0,
+                'barQtyTotal' => 0,
+                'dashboardPreview' => [
+                    'total_kitchen_items' => 0,
+                    'total_bar_items' => 0,
+                ],
+                'cashierTransactions' => [],
+            ];
+        }
+
+        [$startAt, $endAt] = $this->resolveEndDayWindow($recapHistory->end_day->copy());
+        $liveRecapData = $this->buildRecapData($startAt, $endAt, true);
+
+        return array_merge($liveRecapData, [
+            'selectedDate' => $recapHistory->end_day->toDateString(),
+            'selectedStartDatetime' => $startAt->format('d/m/Y H:i'),
+            'selectedEndDatetime' => $endAt->format('d/m/Y H:i'),
+            'cashierCount' => (int) $recapHistory->total_transactions,
+            'cashierRevenue' => (float) $recapHistory->total_amount,
+            'totalTax' => (float) $recapHistory->total_tax,
+            'totalServiceCharge' => (float) $recapHistory->total_service_charge,
+            'totalDiscount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
+            'totalDownPayment' => (float) ($liveRecapData['totalDownPayment'] ?? 0),
+            'paymentMethodTotals' => [
+                'cash' => (float) $recapHistory->total_cash,
+                'transfer' => (float) $recapHistory->total_transfer,
+                'debit' => (float) $recapHistory->total_debit,
+                'kredit' => (float) $recapHistory->total_kredit,
+                'qris' => (float) $recapHistory->total_qris,
+            ],
+            'kitchenQtyTotal' => (int) $recapHistory->total_kitchen_items,
+            'barQtyTotal' => (int) $recapHistory->total_bar_items,
+            'dashboardPreview' => [
+                'total_tax' => (float) $recapHistory->total_tax,
+                'total_service_charge' => (float) $recapHistory->total_service_charge,
+                'total_discount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
+                'total_down_payment' => (float) ($liveRecapData['totalDownPayment'] ?? 0),
+                'total_cash' => (float) $recapHistory->total_cash,
+                'total_transfer' => (float) $recapHistory->total_transfer,
+                'total_debit' => (float) $recapHistory->total_debit,
+                'total_kredit' => (float) $recapHistory->total_kredit,
+                'total_qris' => (float) $recapHistory->total_qris,
+                'total_kitchen_items' => (int) $recapHistory->total_kitchen_items,
+                'total_bar_items' => (int) $recapHistory->total_bar_items,
+                'total_transactions' => (int) $recapHistory->total_transactions,
+            ],
+        ]);
     }
 
     /**
@@ -546,20 +711,52 @@ class RecapController extends Controller
         }
 
         if (! empty($validated['date'])) {
-            $date = Carbon::parse($validated['date']);
-
-            return [$date->copy()->startOfDay(), $date->copy()->endOfDay()];
+            return $this->resolveEndDayWindow(Carbon::parse($validated['date'], 'Asia/Jakarta'));
         }
 
-        $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
+        return $this->resolveOperationalWindow();
+    }
 
-        if ($lastCloseAt !== null) {
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function resolveOperationalWindow(): array
+    {
+        $now = now('Asia/Jakarta');
+        $anchor = $now->copy()->setTime(9, 0, 0);
+
+        if ($now->lt($anchor)) {
             return [
-                Carbon::parse($lastCloseAt)->addSecond(),
-                now(),
+                $anchor->copy()->subDay(),
+                $anchor->copy()->subSecond(),
             ];
         }
 
-        return [now()->startOfDay(), now()->endOfDay()];
+        return [
+            $anchor,
+            $anchor->copy()->addDay()->subSecond(),
+        ];
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function resolveEndDayWindow(Carbon $endDay): array
+    {
+        $startAt = $endDay->copy()->timezone('Asia/Jakarta')->setTime(9, 0, 0);
+
+        return [
+            $startAt,
+            $startAt->copy()->addDay()->subSecond(),
+        ];
+    }
+
+    private function isSelectedEndDayClosed(Carbon $startAt): bool
+    {
+        $selectedEndDay = $startAt->copy()->timezone('Asia/Jakarta')->toDateString();
+
+        return RecapHistory::query()
+            ->whereDate('end_day', $selectedEndDay)
+            ->exists();
     }
 }

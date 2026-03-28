@@ -101,7 +101,7 @@ class BarController extends Controller
 
         $printItems = $items
             ->map(fn (DailyBarItem $item): array => [
-                'name' => (string) ($item->inventoryItem?->name ?? 'Unknown Item'),
+                'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? 'Unknown Item'),
                 'quantity' => (int) $item->quantity,
             ])
             ->values()
@@ -167,32 +167,54 @@ class BarController extends Controller
         return back()->with('success', 'Snapshot Bar berhasil di-sync.');
     }
 
-    public function reprintEndDay(RecapHistoryBar $history, PrinterService $printerService): JsonResponse
+    public function previewEndDay(RecapHistoryBar $history)
+    {
+        $history->loadMissing(['endayItems.inventoryItem']);
+
+        return view('bar.end-day-preview', [
+            'history' => $history,
+            'items' => $history->endayItems,
+        ]);
+    }
+
+    public function reprintEndDay(RecapHistoryBar $history, PrinterService $printerService, Request $request): JsonResponse|RedirectResponse
     {
         $history->loadMissing(['endayItems.inventoryItem']);
 
         $printItems = $history->endayItems
             ->map(fn (EndayBarItem $item): array => [
-                'name' => (string) ($item->inventoryItem?->name ?? 'Unknown Item'),
+                'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? 'Unknown Item'),
                 'quantity' => (int) $item->quantity,
             ])
             ->values()
             ->all();
 
         if ($printItems === []) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Detail item end day bar tidak ditemukan untuk history ini.',
-            ], 422);
+            $message = 'Detail item end day bar tidak ditemukan untuk history ini.';
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 422);
+            }
+
+            return back()->with('error', $message);
         }
 
         $printer = $this->resolveEndDayBarPrinter();
 
         if ($printer === null) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Printer end day bar belum dikonfigurasi.',
-            ], 422);
+            $message = 'Printer end day bar belum dikonfigurasi.';
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 422);
+            }
+
+            return back()->with('error', $message);
         }
 
         try {
@@ -202,15 +224,29 @@ class BarController extends Controller
                 $printer
             );
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Reprint End Day Bar berhasil dikirim ke printer '.$printer->name.'.',
-            ]);
+            $message = 'Reprint End Day Bar berhasil dikirim ke printer '.$printer->name.'.';
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                ]);
+            }
+
+            return redirect()
+                ->route('admin.bar.end-day.preview', $history)
+                ->with('success', $message);
         } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal reprint End Day Bar: '.$e->getMessage(),
-            ], 500);
+            $message = 'Gagal reprint End Day Bar: '.$e->getMessage();
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
+            }
+
+            return back()->with('error', $message);
         }
     }
 
@@ -421,7 +457,7 @@ class BarController extends Controller
             'items' => $order->items->map(function ($item) {
                 return [
                     'id' => $item->id,
-                    'item_name' => $item->inventoryItem?->name ?? 'Unknown',
+                    'item_name' => $item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? 'Unknown',
                     'quantity' => $item->quantity,
                     'is_completed' => $item->is_completed,
                     'notes' => $item->notes,

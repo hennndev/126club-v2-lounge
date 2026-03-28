@@ -1100,6 +1100,16 @@ class PrinterService
             $escpos->text($this->formatClosedBillingPair('Kredit', 'Rp '.number_format((float) ($paymentMethodTotals['kredit'] ?? 0), 0, ',', '.'), $width)."\n");
             $escpos->text($this->formatClosedBillingPair('QRIS', 'Rp '.number_format((float) ($paymentMethodTotals['qris'] ?? 0), 0, ',', '.'), $width)."\n");
 
+            $totalDiscount = (float) ($recapData['totalDiscount'] ?? 0);
+            if ($totalDiscount > 0) {
+                $escpos->text($this->formatClosedBillingPair('Total Diskon', '- Rp '.number_format($totalDiscount, 0, ',', '.'), $width)."\n");
+            }
+
+            $totalDownPayment = (float) ($recapData['totalDownPayment'] ?? 0);
+            if ($totalDownPayment > 0) {
+                $escpos->text($this->formatClosedBillingPair('Total DP', 'Rp '.number_format($totalDownPayment, 0, ',', '.'), $width)."\n");
+            }
+
             $escpos->text($separator."\n");
             $escpos->setEmphasis(true);
             $escpos->text("DAFTAR TRANSAKSI\n");
@@ -1128,9 +1138,22 @@ class PrinterService
                     }
                 }
 
+                if ((float) ($transaction['discount_amount'] ?? 0) > 0) {
+                    $escpos->text('  Diskon: - Rp '.number_format((float) $transaction['discount_amount'], 0, ',', '.')."\n");
+                }
+
+                if ((float) ($transaction['down_payment_amount'] ?? 0) > 0) {
+                    $escpos->text('  DP: Rp '.number_format((float) $transaction['down_payment_amount'], 0, ',', '.')."\n");
+                }
+
+                $escpos->text('  '.trim($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format((float) ($transaction['total_bill'] ?? 0), 0, ',', '.'), $width))."\n");
+                $escpos->text('  '.trim($this->formatClosedBillingPair('PPN', 'Rp '.number_format((float) ($transaction['tax_total'] ?? 0), 0, ',', '.'), $width))."\n");
+                $escpos->text('  '.trim($this->formatClosedBillingPair('Service Charge', 'Rp '.number_format((float) ($transaction['service_charge_total'] ?? 0), 0, ',', '.'), $width))."\n");
+                $escpos->text('  '.trim($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format((float) ($transaction['sub_total'] ?? 0), 0, ',', '.'), $width))."\n");
+
                 $escpos->text($this->formatClosedBillingPair('Qty', (string) ($transaction['items_count'] ?? 0), $width)."\n");
                 $escpos->setEmphasis(true);
-                $escpos->text($this->formatClosedBillingPair('TOTAL', 'Rp '.number_format((float) ($transaction['total'] ?? 0), 0, ',', '.'), $width)."\n");
+                $escpos->text($this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) ($transaction['total'] ?? 0), 0, ',', '.'), $width)."\n");
                 $escpos->setEmphasis(false);
                 $escpos->text($separator."\n");
             }
@@ -1178,9 +1201,20 @@ class PrinterService
             $this->formatClosedBillingPair('Debit', 'Rp '.number_format((float) ($paymentMethodTotals['debit'] ?? 0), 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Kredit', 'Rp '.number_format((float) ($paymentMethodTotals['kredit'] ?? 0), 0, ',', '.'), $width),
             $this->formatClosedBillingPair('QRIS', 'Rp '.number_format((float) ($paymentMethodTotals['qris'] ?? 0), 0, ',', '.'), $width),
-            $separator,
-            'DAFTAR TRANSAKSI',
         ];
+
+        $totalDiscount = (float) ($recapData['totalDiscount'] ?? 0);
+        if ($totalDiscount > 0) {
+            $lines[] = $this->formatClosedBillingPair('Total Diskon', '- Rp '.number_format($totalDiscount, 0, ',', '.'), $width);
+        }
+
+        $totalDownPayment = (float) ($recapData['totalDownPayment'] ?? 0);
+        if ($totalDownPayment > 0) {
+            $lines[] = $this->formatClosedBillingPair('Total DP', 'Rp '.number_format($totalDownPayment, 0, ',', '.'), $width);
+        }
+
+        $lines[] = $separator;
+        $lines[] = 'DAFTAR TRANSAKSI';
 
         $cashierTransactions = collect($recapData['cashierTransactions'] ?? []);
 
@@ -1208,8 +1242,21 @@ class PrinterService
                 }
             }
 
+            if ((float) ($transactionData['discount_amount'] ?? 0) > 0) {
+                $lines[] = '  Diskon: - Rp '.number_format((float) $transactionData['discount_amount'], 0, ',', '.');
+            }
+
+            if ((float) ($transactionData['down_payment_amount'] ?? 0) > 0) {
+                $lines[] = '  DP: Rp '.number_format((float) $transactionData['down_payment_amount'], 0, ',', '.');
+            }
+
+            $lines[] = '  '.trim($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format((float) ($transactionData['total_bill'] ?? 0), 0, ',', '.'), $width));
+            $lines[] = '  '.trim($this->formatClosedBillingPair('PPN', 'Rp '.number_format((float) ($transactionData['tax_total'] ?? 0), 0, ',', '.'), $width));
+            $lines[] = '  '.trim($this->formatClosedBillingPair('Service Charge', 'Rp '.number_format((float) ($transactionData['service_charge_total'] ?? 0), 0, ',', '.'), $width));
+            $lines[] = '  '.trim($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format((float) ($transactionData['sub_total'] ?? 0), 0, ',', '.'), $width));
+
             $lines[] = $this->formatClosedBillingPair('Qty', (string) ($transactionData['items_count'] ?? 0), $width);
-            $lines[] = $this->formatClosedBillingPair('TOTAL', 'Rp '.number_format((float) ($transactionData['total'] ?? 0), 0, ',', '.'), $width);
+            $lines[] = $this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) ($transactionData['total'] ?? 0), 0, ',', '.'), $width);
             $lines[] = $separator;
         }
 
