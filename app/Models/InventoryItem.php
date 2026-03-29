@@ -18,6 +18,8 @@ class InventoryItem extends Model
         'is_active' => 'boolean',
         'include_tax' => 'boolean',
         'include_service_charge' => 'boolean',
+        'is_item_group' => 'boolean',
+        'is_count_portion_possible' => 'boolean',
         'detail_group' => 'array',
     ];
 

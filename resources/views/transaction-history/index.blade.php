@@ -24,7 +24,7 @@
     </div>
 
     <!-- Stat Cards -->
-    <div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-3 gap-4 mb-6">
       <!-- Total Transaksi -->
       <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex items-center gap-4">
         <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
@@ -85,27 +85,6 @@
         </div>
       </div>
 
-      <!-- Total Pendapatan -->
-      <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex items-center gap-4"
-           style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
-        <div class="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center shrink-0">
-          <svg class="w-6 h-6 text-white"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div>
-          <p class="text-xs text-amber-700 font-medium mb-0.5">Total Pendapatan</p>
-          <p class="text-xl font-bold text-amber-600">
-            Rp {{ number_format($totalRevenue / 1000000, 1, '.', '') }}jt
-          </p>
-        </div>
-      </div>
     </div>
 
     <!-- Table Card -->

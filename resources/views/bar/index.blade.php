@@ -355,7 +355,7 @@
          style="display: none;"
          class="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4"
          @click.self="closeHistoryDetail()">
-      <div class="w-full max-w-lg bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
+      <div class="w-full max-w-lg max-h-[85vh] bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
         <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
           <div>
             <h3 class="text-lg font-semibold text-gray-900">Detail Item Bar</h3>
@@ -376,7 +376,7 @@
             </svg>
           </button>
         </div>
-        <div class="p-5">
+        <div class="p-5 overflow-y-auto">
           <div x-show="selectedHistoryDetail && selectedHistoryDetail.items.length > 0"
                class="space-y-2">
             <template x-for="item in (selectedHistoryDetail?.items || [])"

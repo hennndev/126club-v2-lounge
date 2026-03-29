@@ -568,7 +568,7 @@ test('waiter pos page uses inventory pos_name as product display name', function
         ->and($productPayload['name'])->toBe('POS Display Name');
 });
 
-test('waiter add to cart allows item group regardless of possible portions', function () {
+test('waiter add to cart allows item group when ingredient portions are sufficient', function () {
     $waiter = posWaiter();
 
     PosCategorySetting::updateOrCreate(
@@ -589,9 +589,33 @@ test('waiter add to cart allows item group regardless of possible portions', fun
         'accurate_id' => 5001,
         'category_type' => 'food',
         'price' => 35000,
-        'stock_quantity' => 999,
+        'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
         'is_active' => true,
     ]);
+
+    InventoryItem::create([
+        'name' => 'Waiter Ingredient Group',
+        'code' => 'ING-WAITER-GRP-001',
+        'accurate_id' => 6001,
+        'category_type' => 'ingredient',
+        'price' => 1000,
+        'stock_quantity' => 10,
+        'is_active' => true,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')
+            ->once()
+            ->with(5001)
+            ->andReturn([
+                [
+                    'itemId' => 6001,
+                    'quantity' => 2,
+                ],
+            ]);
+    });
 
     actingAs($waiter)
         ->withSession(['accurate_database' => 'test'])
@@ -609,7 +633,7 @@ test('waiter add to cart allows detail group menu when sold item stock is zero',
         [
             'show_in_pos' => true,
             'is_menu' => true,
-            'is_item_group' => false,
+            'is_item_group' => true,
             'preparation_location' => 'kitchen',
             'source' => 'inventory',
         ]
@@ -623,6 +647,8 @@ test('waiter add to cart allows detail group menu when sold item stock is zero',
         'category_type' => 'food',
         'price' => 35000,
         'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
         'is_active' => true,
     ]);
 
@@ -656,6 +682,84 @@ test('waiter add to cart allows detail group menu when sold item stock is zero',
         ->assertJsonPath('cart.item_'.$menuItem->id.'.qty', 1);
 });
 
+test('waiter skips possible portions when is count portion possible is off and still allows add to cart', function () {
+    $waiter = posWaiter();
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => true,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter No Count Portion',
+        'code' => 'MENU-WAITER-NCP-001',
+        'accurate_id' => 50022,
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => false,
+        'is_active' => true,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldNotReceive('getItemGroupComponents');
+    });
+
+    actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->post(route('waiter.pos.add-to-cart', 'item_'.$menuItem->id))
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.item_'.$menuItem->id.'.qty', 1);
+});
+
+test('waiter can add non group item when is count portion possible is off even if stock is zero', function () {
+    $waiter = posWaiter();
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter Non Group No Count',
+        'code' => 'MENU-WAITER-NGNCP-001',
+        'accurate_id' => 50023,
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 0,
+        'is_item_group' => false,
+        'is_count_portion_possible' => false,
+        'is_active' => true,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldNotReceive('getItemGroupComponents');
+    });
+
+    actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->post(route('waiter.pos.add-to-cart', 'item_'.$menuItem->id))
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.item_'.$menuItem->id.'.qty', 1);
+});
+
 test('waiter add to cart allows non menu detail group item when sold item stock is zero', function () {
     $waiter = posWaiter();
 
@@ -664,7 +768,7 @@ test('waiter add to cart allows non menu detail group item when sold item stock 
         [
             'show_in_pos' => true,
             'is_menu' => false,
-            'is_item_group' => false,
+            'is_item_group' => true,
             'preparation_location' => 'bar',
             'source' => 'inventory',
         ]
@@ -678,6 +782,8 @@ test('waiter add to cart allows non menu detail group item when sold item stock 
         'category_type' => 'warehouse-group',
         'price' => 35000,
         'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
         'is_active' => true,
     ]);
 

@@ -913,6 +913,8 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
     expect($inventoryItem->fresh()->stock_quantity)->toBe(6)
         ->and($customerUser->fresh()->customer_code)->toBe('CUST-WALKIN-001')
         ->and($customerUser->fresh()->accurate_id)->toBe(98765)
+        ->and((int) $customerUser->fresh()->total_visits)->toBe(1)
+        ->and((float) $customerUser->fresh()->lifetime_spending)->toBe(61050.0)
         ->and($order)->not->toBeNull()
         ->and($billing)->not->toBeNull()
         ->and((float) $order->total)->toBe(61050.0)
@@ -1274,6 +1276,7 @@ test('booking checkout for menu category decrements ingredient stock without dec
         'accurate_id' => 1901,
         'category_type' => 'main-course',
         'stock_quantity' => 10,
+        'is_count_portion_possible' => true,
     ]);
 
     $ingredientItem = makePosInventoryItem([
@@ -1345,6 +1348,8 @@ test('menu category item can be added to cart even when sold item stock is zero'
     $menuItem = makePosInventoryItem([
         'category_type' => 'Main Course',
         'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
     ]);
 
     $response = actingAs($admin)->postJson(route('admin.pos.add-to-cart', [
@@ -1358,6 +1363,44 @@ test('menu category item can be added to cart even when sold item stock is zero'
         ->assertJsonPath('cart.0.quantity', 1);
 });
 
+test('portion possible is skipped when is count portion possible is off and item group can still be added', function () {
+    $admin = adminUser();
+
+    PosCategorySetting::create([
+        'category_type' => 'main-course',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'is_item_group' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    $menuItem = makePosInventoryItem([
+        'accurate_id' => 8811,
+        'category_type' => 'main-course',
+        'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => false,
+    ]);
+
+    makePosInventoryItem([
+        'accurate_id' => 9811,
+        'stock_quantity' => 100,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldNotReceive('getItemGroupComponents');
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.pos.add-to-cart', [
+            'productId' => 'item_'.$menuItem->id,
+        ]))
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.0.id', 'item_'.$menuItem->id)
+        ->assertJsonPath('cart.0.quantity', 1);
+});
+
 test('detail group menu can be added to cart when sold item stock is zero', function () {
     $admin = adminUser();
 
@@ -1365,7 +1408,7 @@ test('detail group menu can be added to cart when sold item stock is zero', func
         'category_type' => 'main-course',
         'show_in_pos' => true,
         'is_menu' => true,
-        'is_item_group' => false,
+        'is_item_group' => true,
         'preparation_location' => 'kitchen',
     ]);
 
@@ -1373,6 +1416,8 @@ test('detail group menu can be added to cart when sold item stock is zero', func
         'accurate_id' => 8201,
         'category_type' => 'main-course',
         'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
     ]);
 
     makePosInventoryItem([
@@ -1409,7 +1454,7 @@ test('non menu detail group item can be added to cart when sold item stock is ze
         'category_type' => 'warehouse-group',
         'show_in_pos' => true,
         'is_menu' => false,
-        'is_item_group' => false,
+        'is_item_group' => true,
         'preparation_location' => 'bar',
     ]);
 
@@ -1417,6 +1462,8 @@ test('non menu detail group item can be added to cart when sold item stock is ze
         'accurate_id' => 8401,
         'category_type' => 'warehouse-group',
         'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
     ]);
 
     makePosInventoryItem([
@@ -1446,14 +1493,14 @@ test('non menu detail group item can be added to cart when sold item stock is ze
         ->assertJsonPath('cart.0.quantity', 1);
 });
 
-test('checkout availability preview uses detail group possible portions when item group is disabled', function () {
+test('checkout availability preview uses detail group possible portions when item group is enabled', function () {
     $admin = adminUser();
 
     PosCategorySetting::create([
         'category_type' => 'main-course',
         'show_in_pos' => true,
         'is_menu' => true,
-        'is_item_group' => false,
+        'is_item_group' => true,
         'preparation_location' => 'kitchen',
     ]);
 
@@ -1461,6 +1508,8 @@ test('checkout availability preview uses detail group possible portions when ite
         'accurate_id' => 8301,
         'category_type' => 'main-course',
         'stock_quantity' => 999,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
     ]);
 
     makePosInventoryItem([
@@ -1505,7 +1554,7 @@ test('checkout availability preview uses detail group possible portions when ite
         ->assertJsonPath('menu_items.0.is_available', false);
 });
 
-test('checkout availability preview does not block item group products', function () {
+test('checkout availability preview blocks item group products when ingredient stock is insufficient', function () {
     $admin = adminUser();
 
     PosCategorySetting::create([
@@ -1520,7 +1569,28 @@ test('checkout availability preview does not block item group products', functio
         'accurate_id' => 4101,
         'category_type' => 'main-course',
         'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
     ]);
+
+    makePosInventoryItem([
+        'accurate_id' => 5101,
+        'name' => 'Bahan Preview',
+        'stock_quantity' => 3,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')
+            ->once()
+            ->with(4101)
+            ->andReturn([
+                [
+                    'itemId' => 5101,
+                    'detailName' => 'Bahan Preview',
+                    'quantity' => 2,
+                ],
+            ]);
+    });
 
     $cartKey = 'item_'.$menuItem->id;
 
@@ -1541,12 +1611,14 @@ test('checkout availability preview does not block item group products', functio
     $response
         ->assertSuccessful()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('can_checkout', true)
-        ->assertJsonPath('menu_items', [])
-        ->assertJsonPath('stock_issues', []);
+        ->assertJsonPath('can_checkout', false)
+        ->assertJsonPath('menu_items.0.product_id', $cartKey)
+        ->assertJsonPath('menu_items.0.possible_portions', 1)
+        ->assertJsonPath('menu_items.0.is_available', false)
+        ->assertJsonPath('stock_issues.0.type', 'detail_group_shortage');
 });
 
-test('booking checkout is not blocked by item group stock validation', function () {
+test('booking checkout is blocked when item group ingredient stock is insufficient', function () {
     $admin = adminUser();
     $customer = User::factory()->create();
     $area = makePosArea();
@@ -1564,6 +1636,8 @@ test('booking checkout is not blocked by item group stock validation', function 
         'accurate_id' => 6101,
         'category_type' => 'main-course',
         'stock_quantity' => 0,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
     ]);
 
     makePosInventoryItem([
@@ -1615,10 +1689,10 @@ test('booking checkout is not blocked by item group stock validation', function 
         ]);
 
     $response
-        ->assertSuccessful()
-        ->assertJsonPath('success', true);
+        ->assertStatus(422)
+        ->assertJsonPath('success', false);
 
-    expect(Order::query()->count())->toBe(1);
+    expect(Order::query()->count())->toBe(0);
 });
 
 test('non menu item cannot be added to cart when stock is empty', function () {
@@ -1800,4 +1874,155 @@ test('booking checkout creates only one kitchen order when item is assigned to k
         ->assertJsonPath('success', true);
 
     expect(KitchenOrder::query()->count())->toBe(1);
+});
+
+test('booking checkout for menu category with is_count_portion_possible false still decrements ingredient stock allowing negative', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $area = makePosArea();
+    $table = makePosTable($area);
+
+    PosCategorySetting::create([
+        'category_type' => 'main-course',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'is_item_group' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    $menuItem = makePosInventoryItem([
+        'accurate_id' => 1902,
+        'category_type' => 'main-course',
+        'stock_quantity' => 10,
+        'is_count_portion_possible' => false,
+    ]);
+
+    $ingredientItem = makePosInventoryItem([
+        'accurate_id' => 2902,
+        'category_type' => 'ingredient',
+        'stock_quantity' => 3,
+    ]);
+
+    TableSession::create([
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')
+            ->once()
+            ->with(1902)
+            ->andReturn([
+                [
+                    'itemId' => 2902,
+                    'quantity' => 2,
+                ],
+            ]);
+    });
+
+    $cartKey = 'item_'.$menuItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $menuItem->name,
+                    'price' => (float) $menuItem->price,
+                    'quantity' => 3,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'booking',
+            'customer_user_id' => $customer->id,
+            'table_id' => $table->id,
+            'discount_percentage' => 0,
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    expect($menuItem->fresh()->stock_quantity)->toBe(10)
+        ->and($ingredientItem->fresh()->stock_quantity)->toBe(-3);
+});
+
+test('booking checkout not blocked when is_count_portion_possible false even with ingredient stock shortage', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $area = makePosArea();
+    $table = makePosTable($area);
+
+    PosCategorySetting::create([
+        'category_type' => 'main-course',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'is_item_group' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    $menuItem = makePosInventoryItem([
+        'accurate_id' => 1903,
+        'category_type' => 'main-course',
+        'stock_quantity' => 100,
+        'is_count_portion_possible' => false,
+    ]);
+
+    $ingredientItem = makePosInventoryItem([
+        'accurate_id' => 2903,
+        'category_type' => 'ingredient',
+        'stock_quantity' => 1,
+    ]);
+
+    TableSession::create([
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')
+            ->once()
+            ->with(1903)
+            ->andReturn([
+                [
+                    'itemId' => 2903,
+                    'quantity' => 5,
+                ],
+            ]);
+    });
+
+    $cartKey = 'item_'.$menuItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $menuItem->name,
+                    'price' => (float) $menuItem->price,
+                    'quantity' => 10,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'booking',
+            'customer_user_id' => $customer->id,
+            'table_id' => $table->id,
+            'discount_percentage' => 0,
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    expect($ingredientItem->fresh()->stock_quantity)->toBe(-49);
 });

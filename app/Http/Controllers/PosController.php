@@ -66,7 +66,7 @@ class PosController extends Controller
         // Map inventory items to product format
         $products = $inventoryQuery->get()->map(function ($item) use ($posSettings) {
             $setting = $posSettings->get($item->category_type);
-            $isItemGroup = (bool) ($setting?->is_item_group ?? false);
+            $isItemGroup = (bool) ($item->is_item_group ?? false);
 
             return [
                 'id' => 'item_'.$item->id,
@@ -334,7 +334,7 @@ class PosController extends Controller
 
         $nextQuantity = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
 
-        $isItemGroup = (bool) ($setting->is_item_group ?? false);
+        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
         $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
         if ($detailGroupComponents !== []) {
@@ -399,7 +399,7 @@ class PosController extends Controller
                     ], 404);
                 }
 
-                $isItemGroup = (bool) ($setting->is_item_group ?? false);
+                $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
                 $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
                 if ($detailGroupComponents !== []) {
@@ -1004,6 +1004,11 @@ class PosController extends Controller
                     'split_second_non_cash_method' => $splitSecondNonCashMethod,
                     'split_second_non_cash_reference_number' => $splitSecondNonCashReferenceNumber,
                 ]);
+
+                if ($customerUser) {
+                    $customerUser->increment('total_visits');
+                    $customerUser->increment('lifetime_spending', (float) $totals['grand_total']);
+                }
 
                 // Route to kitchen/bar checkers (no table session)
                 $this->routeOrderToPreparation($order, null, $orderNumber, $customerUser?->id, $selectedCheckerPrinterIds);
@@ -1865,7 +1870,7 @@ class PosController extends Controller
     protected function decrementInventoryStock(InventoryItem $inventoryItem, int $quantity): void
     {
         $setting = PosCategorySetting::allKeyed()->get($inventoryItem->category_type);
-        $isItemGroup = (bool) ($setting?->is_item_group ?? false);
+        $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
 
         if (! $inventoryItem->accurate_id) {
             if (! $isItemGroup) {
@@ -1996,7 +2001,7 @@ class PosController extends Controller
             }
 
             $setting = $posSettings->get($inventoryItem->category_type);
-            $isItemGroup = (bool) ($setting?->is_item_group ?? false);
+            $isItemGroup = (bool) ($inventoryItem->is_item_group ?? false);
             $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
             if ($detailGroupComponents !== []) {
@@ -2087,7 +2092,7 @@ class PosController extends Controller
 
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array
     {
-        if ((bool) ($setting?->is_item_group ?? false)) {
+        if (! (bool) ($inventoryItem->is_item_group ?? false) || ! (bool) ($inventoryItem->is_count_portion_possible ?? false)) {
             return [];
         }
 
