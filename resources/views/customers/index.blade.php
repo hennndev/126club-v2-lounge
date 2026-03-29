@@ -84,7 +84,6 @@
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Kontak</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Visits</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Total Spent</th>
-                <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Points</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Last Visit</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Action</th>
               </tr>
@@ -128,14 +127,11 @@
                     </div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-center">
-                    <div class="text-lg font-bold text-gray-900">{{ $customer->total_visits }}</div>
+                    <div class="text-lg font-bold text-gray-900">{{ number_format((int) ($customer->transaction_total_visits ?? 0), 0, ',', '.') }}</div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-bold text-green-600">Rp {{ number_format($customer->lifetime_spending / 1000000, 1) }}jt</div>
-                    <div class="text-xs text-gray-500">{{ number_format($customer->lifetime_spending, 0, ',', '.') }}</div>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-center">
-                    <div class="text-lg font-bold text-orange-600">{{ number_format($customer->points, 0, ',', '.') }}</div>
+                    <div class="text-sm font-bold text-green-600">Rp {{ number_format((float) ($customer->transaction_lifetime_spending ?? 0), 0, ',', '.') }}</div>
+                    <div class="text-xs text-gray-500">{{ number_format(((float) ($customer->transaction_lifetime_spending ?? 0)) / 1000000, 1) }}jt</div>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap">
                     <div class="text-sm text-gray-900">{{ $customer->updated_at->format('d M Y') }}</div>
@@ -165,6 +161,7 @@
   @push('scripts')
     <script>
       const customers = @json($customers);
+      const initialTab = @json(request('tab') === 'leaderboard' ? 'leaderboard' : 'customers');
 
       function showTab(tab) {
         const customersTab = document.getElementById('customersTab');
@@ -265,6 +262,8 @@
       document.getElementById('customerModal').addEventListener('click', function(e) {
         if (e.target === this) closeModal();
       });
+
+      showTab(initialTab);
     </script>
   @endpush
 </x-app-layout>

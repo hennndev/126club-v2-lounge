@@ -173,7 +173,7 @@ class WaiterController extends Controller
             ->get()
             ->map(function ($item) use ($posSettings) {
                 $setting = $posSettings->get($item->category_type);
-                $isItemGroup = (bool) ($setting?->is_item_group ?? false);
+                $isItemGroup = (bool) ($item->is_item_group ?? false);
                 $displayName = filled($item->pos_name)
                     ? (string) $item->pos_name
                     : (string) $item->name;

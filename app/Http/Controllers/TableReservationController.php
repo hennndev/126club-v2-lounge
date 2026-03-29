@@ -770,6 +770,16 @@ class TableReservationController extends Controller
                     'split_second_non_cash_reference_number' => $splitSecondNonCashReferenceNumber,
                 ]);
 
+                $customerUser = CustomerUser::query()
+                    ->where('user_id', $booking->customer_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($customerUser) {
+                    $customerUser->increment('total_visits');
+                    $customerUser->increment('lifetime_spending', (float) $totals['grand_total']);
+                }
+
                 $session->update([
                     'checked_out_at' => now(),
                     'status' => 'completed',

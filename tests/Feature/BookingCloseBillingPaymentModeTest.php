@@ -120,6 +120,21 @@ test('close billing works with normal payment mode', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
 
+    $customer = $booking->customer;
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081299900001',
+    ]);
+
+    $customerUser = CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => 120001,
+        'customer_code' => 'CUST-CLOSE-001',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
     $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
         'payment_mode' => 'normal',
         'payment_method' => 'cash',
@@ -140,6 +155,8 @@ test('close billing works with normal payment mode', function () {
         ->and((string) $updatedBilling->transaction_code)->toMatch('/^BILLING-\d{6}$/')
         ->and((float) $updatedBilling->split_cash_amount)->toBe(0.0)
         ->and((float) $updatedBilling->split_debit_amount)->toBe(0.0)
+        ->and((int) $customerUser->fresh()->total_visits)->toBe(1)
+        ->and((float) $customerUser->fresh()->lifetime_spending)->toBe(120000.0)
         ->and($updatedBooking->status)->toBe('completed')
         ->and($updatedSession?->status)->toBe('completed')
         ->and($updatedTable?->status)->toBe('available');

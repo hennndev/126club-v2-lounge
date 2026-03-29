@@ -7,171 +7,218 @@ use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\AccurateService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Hash;
 
 class CustomerController extends Controller
 {
-  protected $accurateService;
-  public function __construct(AccurateService $accurateService)
-  {
-    $this->accurateService = $accurateService;
-  }
+    protected $accurateService;
 
-  public function index(Request $request)
-  {
-    $query = CustomerUser::with(['user', 'profile']);
-
-    if ($request->has('search') && $request->search != '') {
-      $search = $request->search;
-      $query->where(function ($q) use ($search) {
-        $q->where('customer_code', 'like', "%{$search}%")
-          ->orWhereHas('user', function ($userQuery) use ($search) {
-            $userQuery->where('name', 'like', "%{$search}%")
-              ->orWhere('email', 'like', "%{$search}%");
-          })
-          ->orWhereHas('profile', function ($profileQuery) use ($search) {
-            $profileQuery->where('phone', 'like', "%{$search}%");
-          });
-      });
+    public function __construct(AccurateService $accurateService)
+    {
+        $this->accurateService = $accurateService;
     }
 
-    $customers = $query->latest('updated_at')->get();
+    public function index(Request $request)
+    {
+        $leaderboardLimitOptions = [10, 20, 30, 40, 50];
+        $leaderboardLimit = (int) $request->integer('leaderboard_limit', 10);
 
-    $totalCustomers = CustomerUser::count();
-    $totalSpending = CustomerUser::sum('lifetime_spending');
-    $totalVisits = CustomerUser::sum('total_visits');
-    $avgSpending = CustomerUser::avg('lifetime_spending');
+        if (! in_array($leaderboardLimit, $leaderboardLimitOptions, true)) {
+            $leaderboardLimit = 10;
+        }
 
-    // Leaderboard data
-    $leaderboard = CustomerUser::with(['user', 'profile'])
-      ->orderBy('lifetime_spending', 'desc')
-      ->take(10)
-      ->get();
-    return view('customers.index', compact(
-      'customers',
-      'totalCustomers',
-      'totalSpending',
-      'totalVisits',
-      'avgSpending',
-      'leaderboard'
-    ));
-  }
+        $query = $this->customerQueryWithTransactionStats()->with(['user', 'profile']);
 
-  public function store(Request $request)
-  {
-    $validated = $request->validate([
-      'name' => 'required|string|max:255',
-      'email' => 'required|email|unique:users,email',
-      'password' => 'required|string|min:8',
-      'phone' => 'nullable|string|max:20',
-      'address' => 'nullable|string',
-      'birth_date' => 'nullable|date',
-    ]);
-    $accurateId = null;
-    try {
-      DB::beginTransaction();
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('customer_code', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('profile', function ($profileQuery) use ($search) {
+                        $profileQuery->where('phone', 'like', "%{$search}%");
+                    });
+            });
+        }
 
+        $customers = $query->latest('updated_at')->get();
 
-      $user = User::create([
-        'name' => $validated['name'],
-        'email' => $validated['email'],
-        'password' => Hash::make($validated['password']),
-      ]);
-      $payload = [
-        "name" => $validated['name'],
-        "email" => $validated['email'],
-      ];
-      // Create user profile
-      $profile = UserProfile::create([
-        'user_id' => $user->id,
-        'phone' => $validated['phone'] ?? null,
-        'address' => $validated['address'] ?? null,
-        'birth_date' => $validated['birth_date'] ?? null,
-      ]);
+        $totalCustomers = CustomerUser::count();
+        $totalSpending = (float) $customers->sum(fn (CustomerUser $customer): float => (float) ($customer->transaction_lifetime_spending ?? 0));
+        $totalVisits = (int) $customers->sum(fn (CustomerUser $customer): int => (int) ($customer->transaction_total_visits ?? 0));
+        $avgSpending = $totalCustomers > 0 ? $totalSpending / $totalCustomers : 0;
 
-      $response = $this->accurateService->saveCustomer($payload);
-      $accurateId = $response['r']['id'];
-      $customerNo = $response['r']['customerNo'];
-      CustomerUser::create([
-        'accurate_id' => $accurateId,
-        'customer_code' => $customerNo,
-        'user_id' => $user->id,
-        'user_profile_id' => $profile->id,
-        'total_visits' => 0,
-        'lifetime_spending' => 0,
-      ]);
+        // Leaderboard data (points + visits)
+        $leaderboard = $this->customerQueryWithTransactionStats()
+            ->with(['user', 'profile'])
+            ->orderByDesc('leaderboard_score')
+            ->orderByDesc('transaction_lifetime_spending')
+            ->take($leaderboardLimit)
+            ->get();
 
-      DB::commit();
-
-      return redirect()->route('admin.customers.index')
-        ->with('success', 'Customer berhasil ditambahkan');
-    } catch (\Exception $e) {
-      DB::rollBack();
-      return back()->withErrors(['error' => 'Gagal menambahkan customer: ' . $e->getMessage()]);
+        return view('customers.index', compact(
+            'customers',
+            'totalCustomers',
+            'totalSpending',
+            'totalVisits',
+            'avgSpending',
+            'leaderboard',
+            'leaderboardLimit',
+            'leaderboardLimitOptions'
+        ));
     }
-  }
 
-  public function update(Request $request, CustomerUser $customer)
-  {
-    $validated = $request->validate([
-      'name' => 'required|string|max:255',
-      'email' => 'required|email|unique:users,email,' . $customer->user_id,
-      'password' => 'nullable|string|min:8',
-      'phone' => 'nullable|string|max:20',
-      'address' => 'nullable|string',
-      'birth_date' => 'nullable|date',
-      'total_visits' => 'nullable|integer|min:0',
-      'lifetime_spending' => 'nullable|numeric|min:0',
-    ]);
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|string|min:8',
+            'phone' => 'nullable|string|max:20',
+            'address' => 'nullable|string',
+            'birth_date' => 'nullable|date',
+        ]);
+        $accurateId = null;
+        try {
+            DB::beginTransaction();
 
-    try {
-      DB::beginTransaction();
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+            ]);
+            $payload = [
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+            ];
+            // Create user profile
+            $profile = UserProfile::create([
+                'user_id' => $user->id,
+                'phone' => $validated['phone'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'birth_date' => $validated['birth_date'] ?? null,
+            ]);
 
-      // Update user
-      $userData = [
-        'name' => $validated['name'],
-        'email' => $validated['email'],
-      ];
-      if (!empty($validated['password'])) {
-        $userData['password'] = Hash::make($validated['password']);
-      }
-      $customer->user->update($userData);
+            $response = $this->accurateService->saveCustomer($payload);
+            $accurateId = $response['r']['id'];
+            $customerNo = $response['r']['customerNo'];
+            CustomerUser::create([
+                'accurate_id' => $accurateId,
+                'customer_code' => $customerNo,
+                'user_id' => $user->id,
+                'user_profile_id' => $profile->id,
+                'total_visits' => 0,
+                'lifetime_spending' => 0,
+            ]);
 
-      // Update profile
-      $customer->profile->update([
-        'phone' => $validated['phone'] ?? null,
-        'address' => $validated['address'] ?? null,
-        'birth_date' => $validated['birth_date'] ?? null,
-      ]);
+            DB::commit();
 
-      // Update customer data
-      $customer->update([
-        'total_visits' => $validated['total_visits'] ?? $customer->total_visits,
-        'lifetime_spending' => $validated['lifetime_spending'] ?? $customer->lifetime_spending,
-      ]);
+            return redirect()->route('admin.customers.index')
+                ->with('success', 'Customer berhasil ditambahkan');
+        } catch (\Exception $e) {
+            DB::rollBack();
 
-      DB::commit();
-
-      return redirect()->route('admin.customers.index')
-        ->with('success', 'Customer berhasil diupdate');
-    } catch (\Exception $e) {
-      DB::rollBack();
-      return back()->withErrors(['error' => 'Gagal mengupdate customer: ' . $e->getMessage()]);
+            return back()->withErrors(['error' => 'Gagal menambahkan customer: '.$e->getMessage()]);
+        }
     }
-  }
 
-  public function destroy(CustomerUser $customer)
-  {
-    try {
-      // Delete will cascade to user and profile
-      $customer->user->delete();
+    public function update(Request $request, CustomerUser $customer)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,'.$customer->user_id,
+            'password' => 'nullable|string|min:8',
+            'phone' => 'nullable|string|max:20',
+            'address' => 'nullable|string',
+            'birth_date' => 'nullable|date',
+            'total_visits' => 'nullable|integer|min:0',
+            'lifetime_spending' => 'nullable|numeric|min:0',
+        ]);
 
-      return redirect()->route('admin.customers.index')
-        ->with('success', 'Customer berhasil dihapus');
-    } catch (\Exception $e) {
-      return back()->withErrors(['error' => 'Gagal menghapus customer: ' . $e->getMessage()]);
+        try {
+            DB::beginTransaction();
+
+            // Update user
+            $userData = [
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+            ];
+            if (! empty($validated['password'])) {
+                $userData['password'] = Hash::make($validated['password']);
+            }
+            $customer->user->update($userData);
+
+            // Update profile
+            $customer->profile->update([
+                'phone' => $validated['phone'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'birth_date' => $validated['birth_date'] ?? null,
+            ]);
+
+            // Update customer data
+            $customer->update([
+                'total_visits' => $validated['total_visits'] ?? $customer->total_visits,
+                'lifetime_spending' => $validated['lifetime_spending'] ?? $customer->lifetime_spending,
+            ]);
+
+            DB::commit();
+
+            return redirect()->route('admin.customers.index')
+                ->with('success', 'Customer berhasil diupdate');
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return back()->withErrors(['error' => 'Gagal mengupdate customer: '.$e->getMessage()]);
+        }
     }
-  }
+
+    public function destroy(CustomerUser $customer)
+    {
+        try {
+            // Delete will cascade to user and profile
+            $customer->user->delete();
+
+            return redirect()->route('admin.customers.index')
+                ->with('success', 'Customer berhasil dihapus');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Gagal menghapus customer: '.$e->getMessage()]);
+        }
+    }
+
+    protected function customerQueryWithTransactionStats()
+    {
+        $bookingBillingAgg = DB::table('billings')
+            ->join('table_sessions', 'table_sessions.id', '=', 'billings.table_session_id')
+            ->where('billings.billing_status', 'paid')
+            ->where('billings.is_booking', true)
+            ->groupBy('table_sessions.customer_id')
+            ->selectRaw('table_sessions.customer_id as user_id')
+            ->selectRaw('SUM(billings.grand_total) as booking_spending')
+            ->selectRaw('COUNT(billings.id) as booking_visits');
+
+        $walkInTransactionAgg = DB::table('orders')
+            ->whereNull('orders.table_session_id')
+            ->whereNotNull('orders.customer_user_id')
+            ->where('orders.status', '!=', 'cancelled')
+            ->groupBy('orders.customer_user_id')
+            ->selectRaw('orders.customer_user_id as customer_user_id')
+            ->selectRaw('SUM(orders.total) as walk_in_spending')
+            ->selectRaw('COUNT(orders.id) as walk_in_visits');
+
+        return CustomerUser::query()
+            ->leftJoinSub($bookingBillingAgg, 'booking_billing_agg', function ($join): void {
+                $join->on('booking_billing_agg.user_id', '=', 'customer_users.user_id');
+            })
+            ->leftJoinSub($walkInTransactionAgg, 'walk_in_transaction_agg', function ($join): void {
+                $join->on('walk_in_transaction_agg.customer_user_id', '=', 'customer_users.id');
+            })
+            ->select('customer_users.*')
+            ->selectRaw('COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0) as transaction_lifetime_spending')
+            ->selectRaw('COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_transaction_agg.walk_in_visits, 0) as transaction_total_visits')
+            ->selectRaw('FLOOR((COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0)) / 10000) as transaction_points')
+            ->selectRaw('FLOOR((COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0)) / 10000) + (COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_transaction_agg.walk_in_visits, 0)) as leaderboard_score');
+    }
 }

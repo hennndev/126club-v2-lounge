@@ -50,7 +50,7 @@ class WaiterPosController extends Controller
 
         $cart = session()->get(self::CART_KEY, []);
         $nextQty = (int) ($cart[$productId]['quantity'] ?? 0) + 1;
-        $isItemGroup = (bool) ($setting->is_item_group ?? false);
+        $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
         $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
         if ($detailGroupComponents !== []) {
@@ -59,7 +59,7 @@ class WaiterPosController extends Controller
             if ($nextQty > $possiblePortions) {
                 return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
             }
-        } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
+        } elseif ($isCountPortionPossible && (int) ($inventoryItem->stock_quantity ?? 0) < $nextQty) {
             return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
         }
 
@@ -104,7 +104,7 @@ class WaiterPosController extends Controller
                 return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.'], 404);
             }
 
-            $isItemGroup = (bool) ($setting->is_item_group ?? false);
+            $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
             $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
             if ($detailGroupComponents !== []) {
@@ -113,7 +113,7 @@ class WaiterPosController extends Controller
                 if ($validated['quantity'] > $possiblePortions) {
                     return response()->json(['success' => false, 'message' => "Stok bahan hanya cukup {$possiblePortions} porsi."], 422);
                 }
-            } elseif (! $isItemGroup && (int) ($inventoryItem->stock_quantity ?? 0) < $validated['quantity']) {
+            } elseif ($isCountPortionPossible && (int) ($inventoryItem->stock_quantity ?? 0) < $validated['quantity']) {
                 return response()->json(['success' => false, 'message' => 'Stok tidak mencukupi.'], 422);
             }
 
@@ -540,7 +540,7 @@ class WaiterPosController extends Controller
             }
 
             $setting = $posSettings->get($inventoryItem->category_type);
-            $isItemGroup = (bool) ($setting?->is_item_group ?? false);
+            $isCountPortionPossible = (bool) ($inventoryItem->is_count_portion_possible ?? false);
             $detailGroupComponents = $this->resolveDetailGroupComponents($inventoryItem, $setting);
 
             if ($detailGroupComponents !== []) {
@@ -560,7 +560,7 @@ class WaiterPosController extends Controller
                 continue;
             }
 
-            if (! $isItemGroup) {
+            if ($isCountPortionPossible) {
                 $availableStock = (float) ($inventoryItem->stock_quantity ?? 0);
 
                 if ($availableStock < $requestedQuantity) {
@@ -610,7 +610,7 @@ class WaiterPosController extends Controller
 
     protected function resolveDetailGroupComponents(InventoryItem $inventoryItem, ?PosCategorySetting $setting = null): array
     {
-        if ((bool) ($setting?->is_item_group ?? false)) {
+        if (! (bool) ($inventoryItem->is_item_group ?? false) || ! (bool) ($inventoryItem->is_count_portion_possible ?? false)) {
             return [];
         }
 

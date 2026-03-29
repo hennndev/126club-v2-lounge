@@ -375,6 +375,8 @@
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->include_tax ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400' }}">PPN</span>
                           <span data-card-sc="{{ $menu->id }}"
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->include_service_charge ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400' }}">SC</span>
+                          <span data-card-group="{{ $menu->id }}"
+                                class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->is_item_group ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400' }}">{{ $menu->is_item_group ? 'GROUP' : 'ITEM' }}</span>
                           <span class="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{{ $menu->unit ?: '-' }}</span>
                         </div>
                       </article>
@@ -492,6 +494,55 @@
                     data-field="include_service_charge">
             </button>
           </div>
+
+          <div class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
+            <div class="flex items-center gap-2.5">
+              <svg class="h-4 w-4 text-violet-500"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+              <div>
+                <p class="text-sm font-medium text-gray-800">Item Group</p>
+                <p class="text-xs text-gray-400">Aktifkan jika item ini adalah group/bundle</p>
+              </div>
+            </div>
+            <button type="button"
+                    id="modalItemGroupToggle"
+                    class="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition"
+                    data-tax-toggle-button="1"
+                    data-field="is_item_group">
+            </button>
+          </div>
+
+          <div id="modalCountPortionWrap"
+               class="hidden items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
+            <div class="flex items-center gap-2.5">
+              <svg class="h-4 w-4 text-emerald-500"
+                   fill="none"
+                   stroke="currentColor"
+                   viewBox="0 0 24 24">
+                <path stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M11 5a1 1 0 011-1h6a1 1 0 011 1v14a1 1 0 01-1 1h-6a1 1 0 01-1-1V5zM7 7h.01M7 11h.01M7 15h.01" />
+              </svg>
+              <div>
+                <p class="text-sm font-medium text-gray-800">Count Portion Possible</p>
+                <p class="text-xs text-gray-400">Hitung porsi possible berdasarkan komponen item group</p>
+              </div>
+            </div>
+            <button type="button"
+                    id="modalCountPortionToggle"
+                    class="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition"
+                    data-tax-toggle-button="1"
+                    data-field="is_count_portion_possible">
+            </button>
+          </div>
         </div>
 
         {{-- Detail Group --}}
@@ -558,16 +609,34 @@
 
       // ── helpers ────────────────────────────────────────────────────────────
       function applyToggleStyle(el, field, isActive) {
-        const activeClasses = field === 'include_tax' ? ['bg-amber-50', 'text-amber-700', 'ring-amber-200'] : ['bg-blue-50', 'text-blue-700', 'ring-blue-200'];
+        const activeClasses = field === 'include_tax' ? ['bg-amber-50', 'text-amber-700', 'ring-amber-200'] :
+          field === 'include_service_charge' ? ['bg-blue-50', 'text-blue-700', 'ring-blue-200'] :
+          field === 'is_count_portion_possible' ? ['bg-emerald-50', 'text-emerald-700', 'ring-emerald-200'] : ['bg-violet-50', 'text-violet-700', 'ring-violet-200'];
         const inactiveClasses = ['bg-gray-100', 'text-gray-400', 'ring-gray-200'];
         if (isActive) {
           el.classList.add(...activeClasses);
           el.classList.remove(...inactiveClasses);
-          el.textContent = field === 'include_tax' ? 'PPN: ON' : 'SC: ON';
+          el.textContent = field === 'include_tax' ? 'PPN: ON' : field === 'include_service_charge' ? 'SC: ON' : field === 'is_count_portion_possible' ? 'COUNT: ON' : 'GROUP: ON';
         } else {
           el.classList.add(...inactiveClasses);
           el.classList.remove(...activeClasses);
-          el.textContent = field === 'include_tax' ? 'PPN: OFF' : 'SC: OFF';
+          el.textContent = field === 'include_tax' ? 'PPN: OFF' : field === 'include_service_charge' ? 'SC: OFF' : field === 'is_count_portion_possible' ? 'COUNT: OFF' : 'GROUP: OFF';
+        }
+      }
+
+      function setCountPortionToggleVisibility(isItemGroup) {
+        const wrap = document.getElementById('modalCountPortionWrap');
+
+        if (!(wrap instanceof HTMLElement)) {
+          return;
+        }
+
+        if (isItemGroup) {
+          wrap.classList.remove('hidden');
+          wrap.classList.add('flex');
+        } else {
+          wrap.classList.add('hidden');
+          wrap.classList.remove('flex');
         }
       }
 
@@ -598,19 +667,36 @@
           toggleEl.setAttribute('aria-pressed', isActive ? 'true' : 'false');
           applyToggleStyle(toggleEl, field, isActive);
 
+          if (field === 'is_item_group') {
+            setCountPortionToggleVisibility(isActive);
+          }
+
           // Sync the small badge on the card
           const cardBadgeSelector = field === 'include_tax' ?
             `[data-card-tax="${itemId}"]` :
-            `[data-card-sc="${itemId}"]`;
+            field === 'include_service_charge' ?
+            `[data-card-sc="${itemId}"]` :
+            `[data-card-group="${itemId}"]`;
           const badge = document.querySelector(cardBadgeSelector);
           if (badge) {
+            if (field === 'is_item_group') {
+              badge.textContent = isActive ? 'GROUP' : 'ITEM';
+            }
+
             if (isActive) {
-              badge.classList.add(field === 'include_tax' ? 'bg-amber-100' : 'bg-blue-100',
-                field === 'include_tax' ? 'text-amber-700' : 'text-blue-700');
-              badge.classList.remove('bg-gray-100', 'text-gray-400');
+              if (field === 'include_tax') {
+                badge.classList.add('bg-amber-100', 'text-amber-700');
+                badge.classList.remove('bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
+              } else if (field === 'include_service_charge') {
+                badge.classList.add('bg-blue-100', 'text-blue-700');
+                badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
+              } else {
+                badge.classList.add('bg-violet-100', 'text-violet-700');
+                badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-gray-100', 'text-gray-400');
+              }
             } else {
               badge.classList.add('bg-gray-100', 'text-gray-400');
-              badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700');
+              badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700');
             }
           }
         } catch {
@@ -682,6 +768,20 @@
         scToggle.dataset.value = menu.include_service_charge ? '1' : '0';
         scToggle.setAttribute('aria-pressed', menu.include_service_charge ? 'true' : 'false');
         applyToggleStyle(scToggle, 'include_service_charge', Boolean(menu.include_service_charge));
+
+        const itemGroupToggle = document.getElementById('modalItemGroupToggle');
+        itemGroupToggle.dataset.itemId = menu.id;
+        itemGroupToggle.dataset.value = menu.is_item_group ? '1' : '0';
+        itemGroupToggle.setAttribute('aria-pressed', menu.is_item_group ? 'true' : 'false');
+        applyToggleStyle(itemGroupToggle, 'is_item_group', Boolean(menu.is_item_group));
+
+        const countPortionToggle = document.getElementById('modalCountPortionToggle');
+        countPortionToggle.dataset.itemId = menu.id;
+        countPortionToggle.dataset.value = menu.is_count_portion_possible ? '1' : '0';
+        countPortionToggle.setAttribute('aria-pressed', menu.is_count_portion_possible ? 'true' : 'false');
+        applyToggleStyle(countPortionToggle, 'is_count_portion_possible', Boolean(menu.is_count_portion_possible));
+
+        setCountPortionToggleVisibility(Boolean(menu.is_item_group));
 
         document.querySelectorAll('[data-menu-modal-printer]').forEach((checkbox) => {
           checkbox.checked = false;

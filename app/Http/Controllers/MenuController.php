@@ -42,7 +42,7 @@ class MenuController extends Controller
                     ->where('is_active', true)
                     ->where('category_type', $categoryType)
                     ->orderBy('name')
-                    ->get(['id', 'code', 'name', 'pos_name', 'category_type', 'price', 'unit', 'include_tax', 'include_service_charge']);
+                    ->get(['id', 'code', 'name', 'pos_name', 'category_type', 'price', 'unit', 'include_tax', 'include_service_charge', 'is_item_group', 'is_count_portion_possible']);
 
                 return [$categoryType => $menus];
             });
@@ -83,6 +83,7 @@ class MenuController extends Controller
             'selling_price' => 'required|numeric|min:0',
             'include_tax' => ['nullable', 'boolean'],
             'include_service_charge' => ['nullable', 'boolean'],
+            'is_item_group' => ['nullable', 'boolean'],
             'printer_ids' => ['nullable', 'array'],
             'printer_ids.*' => ['integer', 'exists:printers,id'],
             'pos_name' => ['nullable', 'string', 'max:255'],
@@ -140,6 +141,9 @@ class MenuController extends Controller
                         'price' => $validated['selling_price'],
                         'include_tax' => (bool) ($validated['include_tax'] ?? false),
                         'include_service_charge' => (bool) ($validated['include_service_charge'] ?? false),
+                        'is_item_group' => array_key_exists('is_item_group', $validated)
+                            ? (bool) $validated['is_item_group']
+                            : ($validated['item_type'] === 'GROUP'),
                         'stock_quantity' => 0,
                         'unit' => $validated['unit'],
                         'is_active' => true,
@@ -158,7 +162,7 @@ class MenuController extends Controller
     public function updateTaxFlags(Request $request, InventoryItem $inventory): JsonResponse
     {
         $validated = $request->validate([
-            'field' => ['required', 'string', 'in:include_tax,include_service_charge'],
+            'field' => ['required', 'string', 'in:include_tax,include_service_charge,is_item_group,is_count_portion_possible'],
             'value' => ['required', 'boolean'],
         ]);
 
