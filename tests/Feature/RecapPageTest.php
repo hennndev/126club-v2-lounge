@@ -1221,6 +1221,114 @@ test('recap page shows total tax total service charge and payment method totals'
         ->assertSeeText('Rp 20.000');
 });
 
+test('recap page calculates total pembayaran tunai from live split billing data', function () {
+    $admin = adminUser();
+    $rangeStart = now()->startOfDay()->addHours(8);
+    $rangeEnd = now()->startOfDay()->addHours(23);
+    $orderedAt = now()->startOfDay()->addHours(12);
+
+    $sessionSplit = makeRecapTableSessionWithBilling($admin->id, [
+        'is_booking' => true,
+        'is_walk_in' => false,
+        'tax' => 0,
+        'service_charge' => 0,
+        'payment_method' => null,
+        'payment_mode' => 'split',
+        'paid_amount' => 40000,
+        'grand_total' => 40000,
+        'split_cash_amount' => 15000,
+        'split_debit_amount' => 25000,
+        'split_non_cash_method' => 'debit',
+    ]);
+
+    \Illuminate\Support\Facades\DB::table('billings')
+        ->where('id', $sessionSplit->billing_id)
+        ->update([
+            'created_at' => $orderedAt,
+            'updated_at' => $orderedAt,
+        ]);
+
+    makeRecapOrder($admin->id, $orderedAt, 'RCP-PAY-SPLIT-CASH', [
+        'table_session_id' => $sessionSplit->id,
+        'items_total' => 40000,
+        'total' => 40000,
+        'payment_method' => null,
+        'payment_mode' => 'split',
+    ]);
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 0,
+            'total_tax' => 0,
+            'total_service_charge' => 0,
+            'total_transfer' => 0,
+            'total_debit' => 0,
+            'total_kredit' => 0,
+            'total_qris' => 0,
+            'total_cash' => 0,
+            'total_transactions' => 0,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    actingAs($admin)
+        ->get(route('admin.recap.index', [
+            'start_datetime' => $rangeStart->format('Y-m-d\TH:i'),
+            'end_datetime' => $rangeEnd->format('Y-m-d\TH:i'),
+        ]))
+        ->assertSuccessful()
+        ->assertViewHas('paymentMethodTotals', function (array $totals): bool {
+            return (float) ($totals['cash'] ?? 0) === 15000.0
+                && (float) ($totals['debit'] ?? 0) === 25000.0;
+        })
+        ->assertSeeText('Rp 15.000')
+        ->assertSeeText('Rp 25.000');
+});
+
+test('recap page includes walk-in order payment totals when billing is missing', function () {
+    $admin = adminUser();
+    $rangeStart = now()->startOfDay()->addHours(8);
+    $rangeEnd = now()->startOfDay()->addHours(23);
+    $orderedAt = now()->startOfDay()->addHours(13);
+
+    makeRecapOrder($admin->id, $orderedAt, 'RCP-WALKIN-CASH-ONLY', [
+        'table_session_id' => null,
+        'customer_user_id' => null,
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'items_total' => 12000,
+        'total' => 12000,
+    ]);
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 0,
+            'total_tax' => 0,
+            'total_service_charge' => 0,
+            'total_transfer' => 0,
+            'total_debit' => 0,
+            'total_kredit' => 0,
+            'total_qris' => 0,
+            'total_cash' => 0,
+            'total_transactions' => 0,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    actingAs($admin)
+        ->get(route('admin.recap.index', [
+            'start_datetime' => $rangeStart->format('Y-m-d\TH:i'),
+            'end_datetime' => $rangeEnd->format('Y-m-d\TH:i'),
+        ]))
+        ->assertSuccessful()
+        ->assertViewHas('paymentMethodTotals', function (array $totals): bool {
+            return (float) ($totals['cash'] ?? 0) === 12000.0;
+        })
+        ->assertSeeText('Rp 12.000');
+});
+
 test('recap includes booking billing by table_session_id and walk-in calculated tax service', function () {
     $admin = adminUser();
     $rangeStart = now()->startOfDay()->addHours(8);
