@@ -99,6 +99,7 @@
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Service Charge</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">PPN</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Aksi</th>
+            <th class="px-5 py-3 text-center text-sm font-semibold text-gray-600">Remove</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
@@ -392,21 +393,29 @@
                         Tutup Billing
                       </button>
                     @endif
-                    <button onclick="openStatusModal({{ $reservation->id }}, '{{ $reservation->status }}')"
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
-                      <svg class="w-3.5 h-3.5"
-                           fill="none"
-                           stroke="currentColor"
-                           viewBox="0 0 24 24">
-                        <path stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      Status
-                    </button>
                   @endif
                 </div>
+              </td>
+
+              <td class="px-5 py-4 whitespace-nowrap text-center">
+                @if ($reservation)
+                  <button type="button"
+                          onclick="openActiveDeleteModal({{ $reservation->id }}, '{{ addslashes((string) ($session->table?->table_number ?? '-')) }}')"
+                          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition">
+                    <svg class="w-3.5 h-3.5"
+                         fill="none"
+                         stroke="currentColor"
+                         viewBox="0 0 24 24">
+                      <path stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+                    </svg>
+                    Hapus
+                  </button>
+                @else
+                  <span class="text-sm text-gray-400">—</span>
+                @endif
               </td>
             </tr>
           @endforeach

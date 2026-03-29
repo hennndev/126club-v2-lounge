@@ -43,35 +43,66 @@
     <!-- Customers Tab -->
     <div id="customersContent">
       <!-- Search & Add -->
-      <div class="mb-4 flex gap-4">
-        <div class="flex-1 relative">
-          <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input type="text"
-                 id="searchInput"
-                 placeholder="Cari customer (nama, telepon, email)..."
-                 class="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent">
+      <div class="mb-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <form method="GET"
+              action="{{ route('admin.customers.index') }}"
+              class="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+          <input type="hidden"
+                 name="tab"
+                 value="customers">
+          <div class="relative flex-1">
+            <svg class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input type="text"
+                   id="searchInput"
+                   name="search"
+                   value="{{ request('search') }}"
+                   placeholder="Cari customer (nama, telepon, email)..."
+                   class="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 focus:border-transparent focus:ring-2 focus:ring-slate-500">
+          </div>
+
+          <div class="flex items-center gap-2">
+            <label for="perPage"
+                   class="text-sm font-medium text-gray-700 whitespace-nowrap">Rows per page</label>
+            <select id="perPage"
+                    name="per_page"
+                    onchange="this.form.submit()"
+                    class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-transparent focus:ring-2 focus:ring-slate-500">
+              @foreach ($perPageOptions as $option)
+                <option value="{{ $option }}"
+                        @selected($perPage === $option)>{{ $option }}</option>
+              @endforeach
+            </select>
+
+            <button type="submit"
+                    class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Terapkan
+            </button>
+          </div>
+        </form>
+
+        <div class="flex justify-end">
+          <button onclick="openModal('add')"
+                  class="flex items-center gap-2 whitespace-nowrap rounded-lg bg-slate-800 px-4 py-2 text-white transition hover:bg-slate-900">
+            <svg class="h-5 w-5"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 4v16m8-8H4" />
+            </svg>
+            Tambah Customer
+          </button>
         </div>
-        <button onclick="openModal('add')"
-                class="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition flex items-center gap-2 whitespace-nowrap">
-          <svg class="w-5 h-5"
-               fill="none"
-               stroke="currentColor"
-               viewBox="0 0 24 24">
-            <path stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 4v16m8-8H4" />
-          </svg>
-          Tambah Customer
-        </button>
       </div>
 
       <!-- Table Card -->
@@ -90,7 +121,7 @@
             </thead>
             <tbody class="bg-white divide-y divide-gray-200"
                    id="customerTableBody">
-              @foreach ($customers as $customer)
+              @forelse ($customers as $customer)
                 <tr class="hover:bg-gray-50 transition">
                   <td class="px-6 py-4 whitespace-nowrap">
                     <div>
@@ -144,9 +175,30 @@
                     </button>
                   </td>
                 </tr>
-              @endforeach
+              @empty
+                <tr>
+                  <td colspan="6"
+                      class="px-6 py-8 text-center text-sm text-gray-500">Tidak ada data customer untuk ditampilkan.</td>
+                </tr>
+              @endforelse
             </tbody>
           </table>
+        </div>
+
+        <div class="flex flex-col gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-sm text-gray-600">
+            Menampilkan
+            <span class="font-semibold text-gray-800">{{ $customers->firstItem() ?? 0 }}</span>
+            -
+            <span class="font-semibold text-gray-800">{{ $customers->lastItem() ?? 0 }}</span>
+            dari
+            <span class="font-semibold text-gray-800">{{ number_format($customers->total(), 0, ',', '.') }}</span>
+            customer
+          </p>
+
+          <div class="light-pagination">
+            {{ $customers->onEachSide(1)->links() }}
+          </div>
         </div>
       </div>
     </div>
@@ -160,7 +212,7 @@
 
   @push('scripts')
     <script>
-      const customers = @json($customers);
+      const customers = @json($customers->items());
       const initialTab = @json(request('tab') === 'leaderboard' ? 'leaderboard' : 'customers');
 
       function showTab(tab) {
@@ -239,18 +291,6 @@
         openModal('edit', customerId);
       }
 
-      // Search functionality
-      document.getElementById('searchInput').addEventListener('input', function(e) {
-        const searchTerm = e.target.value.toLowerCase();
-        const tableBody = document.getElementById('customerTableBody');
-        const rows = tableBody.getElementsByTagName('tr');
-
-        Array.from(rows).forEach(row => {
-          const text = row.textContent.toLowerCase();
-          row.style.display = text.includes(searchTerm) ? '' : 'none';
-        });
-      });
-
       // Close modal on Escape key
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
@@ -265,5 +305,45 @@
 
       showTab(initialTab);
     </script>
+
+    <style>
+      .light-pagination nav>div:first-child {
+        display: none;
+      }
+
+      .light-pagination nav>div:last-child {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+      }
+
+      .light-pagination span[aria-current="page"] span,
+      .light-pagination a,
+      .light-pagination span[aria-disabled="true"] span {
+        border-radius: 0.5rem;
+        border: 1px solid rgb(209 213 219);
+        background-color: white;
+        color: rgb(55 65 81);
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        padding: 0.5rem 0.75rem;
+        text-decoration: none;
+      }
+
+      .light-pagination a:hover {
+        background-color: rgb(249 250 251);
+      }
+
+      .light-pagination span[aria-current="page"] span {
+        border-color: rgb(15 23 42);
+        background-color: rgb(15 23 42);
+        color: white;
+      }
+
+      .light-pagination span[aria-disabled="true"] span {
+        color: rgb(156 163 175);
+        background-color: rgb(249 250 251);
+      }
+    </style>
   @endpush
 </x-app-layout>

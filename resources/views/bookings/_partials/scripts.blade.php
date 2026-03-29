@@ -191,21 +191,8 @@
     };
     document.getElementById('biModalStatusBadge').innerHTML = statusLabels[booking.status] || '';
 
-    const formSection = document.getElementById('biModalStatusForm');
     const readOnlySection = document.getElementById('biModalReadOnlyFooter');
-    const biStatusForm = document.getElementById('biStatusForm');
-
-    if (booking.status === 'confirmed') {
-      biStatusForm.action = `/admin/bookings/${bookingId}/status`;
-      biStatusForm.querySelectorAll('input[name="status"]').forEach(r => {
-        r.checked = r.value === booking.status;
-      });
-      formSection.classList.remove('hidden');
-      readOnlySection.classList.add('hidden');
-    } else {
-      formSection.classList.add('hidden');
-      readOnlySection.classList.remove('hidden');
-    }
+    readOnlySection.classList.remove('hidden');
 
     document.getElementById('bookingInfoModal').classList.remove('hidden');
   }
@@ -267,6 +254,49 @@
 
   function closeMoveTableModal() {
     document.getElementById('moveTableModal')?.classList.add('hidden');
+  }
+
+  function openActiveDeleteModal(bookingId, tableNumber) {
+    const modal = document.getElementById('activeDeleteModal');
+    const form = document.getElementById('activeDeleteForm');
+    const tableLabel = document.getElementById('activeDeleteTableLabel');
+    const confirmOneInput = document.getElementById('activeDeleteConfirmOne');
+    const confirmTwoInput = document.getElementById('activeDeleteConfirmTwo');
+
+    if (!modal || !form || !tableLabel || !confirmOneInput || !confirmTwoInput) {
+      return;
+    }
+
+    form.action = `/admin/bookings/${bookingId}`;
+    modal.dataset.requiredTableNumber = String(tableNumber || '-').trim();
+    tableLabel.textContent = modal.dataset.requiredTableNumber;
+
+    confirmOneInput.value = '';
+    confirmTwoInput.value = '';
+
+    updateActiveDeleteSubmitState();
+    modal.classList.remove('hidden');
+  }
+
+  function closeActiveDeleteModal() {
+    document.getElementById('activeDeleteModal')?.classList.add('hidden');
+  }
+
+  function updateActiveDeleteSubmitState() {
+    const modal = document.getElementById('activeDeleteModal');
+    const confirmOneInput = document.getElementById('activeDeleteConfirmOne');
+    const confirmTwoInput = document.getElementById('activeDeleteConfirmTwo');
+    const submitButton = document.getElementById('activeDeleteSubmitBtn');
+
+    if (!modal || !confirmOneInput || !confirmTwoInput || !submitButton) {
+      return;
+    }
+
+    const confirmOneValid = confirmOneInput.value.trim().toUpperCase() === 'HAPUS';
+    const requiredTableNumber = String(modal.dataset.requiredTableNumber || '').trim().toUpperCase();
+    const confirmTwoValid = confirmTwoInput.value.trim().toUpperCase() === requiredTableNumber;
+
+    submitButton.disabled = !(confirmOneValid && confirmTwoValid);
   }
 
   @php
@@ -593,6 +623,9 @@
   document.getElementById('moveTableModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeMoveTableModal();
   });
+  document.getElementById('activeDeleteModal')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeActiveDeleteModal();
+  });
   document.getElementById('statusModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeStatusModal();
   });
@@ -611,4 +644,7 @@
   document.getElementById('cancelOrderModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeCancelOrderModal();
   });
+
+  document.getElementById('activeDeleteConfirmOne')?.addEventListener('input', updateActiveDeleteSubmitState);
+  document.getElementById('activeDeleteConfirmTwo')?.addEventListener('input', updateActiveDeleteSubmitState);
 </script>

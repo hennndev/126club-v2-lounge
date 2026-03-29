@@ -5,12 +5,16 @@ use App\Models\BarOrder;
 use App\Models\BarOrderItem;
 use App\Models\Billing;
 use App\Models\Dashboard;
+use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\KitchenOrderItem;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\RecapHistory;
 use App\Models\Tabel;
 use App\Models\TableSession;
 use App\Services\DashboardSyncService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 function makeDashboardSession(int $customerId): TableSession
@@ -47,7 +51,7 @@ function createDashboardKitchenAndBarItems(int $createdById, int $kitchenQty, in
         'customer_user_id' => null,
         'created_by' => $createdById,
         'order_number' => 'DSH-ORD-'.uniqid(),
-        'status' => 'completed',
+        'status' => 'pending',
         'items_total' => 30000,
         'discount_amount' => 0,
         'total' => 30000,
@@ -226,7 +230,9 @@ test('dashboard sync includes walk-in split orders with null payment method', fu
         ->and((int) $dashboard->total_transactions)->toBe(1);
 });
 
-test('dashboard sync aggregates only today transactions', function () {
+test('dashboard sync aggregates only current operational-window transactions', function () {
+    Carbon::setTestNow(Carbon::create(2026, 3, 27, 2, 0, 0, 'Asia/Jakarta'));
+
     $admin = adminUser();
     $today = now();
     $yesterday = now()->subDay();
@@ -341,9 +347,13 @@ test('dashboard sync aggregates only today transactions', function () {
         ->and((int) $dashboard->total_kitchen_items)->toBe(4)
         ->and((int) $dashboard->total_bar_items)->toBe(3)
         ->and((int) $dashboard->total_transactions)->toBe(2);
+
+    Carbon::setTestNow();
 });
 
 test('dashboard sync excludes billings and items already closed before latest recap close', function () {
+    Carbon::setTestNow(Carbon::create(2026, 3, 27, 10, 0, 0, 'Asia/Jakarta'));
+
     $admin = adminUser();
 
     $closedAt = now()->setTime(8, 0, 0);
@@ -426,7 +436,7 @@ test('dashboard sync excludes billings and items already closed before latest re
         'customer_user_id' => null,
         'created_by' => $admin->id,
         'order_number' => 'DSH-CUTOFF-'.uniqid(),
-        'status' => 'completed',
+        'status' => 'pending',
         'items_total' => 30000,
         'discount_amount' => 0,
         'total' => 30000,
@@ -485,4 +495,109 @@ test('dashboard sync excludes billings and items already closed before latest re
         ->and((int) $dashboard->total_kitchen_items)->toBe(0)
         ->and((int) $dashboard->total_bar_items)->toBe(2)
         ->and((int) $dashboard->total_transactions)->toBe(1);
+
+    Carbon::setTestNow();
+});
+
+test('dashboard sync computes total penjualan rokok from order items category rokok', function () {
+    $admin = adminUser();
+    $session = makeDashboardSession($admin->id);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'is_walk_in' => false,
+        'is_booking' => true,
+        'minimum_charge' => 0,
+        'orders_total' => 300000,
+        'subtotal' => 300000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 300000,
+        'paid_amount' => 300000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $rokokItem = InventoryItem::query()->create([
+        'code' => 'ROKOK-'.uniqid(),
+        'accurate_id' => random_int(200000, 299999),
+        'name' => 'Rokok Test',
+        'category_type' => 'Rokok',
+        'price' => 25000,
+        'stock_quantity' => 50,
+        'threshold' => 5,
+        'unit' => 'pack',
+        'is_active' => true,
+    ]);
+
+    $nonRokokItem = InventoryItem::query()->create([
+        'code' => 'NON-ROKOK-'.uniqid(),
+        'accurate_id' => random_int(300000, 399999),
+        'name' => 'Makanan Test',
+        'category_type' => 'Makanan',
+        'price' => 45000,
+        'stock_quantity' => 50,
+        'threshold' => 5,
+        'unit' => 'portion',
+        'is_active' => true,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'DSH-ROKOK-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 300000,
+        'discount_amount' => 0,
+        'total' => 300000,
+        'ordered_at' => now(),
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $billing->update([
+        'order_id' => $order->id,
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $rokokItem->id,
+        'item_name' => $rokokItem->name,
+        'item_code' => $rokokItem->code,
+        'quantity' => 4,
+        'price' => 25000,
+        'subtotal' => 100000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'pending',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $nonRokokItem->id,
+        'item_name' => $nonRokokItem->name,
+        'item_code' => $nonRokokItem->code,
+        'quantity' => 2,
+        'price' => 100000,
+        'subtotal' => 200000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'pending',
+    ]);
+
+    (new DashboardSyncService)->sync();
+
+    $dashboard = Dashboard::query()->findOrFail(1);
+
+    expect((float) $dashboard->total_penjualan_rokok)->toBe(4.0)
+        ->and((float) $dashboard->total_amount)->toBe(300000.0);
 });

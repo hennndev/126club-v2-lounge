@@ -313,6 +313,32 @@ class RecapController extends Controller
             })
             ->values();
 
+        $rokokItems = $orders
+            ->flatMap(function (Order $order) {
+                return $order->items
+                    ->where('status', '!=', 'cancelled')
+                    ->filter(function ($item): bool {
+                        $categoryType = strtolower(trim((string) ($item->inventoryItem?->category_type ?? '')));
+
+                        return $categoryType !== '' && str_contains($categoryType, 'rokok');
+                    })
+                    ->map(function ($item): array {
+                        return [
+                            'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? $item->item_name ?? '-'),
+                            'quantity' => (int) ($item->quantity ?? 0),
+                        ];
+                    });
+            })
+            ->groupBy('name')
+            ->map(function ($group, $name): array {
+                return [
+                    'name' => (string) $name,
+                    'quantity' => (int) collect($group)->sum('quantity'),
+                ];
+            })
+            ->sortBy('name')
+            ->values();
+
         $totalDiscount = (float) $cashierTransactions->sum('discount_amount');
         $totalDownPayment = (float) $cashierTransactions->sum('down_payment_amount');
 
@@ -386,6 +412,7 @@ class RecapController extends Controller
             'cashierTransactions' => $cashierTransactions,
             'cashierCount' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_transactions ?? 0),
             'cashierRevenue' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_amount ?? 0),
+            'totalPenjualanRokok' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_penjualan_rokok ?? 0),
             'totalTax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
             'totalServiceCharge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
             'totalDiscount' => $totalDiscount,
@@ -396,7 +423,9 @@ class RecapController extends Controller
             'kitchenQtyTotal' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_kitchen_items ?? 0),
             'barItems' => $barItems,
             'barQtyTotal' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_bar_items ?? 0),
+            'rokokItems' => $rokokItems,
             'dashboardPreview' => [
+                'total_penjualan_rokok' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_penjualan_rokok ?? 0),
                 'total_tax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
                 'total_service_charge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
                 'total_discount' => $totalDiscount,
@@ -443,6 +472,7 @@ class RecapController extends Controller
                 'selectedEndDatetime' => '-',
                 'cashierCount' => 0,
                 'cashierRevenue' => 0.0,
+                'totalPenjualanRokok' => 0.0,
                 'totalTax' => 0.0,
                 'totalServiceCharge' => 0.0,
                 'totalDiscount' => 0.0,
@@ -454,9 +484,11 @@ class RecapController extends Controller
                     'kredit' => 0.0,
                     'qris' => 0.0,
                 ],
+                'rokokItems' => [],
                 'kitchenQtyTotal' => 0,
                 'barQtyTotal' => 0,
                 'dashboardPreview' => [
+                    'total_penjualan_rokok' => 0.0,
                     'total_kitchen_items' => 0,
                     'total_bar_items' => 0,
                 ],
@@ -473,6 +505,7 @@ class RecapController extends Controller
             'selectedEndDatetime' => $endAt->format('d/m/Y H:i'),
             'cashierCount' => (int) $recapHistory->total_transactions,
             'cashierRevenue' => (float) $recapHistory->total_amount,
+            'totalPenjualanRokok' => (float) $recapHistory->total_penjualan_rokok,
             'totalTax' => (float) $recapHistory->total_tax,
             'totalServiceCharge' => (float) $recapHistory->total_service_charge,
             'totalDiscount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
@@ -484,9 +517,11 @@ class RecapController extends Controller
                 'kredit' => (float) $recapHistory->total_kredit,
                 'qris' => (float) $recapHistory->total_qris,
             ],
+            'rokokItems' => $liveRecapData['rokokItems'] ?? [],
             'kitchenQtyTotal' => (int) $recapHistory->total_kitchen_items,
             'barQtyTotal' => (int) $recapHistory->total_bar_items,
             'dashboardPreview' => [
+                'total_penjualan_rokok' => (float) $recapHistory->total_penjualan_rokok,
                 'total_tax' => (float) $recapHistory->total_tax,
                 'total_service_charge' => (float) $recapHistory->total_service_charge,
                 'total_discount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
@@ -581,6 +616,7 @@ class RecapController extends Controller
             ['Ringkasan Snapshot'],
             ['Transaksi Kasir', (int) $recapHistory->total_transactions],
             ['Total Penjualan Kasir', (float) $recapHistory->total_amount],
+            ['Total Penjualan Rokok', (float) $recapHistory->total_penjualan_rokok],
             ['Total Pajak', (float) $recapHistory->total_tax],
             ['Total Service Charge', (float) $recapHistory->total_service_charge],
             ['Total Pembayaran Tunai', (float) $recapHistory->total_cash],

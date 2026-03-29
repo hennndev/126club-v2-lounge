@@ -21,6 +21,13 @@ class CustomerController extends Controller
 
     public function index(Request $request)
     {
+        $perPageOptions = [10, 25, 50, 100];
+        $perPage = (int) $request->integer('per_page', 10);
+
+        if (! in_array($perPage, $perPageOptions, true)) {
+            $perPage = 10;
+        }
+
         $leaderboardLimitOptions = [10, 20, 30, 40, 50];
         $leaderboardLimit = (int) $request->integer('leaderboard_limit', 10);
 
@@ -44,11 +51,16 @@ class CustomerController extends Controller
             });
         }
 
-        $customers = $query->latest('updated_at')->get();
+        $customers = (clone $query)
+            ->latest('updated_at')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $customersForSummary = (clone $query)->get();
 
         $totalCustomers = CustomerUser::count();
-        $totalSpending = (float) $customers->sum(fn (CustomerUser $customer): float => (float) ($customer->transaction_lifetime_spending ?? 0));
-        $totalVisits = (int) $customers->sum(fn (CustomerUser $customer): int => (int) ($customer->transaction_total_visits ?? 0));
+        $totalSpending = (float) $customersForSummary->sum(fn (CustomerUser $customer): float => (float) ($customer->transaction_lifetime_spending ?? 0));
+        $totalVisits = (int) $customersForSummary->sum(fn (CustomerUser $customer): int => (int) ($customer->transaction_total_visits ?? 0));
         $avgSpending = $totalCustomers > 0 ? $totalSpending / $totalCustomers : 0;
 
         // Leaderboard data (points + visits)
@@ -67,7 +79,9 @@ class CustomerController extends Controller
             'avgSpending',
             'leaderboard',
             'leaderboardLimit',
-            'leaderboardLimitOptions'
+            'leaderboardLimitOptions',
+            'perPage',
+            'perPageOptions'
         ));
     }
 

@@ -49,6 +49,7 @@ class RecapClosingService
             $recapHistory = RecapHistory::query()->create([
                 'end_day' => $endDay,
                 'total_amount' => (float) $dashboard->total_amount,
+                'total_penjualan_rokok' => (float) $dashboard->total_penjualan_rokok,
                 'total_tax' => (float) $dashboard->total_tax,
                 'total_service_charge' => (float) $dashboard->total_service_charge,
                 'total_cash' => (float) $dashboard->total_cash,
@@ -75,6 +76,7 @@ class RecapClosingService
     private function hasDashboardData(Dashboard $dashboard): bool
     {
         return (float) $dashboard->total_amount > 0
+            || (float) $dashboard->total_penjualan_rokok > 0
             || (float) $dashboard->total_tax > 0
             || (float) $dashboard->total_service_charge > 0
             || (float) $dashboard->total_cash > 0
@@ -94,6 +96,7 @@ class RecapClosingService
     {
         return [
             'total_amount' => 0,
+            'total_penjualan_rokok' => 0,
             'total_tax' => 0,
             'total_service_charge' => 0,
             'total_cash' => 0,

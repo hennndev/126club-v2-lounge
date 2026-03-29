@@ -6,6 +6,8 @@ use App\Models\BarOrderItem;
 use App\Models\Billing;
 use App\Models\Dashboard;
 use App\Models\KitchenOrderItem;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\RecapHistory;
 use Illuminate\Support\Carbon;
 
@@ -13,11 +15,12 @@ class DashboardSyncService
 {
     public function sync(): Dashboard
     {
-        $today = Carbon::today();
+        [$windowStart, $windowEnd] = $this->resolveOperationalWindow();
         $lastCloseAt = RecapHistory::query()->latest('created_at')->value('created_at');
 
         $totals = [
             'total_amount' => 0.0,
+            'total_penjualan_rokok' => 0.0,
             'total_tax' => 0.0,
             'total_service_charge' => 0.0,
             'total_cash' => 0.0,
@@ -31,28 +34,70 @@ class DashboardSyncService
         ];
 
         $totals['total_kitchen_items'] = (int) KitchenOrderItem::query()
-            ->whereHas('kitchenOrder', function ($query) use ($today): void {
-                $query->whereDate('created_at', $today);
+            ->whereHas('kitchenOrder', function ($query) use ($windowStart, $windowEnd): void {
+                $query->where('created_at', '>=', $windowStart)
+                    ->where('created_at', '<', $windowEnd);
             })
             ->when($lastCloseAt, fn ($query) => $query->whereHas('kitchenOrder', fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt)))
             ->sum('quantity');
 
         $totals['total_bar_items'] = (int) BarOrderItem::query()
-            ->whereHas('barOrder', function ($query) use ($today): void {
-                $query->whereDate('created_at', $today);
+            ->whereHas('barOrder', function ($query) use ($windowStart, $windowEnd): void {
+                $query->where('created_at', '>=', $windowStart)
+                    ->where('created_at', '<', $windowEnd);
             })
             ->when($lastCloseAt, fn ($query) => $query->whereHas('barOrder', fn ($innerQuery) => $innerQuery->where('created_at', '>', $lastCloseAt)))
             ->sum('quantity');
 
         $paidBillings = Billing::query()
             ->where('billing_status', 'paid')
-            ->whereDate('updated_at', $today)
+            ->where('updated_at', '>=', $windowStart)
+            ->where('updated_at', '<', $windowEnd)
             ->where(function ($query) {
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
             })
             ->when($lastCloseAt, fn ($query) => $query->where('updated_at', '>', $lastCloseAt))
             ->get();
+
+        $bookingSessionIds = $paidBillings
+            ->filter(fn (Billing $billing): bool => (bool) $billing->is_booking)
+            ->pluck('table_session_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $walkInOrderIds = $paidBillings
+            ->filter(fn (Billing $billing): bool => (bool) $billing->is_walk_in)
+            ->pluck('order_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $relatedOrderIds = collect();
+
+        if ($walkInOrderIds->isNotEmpty() || $bookingSessionIds->isNotEmpty()) {
+            $relatedOrderIds = Order::query()
+                ->where(function ($query) use ($walkInOrderIds, $bookingSessionIds): void {
+                    if ($walkInOrderIds->isNotEmpty()) {
+                        $query->orWhereIn('id', $walkInOrderIds->all());
+                    }
+
+                    if ($bookingSessionIds->isNotEmpty()) {
+                        $query->orWhereIn('table_session_id', $bookingSessionIds->all());
+                    }
+                })
+                ->where('status', '!=', 'cancelled')
+                ->pluck('id');
+        }
+
+        $totals['total_penjualan_rokok'] = (float) OrderItem::query()
+            ->whereIn('order_id', $relatedOrderIds->all())
+            ->where('status', '!=', 'cancelled')
+            ->whereHas('inventoryItem', function ($query): void {
+                $query->whereRaw('LOWER(TRIM(category_type)) like ?', ['%rokok%']);
+            })
+            ->sum('quantity');
 
         foreach ($paidBillings as $billing) {
             $paidAmount = (float) ($billing->paid_amount ?? $billing->grand_total ?? 0);
@@ -93,6 +138,27 @@ class DashboardSyncService
                 'last_synced_at' => now(),
             ]
         );
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function resolveOperationalWindow(): array
+    {
+        $now = now('Asia/Jakarta');
+        $anchor = $now->copy()->setTime(9, 0, 0);
+
+        if ($now->lt($anchor)) {
+            return [
+                $anchor->copy()->subDay(),
+                $anchor,
+            ];
+        }
+
+        return [
+            $anchor,
+            $anchor->copy()->addDay(),
+        ];
     }
 
     private function normalizePaymentMethod(?string $paymentMethod): ?string

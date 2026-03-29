@@ -8,6 +8,7 @@ use App\Models\Tabel;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Models\UserProfile;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 function createCustomerForLeaderboard(array $attributes): CustomerUser
 {
@@ -254,4 +255,51 @@ test('admin customers leaderboard uses default limit when query value is invalid
     $response->assertViewHas('leaderboardLimit', 10);
     $response->assertViewHas('leaderboard', fn ($leaderboard) => $leaderboard->count() === 10);
     $response->assertSee('Top 10 Spenders');
+});
+
+test('admin customers list uses default pagination and can change rows per page', function () {
+    $admin = adminUser();
+
+    for ($index = 1; $index <= 30; $index++) {
+        createCustomerForLeaderboard([
+            'name' => "Pagination Customer {$index}",
+            'email' => "pagination-customer-{$index}@example.com",
+            'accurate_id' => 994000 + $index,
+            'customer_code' => 'CUST-'.(994000 + $index),
+            'total_visits' => 0,
+            'lifetime_spending' => 0,
+        ]);
+    }
+
+    $defaultResponse = $this->actingAs($admin)
+        ->get(route('admin.customers.index'));
+
+    $defaultResponse->assertOk();
+    $defaultResponse->assertViewHas('customers', function ($customers): bool {
+        if (! $customers instanceof LengthAwarePaginator) {
+            return false;
+        }
+
+        return $customers->perPage() === 10
+            && $customers->count() === 10
+            && $customers->total() === 30;
+    });
+    $defaultResponse->assertViewHas('perPage', 10);
+
+    $customResponse = $this->actingAs($admin)
+        ->get(route('admin.customers.index', [
+            'per_page' => 25,
+        ]));
+
+    $customResponse->assertOk();
+    $customResponse->assertViewHas('customers', function ($customers): bool {
+        if (! $customers instanceof LengthAwarePaginator) {
+            return false;
+        }
+
+        return $customers->perPage() === 25
+            && $customers->count() === 25
+            && $customers->total() === 30;
+    });
+    $customResponse->assertViewHas('perPage', 25);
 });

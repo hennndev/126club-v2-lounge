@@ -140,6 +140,11 @@
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div class="p-4 bg-rose-50 border border-rose-200 rounded-lg">
+          <p class="text-sm font-medium text-rose-700">Total Penjualan Rokok (Qty)</p>
+          <p class="text-2xl font-bold text-rose-800 mt-1">{{ number_format($dashboardTotalPenjualanRokok, 0, ',', '.') }}</p>
+        </div>
+
         <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <p class="text-sm font-medium text-amber-700">Total Pajak</p>
           <p class="text-2xl font-bold text-amber-800 mt-1">Rp {{ number_format($dashboardTotalTax, 0, ',', '.') }}</p>

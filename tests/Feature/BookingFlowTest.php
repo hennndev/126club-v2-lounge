@@ -577,6 +577,40 @@ test('admin can assign a waiter to an active session', function () {
     expect($session->fresh()->waiter_id)->toBe($waiter->id);
 });
 
+test('admin can delete active table booking and reset table to available', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'occupied']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'checked_in',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $this->actingAs($admin)
+        ->delete(route('admin.bookings.destroy', $booking))
+        ->assertRedirect(route('admin.bookings.index'));
+
+    $this->assertDatabaseMissing('table_reservations', ['id' => $booking->id]);
+    $this->assertDatabaseMissing('table_sessions', ['id' => $session->id]);
+
+    expect($table->fresh()->status)->toBe('available');
+});
+
 test('admin can request move table for checked in booking with active session', function () {
     $admin = adminUser();
     $area = makeArea();

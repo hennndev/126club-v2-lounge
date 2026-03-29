@@ -20,6 +20,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
 
     Dashboard::query()->create([
         'total_amount' => 500000,
+        'total_penjualan_rokok' => 4200,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
         'total_cash' => 100000,
@@ -37,6 +38,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->get(route('admin.dashboard'))
         ->assertSuccessful()
         ->assertSeeText('Ringkasan Transaksi Dashboard')
+        ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('Total Pajak')
         ->assertSeeText('Total Service Charge')
         ->assertSeeText('Total Pembayaran Tunai')
@@ -55,6 +57,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Rp 110.000')
         ->assertSeeText('25')
         ->assertSeeText('30')
+        ->assertSeeText('4.200')
         ->assertSeeText('Sync Dashboard Hari Ini');
 });
 

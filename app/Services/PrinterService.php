@@ -1112,6 +1112,21 @@ class PrinterService
 
             $escpos->text($separator."\n");
             $escpos->setEmphasis(true);
+            $escpos->text("INFO ROKOK\n");
+            $escpos->setEmphasis(false);
+
+            $rokokItems = collect($recapData['rokokItems'] ?? []);
+            if ($rokokItems->isEmpty()) {
+                $escpos->text("Tidak ada item rokok.\n");
+            } else {
+                foreach ($rokokItems as $rokokItem) {
+                    $escpos->text(((string) ($rokokItem['name'] ?? '-'))."\n");
+                    $escpos->text('  Qty: '.number_format((int) ($rokokItem['quantity'] ?? 0), 0, ',', '.')."x\n");
+                }
+            }
+
+            $escpos->text($separator."\n");
+            $escpos->setEmphasis(true);
             $escpos->text("DAFTAR TRANSAKSI\n");
             $escpos->setEmphasis(false);
 
@@ -1211,6 +1226,20 @@ class PrinterService
         $totalDownPayment = (float) ($recapData['totalDownPayment'] ?? 0);
         if ($totalDownPayment > 0) {
             $lines[] = $this->formatClosedBillingPair('Total DP', 'Rp '.number_format($totalDownPayment, 0, ',', '.'), $width);
+        }
+
+        $lines[] = $separator;
+        $lines[] = 'INFO ROKOK';
+
+        $rokokItems = collect($recapData['rokokItems'] ?? []);
+        if ($rokokItems->isEmpty()) {
+            $lines[] = 'Tidak ada item rokok.';
+        } else {
+            foreach ($rokokItems as $rokokItem) {
+                $rokokItemData = is_array($rokokItem) ? $rokokItem : (array) $rokokItem;
+                $lines[] = (string) ($rokokItemData['name'] ?? '-');
+                $lines[] = '  Qty: '.number_format((int) ($rokokItemData['quantity'] ?? 0), 0, ',', '.').'x';
+            }
         }
 
         $lines[] = $separator;

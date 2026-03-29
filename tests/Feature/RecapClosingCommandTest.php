@@ -19,6 +19,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ['id' => 1],
         [
             'total_amount' => 250000,
+            'total_penjualan_rokok' => 35000,
             'total_tax' => 15000,
             'total_service_charge' => 10000,
             'total_cash' => 50000,
@@ -44,6 +45,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
         ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((float) $history->total_amount)->toBe(250000.0)
+        ->and((float) $history->total_penjualan_rokok)->toBe(35000.0)
         ->and((float) $history->total_tax)->toBe(15000.0)
         ->and((float) $history->total_service_charge)->toBe(10000.0)
         ->and((float) $history->total_cash)->toBe(50000.0)
@@ -54,6 +56,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and((int) $history->total_transactions)->toBe(5)
         ->and($history->last_synced_at?->format('Y-m-d H:i:s'))->toBe($lastSyncedAt->format('Y-m-d H:i:s'))
         ->and((float) $dashboard->total_amount)->toBe(0.0)
+        ->and((float) $dashboard->total_penjualan_rokok)->toBe(0.0)
         ->and((float) $dashboard->total_tax)->toBe(0.0)
         ->and((float) $dashboard->total_service_charge)->toBe(0.0)
         ->and((float) $dashboard->total_cash)->toBe(0.0)
@@ -74,6 +77,7 @@ test('recap close command skips when recap for the same day already exists', fun
         ['id' => 1],
         [
             'total_amount' => 99000,
+            'total_penjualan_rokok' => 12000,
             'total_tax' => 9000,
             'total_service_charge' => 5000,
             'total_cash' => 99000,
@@ -91,6 +95,7 @@ test('recap close command skips when recap for the same day already exists', fun
     RecapHistory::query()->create([
         'end_day' => '2026-03-16',
         'total_amount' => 1000,
+        'total_penjualan_rokok' => 0,
         'total_tax' => 100,
         'total_service_charge' => 100,
         'total_cash' => 1000,

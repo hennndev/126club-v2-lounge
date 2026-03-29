@@ -165,6 +165,20 @@
         </div>
       </section>
 
+      <section class="mt-3 border-b border-dashed border-gray-300 pb-2">
+        <h2 class="text-[11px] font-semibold text-gray-900">INFO ROKOK</h2>
+        <div class="mt-1.5 space-y-1">
+          @forelse (($rokokItems ?? []) as $rokokItem)
+            <div class="flex items-center justify-between gap-2">
+              <span class="label">{{ $rokokItem['name'] ?? '-' }}</span>
+              <span class="value">{{ number_format((int) ($rokokItem['quantity'] ?? 0), 0, ',', '.') }}x</span>
+            </div>
+          @empty
+            <p class="text-[10px] text-gray-500">Tidak ada item rokok.</p>
+          @endforelse
+        </div>
+      </section>
+
       <section class="mt-3">
         <h2 class="text-[11px] font-semibold text-gray-900">DAFTAR TRANSAKSI</h2>
         <div class="mt-1.5 space-y-2">

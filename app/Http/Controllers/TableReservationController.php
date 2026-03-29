@@ -408,7 +408,20 @@ class TableReservationController extends Controller
     public function destroy(TableReservation $booking)
     {
         try {
-            $booking->delete();
+            DB::transaction(function () use ($booking) {
+                $tableId = $booking->table_id;
+
+                TableSession::query()
+                    ->where('table_reservation_id', $booking->id)
+                    ->where('status', 'active')
+                    ->delete();
+
+                $booking->delete();
+
+                if ($tableId) {
+                    Tabel::query()->where('id', $tableId)->update(['status' => 'available']);
+                }
+            });
 
             return redirect()->route('admin.bookings.index')
                 ->with('success', 'Booking berhasil dihapus');
@@ -1244,7 +1257,7 @@ class TableReservationController extends Controller
             DB::transaction(function () use ($booking, $validated, &$newTableNumber): void {
                 if (! in_array($booking->status, ['confirmed', 'checked_in'], true)) {
                     throw ValidationException::withMessages([
-                        'new_table_id' => 'Pindah meja hanya bisa dilakukan untuk booking berstatus booked atau checked-in.',
+                        'new_table_id' => 'Pindah meja hanya bisa dilakukan untuk booking berstatus confirmed atau checked-in.',
                     ]);
                 }
 

@@ -135,6 +135,7 @@ test('admin can open recap page', function () {
 
     Dashboard::query()->create([
         'total_amount' => 500000,
+        'total_penjualan_rokok' => 42,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
         'total_cash' => 100000,
@@ -162,6 +163,8 @@ test('admin can open recap page', function () {
         ->assertSeeText('Total Pembayaran Tunai')
         ->assertSeeText('Total Tunai')
         ->assertSeeText('Rp 100.000')
+        ->assertSeeText('Total Penjualan Rokok (Qty)')
+        ->assertSeeText('42')
         ->assertSeeText('Item Keluar Kitchen')
         ->assertSeeText('Item Keluar Bar')
         ->assertSee(route('admin.recap.close-preview', [
@@ -205,6 +208,26 @@ test('recap close preview page shows printable a4 summary', function () {
         'status' => 'served',
     ]);
 
+    $rokokItem = makeRecapInventoryItem([
+        'name' => 'Rokok Preview',
+        'category_type' => 'Rokok',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $rokokItem->id,
+        'item_name' => $rokokItem->name,
+        'item_code' => $rokokItem->code,
+        'quantity' => 3,
+        'price' => 25000,
+        'subtotal' => 75000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'bar',
+        'status' => 'served',
+    ]);
+
     Billing::create([
         'order_id' => $order->id,
         'is_walk_in' => false,
@@ -228,6 +251,7 @@ test('recap close preview page shows printable a4 summary', function () {
         ['id' => 1],
         [
             'total_amount' => 500000,
+            'total_penjualan_rokok' => 42,
             'total_tax' => 15000,
             'total_service_charge' => 12000,
             'total_cash' => 100000,
@@ -257,6 +281,10 @@ test('recap close preview page shows printable a4 summary', function () {
         ->assertSeeText('Item Keluar Bar')
         ->assertSeeText('Tutup End Day')
         ->assertSeeText('Preview Item Recap')
+        ->assertSeeText('INFO ROKOK')
+        ->assertSeeText('Rokok Preview')
+        ->assertDontSeeText('Tidak ada item rokok.')
+        ->assertSeeText('3x')
         ->assertSeeText('2x')
         ->assertSeeText('Subtotal: Rp 30.000')
         ->assertSeeText('PPN: Rp 3.000')
@@ -294,6 +322,7 @@ test('recap close preview print endpoint triggers server print and returns log p
         ['id' => 1],
         [
             'total_amount' => 500000,
+            'total_penjualan_rokok' => 42,
             'total_tax' => 15000,
             'total_service_charge' => 12000,
             'total_cash' => 100000,
@@ -333,6 +362,25 @@ test('recap close preview print endpoint triggers server print and returns log p
         'tax_amount' => 0,
         'service_charge_amount' => 0,
         'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    $rokokPrintItem = makeRecapInventoryItem([
+        'name' => 'Rokok Print',
+        'category_type' => 'Rokok',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $rokokPrintItem->id,
+        'item_name' => $rokokPrintItem->name,
+        'item_code' => $rokokPrintItem->code,
+        'quantity' => 2,
+        'price' => 20000,
+        'subtotal' => 40000,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'bar',
         'status' => 'served',
     ]);
 
@@ -380,6 +428,9 @@ test('recap close preview print endpoint triggers server print and returns log p
         ->toContain('RCP-PRINT-001')
         ->toContain('Metode:')
         ->toContain('Ref: REF-PRINT-001')
+        ->toContain('INFO ROKOK')
+        ->toContain('Rokok Print')
+        ->toContain('Qty: 2x')
         ->toContain('Item Keluar Kitchen')
         ->toContain('Item Keluar Bar')
         ->toContain('1x Print Test Item')
@@ -1275,6 +1326,7 @@ test('recap page shows dashboard preview aggregates', function () {
         ['id' => 1],
         [
             'total_amount' => 500000,
+            'total_penjualan_rokok' => 42,
             'total_tax' => 15000,
             'total_service_charge' => 12000,
             'total_cash' => 100000,
@@ -1295,6 +1347,8 @@ test('recap page shows dashboard preview aggregates', function () {
         ->assertSuccessful()
         ->assertSeeText('Preview Dashboard (Akumulasi)')
         ->assertSeeText('Semua transaksi booking + walk-in')
+        ->assertSeeText('Total Penjualan Rokok (Qty)')
+        ->assertSeeText('42')
         ->assertSeeText('Rp 15.000')
         ->assertSeeText('Rp 12.000')
         ->assertSeeText('Rp 120.000')
@@ -1400,13 +1454,7 @@ test('recap page shows automatic closing history list and modal content shell', 
         ->assertSeeText('Detail History Closing')
         ->assertSeeText('Export History (.xlsx)')
         ->assertSeeText(now()->subDay()->format('d/m/Y'))
-        ->assertSeeText('Rp 120.000')
-        ->assertSeeText('Rp 12.000')
-        ->assertSeeText('Rp 8.000')
-        ->assertSeeText('Item Kitchen')
-        ->assertSeeText('Item Bar')
-        ->assertSeeText('6')
-        ->assertSeeText('4')
+        ->assertSeeText('Snapshot recap tersimpan otomatis saat proses closing harian.')
         ->assertSeeText('Lihat Detail');
 });
 

@@ -10,6 +10,7 @@ class Dashboard extends Model
 
     protected $fillable = [
         'total_amount',
+        'total_penjualan_rokok',
         'total_tax',
         'total_service_charge',
         'total_cash',
@@ -25,6 +26,7 @@ class Dashboard extends Model
 
     protected $casts = [
         'total_amount' => 'decimal:2',
+        'total_penjualan_rokok' => 'decimal:2',
         'total_tax' => 'decimal:2',
         'total_service_charge' => 'decimal:2',
         'total_cash' => 'decimal:2',

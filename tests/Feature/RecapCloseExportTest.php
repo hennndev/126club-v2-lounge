@@ -17,6 +17,7 @@ test('manual close export uses today as end day when closed at night', function 
         ['id' => 1],
         [
             'total_amount' => 100000,
+            'total_penjualan_rokok' => 25000,
             'total_tax' => 10000,
             'total_service_charge' => 5000,
             'total_cash' => 100000,
@@ -45,6 +46,7 @@ test('manual close export uses today as end day when closed at night', function 
         ->and($history->end_day?->toDateString())->toBe('2026-03-18')
         ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
         ->and(DB::table('recap_history_bar')->count())->toBe(0)
+        ->and((float) $history->total_penjualan_rokok)->toBe(25000.0)
         ->and((int) $history->total_kitchen_items)->toBe(4)
         ->and((int) $history->total_bar_items)->toBe(2)
         ->and((float) $dashboard->total_amount)->toBe(0.0)
@@ -58,6 +60,7 @@ test('manual close export uses yesterday as end day when closed in morning befor
         ['id' => 1],
         [
             'total_amount' => 150000,
+            'total_penjualan_rokok' => 15000,
             'total_tax' => 15000,
             'total_service_charge' => 7000,
             'total_cash' => 150000,
@@ -86,6 +89,7 @@ test('manual close export uses yesterday as end day when closed in morning befor
         ->and($history->end_day?->toDateString())->toBe('2026-03-17')
         ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
         ->and(DB::table('recap_history_bar')->count())->toBe(0)
+        ->and((float) $history->total_penjualan_rokok)->toBe(15000.0)
         ->and((int) $history->total_kitchen_items)->toBe(5)
         ->and((int) $history->total_bar_items)->toBe(3)
         ->and((float) $dashboard->total_amount)->toBe(0.0)
@@ -99,6 +103,7 @@ test('manual close export uses today as end day when closed at exactly 9am', fun
         ['id' => 1],
         [
             'total_amount' => 80000,
+            'total_penjualan_rokok' => 8000,
             'total_tax' => 8000,
             'total_service_charge' => 4000,
             'total_cash' => 80000,
@@ -127,6 +132,7 @@ test('manual close export uses today as end day when closed at exactly 9am', fun
         ->and($history->end_day?->toDateString())->toBe('2026-03-18')
         ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
         ->and(DB::table('recap_history_bar')->count())->toBe(0)
+        ->and((float) $history->total_penjualan_rokok)->toBe(8000.0)
         ->and((int) $history->total_kitchen_items)->toBe(2)
         ->and((int) $history->total_bar_items)->toBe(1)
         ->and((float) $dashboard->total_amount)->toBe(0.0)

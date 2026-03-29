@@ -56,6 +56,7 @@
     @include('bookings._components.assign-waiter-modal')
     @include('bookings._components.move-table-modal')
     @include('bookings._components.order-history-modal')
+    @include('bookings._components.active-delete-confirmation-modal')
   </div>
 
   @push('scripts')

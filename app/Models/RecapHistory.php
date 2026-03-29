@@ -11,6 +11,7 @@ class RecapHistory extends Model
     protected $fillable = [
         'end_day',
         'total_amount',
+        'total_penjualan_rokok',
         'total_tax',
         'total_service_charge',
         'total_cash',
@@ -27,6 +28,7 @@ class RecapHistory extends Model
     protected $casts = [
         'end_day' => 'date',
         'total_amount' => 'decimal:2',
+        'total_penjualan_rokok' => 'decimal:2',
         'total_tax' => 'decimal:2',
         'total_service_charge' => 'decimal:2',
         'total_cash' => 'decimal:2',

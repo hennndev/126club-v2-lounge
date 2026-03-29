@@ -55,7 +55,7 @@
 
       <div x-show="activeTab === 'recap'"
            class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
           <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <p class="text-sm font-medium text-gray-500">Transaksi Kasir</p>
             <p class="text-2xl font-bold text-gray-900 mt-1">{{ $cashierCount }}</p>
@@ -75,6 +75,11 @@
             <p class="text-sm font-medium text-gray-500">Item Keluar Bar</p>
             <p class="text-2xl font-bold text-gray-900 mt-1">{{ $barQtyTotal }}</p>
           </div>
+
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <p class="text-sm font-medium text-gray-500">Total Penjualan Rokok (Qty)</p>
+            <p class="text-2xl font-bold text-rose-700 mt-1">{{ number_format($totalPenjualanRokok ?? 0, 0, ',', '.') }}</p>
+          </div>
         </div>
 
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
@@ -87,6 +92,11 @@
             <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
               <p class="text-sm font-medium text-gray-500">Total Transaksi</p>
               <p class="text-2xl font-bold text-gray-900 mt-1">{{ number_format($dashboardPreview['total_transactions'] ?? 0, 0, ',', '.') }}</p>
+            </div>
+
+            <div class="p-4 border border-gray-200 rounded-lg bg-rose-50">
+              <p class="text-sm font-medium text-rose-700">Total Penjualan Rokok (Qty)</p>
+              <p class="text-2xl font-bold text-rose-800 mt-1">{{ number_format($dashboardPreview['total_penjualan_rokok'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-amber-50">
@@ -352,6 +362,7 @@
                     'total_kitchen_items' => number_format($history->total_kitchen_items, 0, ',', '.'),
                     'total_bar_items' => number_format($history->total_bar_items, 0, ',', '.'),
                     'total_amount' => 'Rp ' . number_format($history->total_amount, 0, ',', '.'),
+                    'total_penjualan_rokok' => number_format($history->total_penjualan_rokok, 0, ',', '.'),
                     'total_tax' => 'Rp ' . number_format($history->total_tax, 0, ',', '.'),
                     'total_service_charge' => 'Rp ' . number_format($history->total_service_charge, 0, ',', '.'),
                     'total_cash' => 'Rp ' . number_format($history->total_cash, 0, ',', '.'),
@@ -371,35 +382,8 @@
                     <p class="text-lg font-semibold text-gray-900">{{ $history->end_day?->format('d/m/Y') ?? '-' }}</p>
                     <p class="text-xs text-gray-500 mt-1">Last sync: {{ $history->last_synced_at?->format('d/m/Y H:i') ?? '-' }}</p>
                   </div>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 lg:min-w-[920px]">
-                    <div>
-                      <p class="text-xs uppercase tracking-wide text-gray-400">Transaksi</p>
-                      <p class="text-sm font-semibold text-gray-900">{{ number_format($history->total_transactions, 0, ',', '.') }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs uppercase tracking-wide text-gray-400">Item Kitchen</p>
-                      <p class="text-sm font-semibold text-gray-900">{{ number_format($history->total_kitchen_items, 0, ',', '.') }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs uppercase tracking-wide text-gray-400">Item Bar</p>
-                      <p class="text-sm font-semibold text-gray-900">{{ number_format($history->total_bar_items, 0, ',', '.') }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs uppercase tracking-wide text-gray-400">Total</p>
-                      <p class="text-sm font-semibold text-emerald-700">Rp {{ number_format($history->total_amount, 0, ',', '.') }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs uppercase tracking-wide text-gray-400">Pajak</p>
-                      <p class="text-sm font-semibold text-amber-700">Rp {{ number_format($history->total_tax, 0, ',', '.') }}</p>
-                    </div>
-                    <div>
-                      <p class="text-xs uppercase tracking-wide text-gray-400">Service</p>
-                      <p class="text-sm font-semibold text-orange-700">Rp {{ number_format($history->total_service_charge, 0, ',', '.') }}</p>
-                    </div>
-                    <div class="flex items-end justify-start lg:justify-end">
-                      <span class="inline-flex items-center rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">Lihat Detail</span>
-                    </div>
+                  <div class="flex items-center justify-start lg:justify-end">
+                    <span class="inline-flex items-center rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white">Lihat Detail</span>
                   </div>
                 </div>
               </button>
@@ -490,6 +474,12 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <p class="text-sm font-medium text-gray-500">Total Penjualan Rokok (Qty)</p>
+                  <p class="text-2xl font-bold text-rose-700 mt-1"
+                     x-text="selectedHistory?.total_penjualan_rokok ?? '0'"></p>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                   <p class="text-sm font-medium text-gray-500">Total Tunai</p>
                   <p class="text-2xl font-bold text-gray-900 mt-1"
                      x-text="selectedHistory?.total_cash ?? 'Rp 0'"></p>
@@ -509,6 +499,12 @@
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                  <div class="p-4 border border-gray-200 rounded-lg bg-rose-50">
+                    <p class="text-sm font-medium text-rose-700">Total Penjualan Rokok (Qty)</p>
+                    <p class="text-2xl font-bold text-rose-800 mt-1"
+                       x-text="selectedHistory?.total_penjualan_rokok ?? '0'"></p>
+                  </div>
+
                   <div class="p-4 border border-gray-200 rounded-lg bg-amber-50">
                     <p class="text-sm font-medium text-amber-700">Total Pajak</p>
                     <p class="text-2xl font-bold text-amber-800 mt-1"
