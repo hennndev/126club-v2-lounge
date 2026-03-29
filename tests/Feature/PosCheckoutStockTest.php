@@ -110,8 +110,64 @@ test('booking checkout decrements inventory stock', function () {
 
     expect($inventoryItem->fresh()->stock_quantity)->toBe(7)
         ->and($orderItem)->not->toBeNull()
-        ->and((float) $orderItem->service_charge_amount)->toBe(7500.0)
-        ->and((float) $orderItem->tax_amount)->toBe(9075.0);
+        ->and((float) $orderItem->service_charge_amount)->toBe(8325.0)
+        ->and((float) $orderItem->tax_amount)->toBe(8250.0);
+});
+
+test('booking checkout calculates tax from subtotal without adding service charge to tax base', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $area = makePosArea();
+    $table = makePosTable($area);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 5,
+        'tax_percentage' => 11,
+    ]);
+
+    $inventoryItem = makePosInventoryItem([
+        'price' => 5_000_000,
+        'stock_quantity' => 10,
+        'include_tax' => true,
+        'include_service_charge' => true,
+    ]);
+
+    TableSession::create([
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'booking',
+            'customer_user_id' => $customer->id,
+            'table_id' => $table->id,
+            'discount_percentage' => 0,
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('items_total', 5000000)
+        ->assertJsonPath('tax', 550000)
+        ->assertJsonPath('service_charge', 277500)
+        ->assertJsonPath('total', 5827500);
 });
 
 test('booking checkout stores order item name from pos_name with fallback to name', function () {

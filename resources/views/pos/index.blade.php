@@ -964,8 +964,10 @@
 
             const discountRatio = this.discountRatio();
             const serviceChargeBaseAfterDiscount = bases.serviceChargeBase * (1 - discountRatio);
+            const taxAndServiceBaseAfterDiscount = bases.taxAndServiceBase * (1 - discountRatio);
+            const taxRate = this.posCharges.taxPercentage / 100;
 
-            return Math.round(serviceChargeBaseAfterDiscount * serviceChargeRate);
+            return Math.round((serviceChargeBaseAfterDiscount + (taxAndServiceBaseAfterDiscount * taxRate)) * serviceChargeRate);
           },
 
           calculatedTax() {
@@ -979,9 +981,7 @@
             const discountRatio = this.discountRatio();
             const taxBaseAfterDiscount = bases.taxBase * (1 - discountRatio);
 
-            const serviceChargeTaxable = Math.round((bases.taxAndServiceBase * (1 - discountRatio)) * (this.posCharges.serviceChargePercentage / 100));
-
-            return Math.round((taxBaseAfterDiscount + serviceChargeTaxable) * taxRate);
+            return Math.round(taxBaseAfterDiscount * taxRate);
           },
 
           walkInPreDiscountTotal() {
