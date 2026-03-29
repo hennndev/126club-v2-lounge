@@ -349,13 +349,23 @@ class RecapController extends Controller
             ->limit(10)
             ->get();
 
-        $paymentMethodTotals = [
+        $dashboardPaymentMethodTotals = [
             'cash' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_cash ?? 0),
             'transfer' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_transfer ?? 0),
             'debit' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_debit ?? 0),
             'kredit' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_kredit ?? 0),
             'qris' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_qris ?? 0),
         ];
+
+        $paymentMethodTotals = $dashboardPaymentMethodTotals;
+
+        if (! $isSelectedEndDayClosed) {
+            $livePaymentMethodSummary = $this->resolveLivePaymentMethodTotals($startAt, $endAt);
+
+            if ($livePaymentMethodSummary['has_paid_billings']) {
+                $paymentMethodTotals = $livePaymentMethodSummary['totals'];
+            }
+        }
 
         $kitchenItems = $isSelectedEndDayClosed
             ? collect()
@@ -417,7 +427,7 @@ class RecapController extends Controller
             'totalServiceCharge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
             'totalDiscount' => $totalDiscount,
             'totalDownPayment' => $totalDownPayment,
-            'totalCash' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_cash ?? 0),
+            'totalCash' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['cash'],
             'paymentMethodTotals' => $paymentMethodTotals,
             'kitchenItems' => $kitchenItems,
             'kitchenQtyTotal' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_kitchen_items ?? 0),
@@ -430,16 +440,116 @@ class RecapController extends Controller
                 'total_service_charge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
                 'total_discount' => $totalDiscount,
                 'total_down_payment' => $totalDownPayment,
-                'total_cash' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_cash ?? 0),
-                'total_transfer' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_transfer ?? 0),
-                'total_debit' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_debit ?? 0),
-                'total_kredit' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_kredit ?? 0),
-                'total_qris' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_qris ?? 0),
+                'total_cash' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['cash'],
+                'total_transfer' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['transfer'],
+                'total_debit' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['debit'],
+                'total_kredit' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['kredit'],
+                'total_qris' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['qris'],
                 'total_kitchen_items' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_kitchen_items ?? 0),
                 'total_bar_items' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_bar_items ?? 0),
                 'total_transactions' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_transactions ?? 0),
             ],
             'recapHistories' => $recapHistories,
+        ];
+    }
+
+    /**
+     * @return array{has_paid_billings: bool, totals: array{cash: float, transfer: float, debit: float, kredit: float, qris: float}}
+     */
+    private function resolveLivePaymentMethodTotals(Carbon $startAt, Carbon $endAt): array
+    {
+        $paymentMethodTotals = [
+            'cash' => 0.0,
+            'transfer' => 0.0,
+            'debit' => 0.0,
+            'kredit' => 0.0,
+            'qris' => 0.0,
+        ];
+
+        $paidBillings = Billing::query()
+            ->where('billing_status', 'paid')
+            ->where(function ($query): void {
+                $query->where('is_booking', true)
+                    ->orWhere('is_walk_in', true);
+            })
+            ->whereBetween('updated_at', [$startAt, $endAt])
+            ->get();
+
+        foreach ($paidBillings as $billing) {
+            $paidAmount = (float) ($billing->paid_amount ?? $billing->grand_total ?? 0);
+
+            if (strtolower((string) ($billing->payment_mode ?? 'normal')) === 'split') {
+                $paymentMethodTotals['cash'] += (float) ($billing->split_cash_amount ?? 0);
+
+                $this->addPaymentMethodAmount(
+                    $paymentMethodTotals,
+                    $this->normalizePaymentMethod($billing->split_non_cash_method),
+                    (float) ($billing->split_debit_amount ?? 0)
+                );
+
+                $this->addPaymentMethodAmount(
+                    $paymentMethodTotals,
+                    $this->normalizePaymentMethod($billing->split_second_non_cash_method),
+                    (float) ($billing->split_second_non_cash_amount ?? 0)
+                );
+
+                continue;
+            }
+
+            if (strtolower((string) ($billing->payment_method ?? '')) === 'cash') {
+                $paymentMethodTotals['cash'] += $paidAmount;
+
+                continue;
+            }
+
+            $this->addPaymentMethodAmount(
+                $paymentMethodTotals,
+                $this->normalizePaymentMethod($billing->payment_method),
+                $paidAmount
+            );
+        }
+
+        $walkInOrders = Order::query()
+            ->whereNull('table_session_id')
+            ->where('status', '!=', 'cancelled')
+            ->where(function ($query) use ($startAt, $endAt): void {
+                $query->whereBetween('ordered_at', [$startAt, $endAt])
+                    ->orWhere(function ($fallbackQuery) use ($startAt, $endAt): void {
+                        $fallbackQuery->whereNull('ordered_at')
+                            ->whereBetween('created_at', [$startAt, $endAt]);
+                    });
+            })
+            ->get(['id', 'payment_method', 'payment_mode', 'total']);
+
+        $paidBillingOrderIds = Billing::query()
+            ->where('billing_status', 'paid')
+            ->whereIn('order_id', $walkInOrders->pluck('id')->filter()->values())
+            ->pluck('order_id')
+            ->filter()
+            ->unique();
+
+        $walkInOrdersWithoutPaidBilling = $walkInOrders
+            ->reject(fn (Order $order): bool => $paidBillingOrderIds->contains($order->id));
+
+        foreach ($walkInOrdersWithoutPaidBilling as $order) {
+            $paidAmount = (float) ($order->total ?? 0);
+
+            if (strtolower((string) ($order->payment_method ?? '')) === 'cash') {
+                $paymentMethodTotals['cash'] += $paidAmount;
+
+                continue;
+            }
+
+            $this->addPaymentMethodAmount(
+                $paymentMethodTotals,
+                $this->normalizePaymentMethod($order->payment_method),
+                $paidAmount
+            );
+        }
+
+        return [
+            'has_paid_billings' => $paidBillings->isNotEmpty() || $walkInOrdersWithoutPaidBilling->isNotEmpty(),
+            'totals' => $paymentMethodTotals,
         ];
     }
 
@@ -722,7 +832,7 @@ class RecapController extends Controller
     }
 
     /**
-     * @param  array{transfer: float, debit: float, kredit: float, qris: float}  $paymentMethodTotals
+     * @param  array{cash: float, transfer: float, debit: float, kredit: float, qris: float}  $paymentMethodTotals
      */
     private function addPaymentMethodAmount(array &$paymentMethodTotals, ?string $method, float $amount): void
     {
