@@ -1625,6 +1625,7 @@ class PosController extends Controller
 
         $kitchenItems = collect();
         $barItems = collect();
+        $checkerCashierItems = collect();
 
         // Prioritize printer type assignment. Fallback to preparation location.
         foreach ($order->items as $item) {
@@ -1656,10 +1657,8 @@ class PosController extends Controller
                 continue;
             }
 
-            // Cashier/checker-assigned items ride the same kitchen-style preparation order.
-            // The print fan-out already dispatches per assigned printer type.
             if ($assignedTypes->contains('cashier') || $assignedTypes->contains('checker')) {
-                $kitchenItems->push($item);
+                $checkerCashierItems->push($item);
 
                 continue;
             }
@@ -1731,6 +1730,52 @@ class PosController extends Controller
 
             // Auto-print bar ticket if a printer is configured for 'bar' location
             $this->printBarTicket($barOrder, $selectedCheckerPrinterIds);
+        }
+
+        if ($checkerCashierItems->isNotEmpty()) {
+            $this->printCheckerCashierItemsWithoutPreparationOrder(
+                $order,
+                $checkerCashierItems,
+                $orderNumber,
+                $tableId,
+                $selectedCheckerPrinterIds
+            );
+        }
+    }
+
+    protected function printCheckerCashierItemsWithoutPreparationOrder(
+        Order $order,
+        Collection $checkerCashierItems,
+        string $orderNumber,
+        ?int $tableId,
+        ?Collection $selectedCheckerPrinterIds = null
+    ): bool {
+        try {
+            $virtualOrder = new KitchenOrder([
+                'order_id' => $order->id,
+                'order_number' => $orderNumber,
+                'customer_user_id' => $order->customer_user_id,
+                'table_id' => $tableId,
+                'total_amount' => $checkerCashierItems->sum('subtotal'),
+                'status' => 'baru',
+                'progress' => 0,
+            ]);
+
+            $virtualOrder->setRelation('order', $order);
+            $virtualOrder->setRelation('table', $order->tableSession?->table);
+
+            return $this->printItemsToAssignedPrinters(
+                $virtualOrder,
+                $checkerCashierItems,
+                fn (KitchenOrder|BarOrder $preparationOrder, Printer $printer): bool => match ($printer->printer_type) {
+                    'checker' => $this->printerService->printCheckerTicket($preparationOrder, $printer),
+                    'cashier' => $this->printerService->printCashierTicket($preparationOrder, $printer),
+                    default => false,
+                },
+                $selectedCheckerPrinterIds
+            );
+        } catch (\Exception $e) {
+            return false;
         }
     }
 

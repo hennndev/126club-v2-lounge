@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Area;
+use App\Models\BarOrder;
 use App\Models\Billing;
 use App\Models\CustomerUser;
 use App\Models\DailyAuthCode;
@@ -668,7 +669,7 @@ test('booking checkout auto prints one menu to multiple assigned target printers
 
     $cartKey = 'item_'.$inventoryItem->id;
 
-    actingAs($admin)
+    $response = actingAs($admin)
         ->withSession([
             'pos_cart' => [
                 $cartKey => [
@@ -1108,6 +1109,7 @@ test('walk in checkout auto prints one menu to multiple assigned target printers
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('receipt_printed', true);
+
 });
 
 test('walk in checkout auto print only targets selected checker printers', function () {
@@ -1215,7 +1217,7 @@ test('walk in checkout auto print only targets selected checker printers', funct
 
     $cartKey = 'item_'.$inventoryItem->id;
 
-    actingAs($admin)
+    $response = actingAs($admin)
         ->withSession([
             'pos_cart' => [
                 $cartKey => [
@@ -1238,6 +1240,12 @@ test('walk in checkout auto print only targets selected checker printers', funct
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('receipt_printed', true);
+
+    $orderId = (int) $response->json('order_id');
+
+    expect($orderId)->toBeGreaterThan(0)
+        ->and(KitchenOrder::query()->where('order_id', $orderId)->exists())->toBeFalse()
+        ->and(BarOrder::query()->where('order_id', $orderId)->exists())->toBeFalse();
 });
 
 test('booking checkout does not print receipt even when cashier printer exists', function () {

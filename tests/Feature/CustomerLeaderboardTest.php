@@ -32,7 +32,7 @@ function createCustomerForLeaderboard(array $attributes): CustomerUser
     ]);
 }
 
-function createWalkInBillingHistory(CustomerUser $customer, float $grandTotal, string $status = 'paid'): void
+function createWalkInBillingHistory(CustomerUser $customer, float $grandTotal, string $status = 'paid', $createdAt = null): void
 {
     $cashier = User::factory()->create();
 
@@ -45,7 +45,8 @@ function createWalkInBillingHistory(CustomerUser $customer, float $grandTotal, s
         'items_total' => $grandTotal,
         'discount_amount' => 0,
         'total' => $grandTotal,
-        'ordered_at' => now(),
+        'ordered_at' => $createdAt ?? now(),
+        'created_at' => $createdAt,
     ]);
 
     Billing::create([
@@ -67,10 +68,11 @@ function createWalkInBillingHistory(CustomerUser $customer, float $grandTotal, s
         'transaction_code' => 'WALKIN-'.uniqid(),
         'payment_method' => 'cash',
         'payment_mode' => 'normal',
+        'created_at' => $createdAt,
     ]);
 }
 
-function createWalkInTransactionOnly(CustomerUser $customer, float $grandTotal, string $status = 'pending'): void
+function createWalkInTransactionOnly(CustomerUser $customer, float $grandTotal, string $status = 'pending', $createdAt = null): void
 {
     $cashier = User::factory()->create();
 
@@ -83,12 +85,18 @@ function createWalkInTransactionOnly(CustomerUser $customer, float $grandTotal, 
         'items_total' => $grandTotal,
         'discount_amount' => 0,
         'total' => $grandTotal,
-        'ordered_at' => now(),
+        'ordered_at' => $createdAt ?? now(),
+        'created_at' => $createdAt,
     ]);
 }
 
-function createBookingBillingHistory(CustomerUser $customer, float $grandTotal, string $status = 'paid'): void
-{
+function createBookingBillingHistory(
+    CustomerUser $customer,
+    float $grandTotal,
+    string $status = 'paid',
+    $createdAt = null,
+    bool $attachCustomerUserIdToOrder = true
+): void {
     $area = Area::create([
         'code' => 'AREA-'.uniqid(),
         'name' => 'Area '.uniqid(),
@@ -110,13 +118,28 @@ function createBookingBillingHistory(CustomerUser $customer, float $grandTotal, 
         'table_id' => $table->id,
         'customer_id' => $customer->user_id,
         'session_code' => 'SESSION-'.uniqid(),
-        'checked_in_at' => now(),
+        'checked_in_at' => $createdAt ?? now(),
         'status' => 'completed',
+    ]);
+
+    // Create an associated order for the booking
+    $cashier = User::factory()->create();
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'customer_user_id' => $attachCustomerUserIdToOrder ? $customer->id : null,
+        'created_by' => $cashier->id,
+        'order_number' => 'ORD-BOOKING-'.uniqid(),
+        'status' => 'pending',
+        'items_total' => $grandTotal,
+        'discount_amount' => 0,
+        'total' => $grandTotal,
+        'ordered_at' => $createdAt ?? now(),
+        'created_at' => $createdAt,
     ]);
 
     Billing::create([
         'table_session_id' => $session->id,
-        'order_id' => null,
+        'order_id' => $order->id,
         'is_walk_in' => false,
         'is_booking' => true,
         'minimum_charge' => 0,
@@ -133,6 +156,7 @@ function createBookingBillingHistory(CustomerUser $customer, float $grandTotal, 
         'transaction_code' => 'BILLING-'.uniqid(),
         'payment_method' => 'cash',
         'payment_mode' => 'normal',
+        'created_at' => $createdAt,
     ]);
 }
 
@@ -302,4 +326,142 @@ test('admin customers list uses default pagination and can change rows per page'
             && $customers->total() === 30;
     });
     $customResponse->assertViewHas('perPage', 25);
+});
+
+test('admin customers leaderboard today shows only transactions from 9am to 9am next day', function () {
+    $admin = adminUser();
+
+    $customer = createCustomerForLeaderboard([
+        'name' => 'Today Spender',
+        'email' => 'today.spender@example.com',
+        'accurate_id' => 995001,
+        'customer_code' => 'CUST-995001',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    // Create a transaction at 8:30 AM (before today's window opens)
+    $cashier = User::factory()->create();
+    Order::create([
+        'table_session_id' => null,
+        'customer_user_id' => $customer->id,
+        'created_by' => $cashier->id,
+        'order_number' => 'ORD-BEFORE-'.uniqid(),
+        'status' => 'pending',
+        'items_total' => 50000,
+        'discount_amount' => 0,
+        'total' => 50000,
+        'ordered_at' => now()->startOfDay()->setHour(8)->setMinute(30),
+        'created_at' => now()->startOfDay()->setHour(8)->setMinute(30),
+    ]);
+
+    // Create a transaction at 3 PM (within today's window) - use booking instead
+    createBookingBillingHistory($customer, 100000, 'paid', now()->setHour(15)->setMinute(0));
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.customers.index', [
+            'tab' => 'leaderboard',
+            'leaderboard_type' => 'today',
+        ]));
+
+    $response->assertOk();
+    $response->assertViewHas('leaderboardToday');
+});
+
+test('admin customers today leaderboard is sorted by daily leaderboard score', function () {
+    $admin = adminUser();
+
+    $alice = createCustomerForLeaderboard([
+        'name' => 'Alice Today',
+        'email' => 'alice.today@example.com',
+        'accurate_id' => 996001,
+        'customer_code' => 'CUST-996001',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    $bravo = createCustomerForLeaderboard([
+        'name' => 'Bravo Today',
+        'email' => 'bravo.today@example.com',
+        'accurate_id' => 996002,
+        'customer_code' => 'CUST-996002',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    $charlie = createCustomerForLeaderboard([
+        'name' => 'Charlie Today',
+        'email' => 'charlie.today@example.com',
+        'accurate_id' => 996003,
+        'customer_code' => 'CUST-996003',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    // Create today's transactions within 9AM-9AM window
+    createBookingBillingHistory($charlie, 120000, 'paid', now()->setHour(10)->setMinute(0));
+    createBookingBillingHistory($bravo, 100000, 'paid', now()->setHour(10)->setMinute(30));
+    createBookingBillingHistory($bravo, 50000, 'paid', now()->setHour(11)->setMinute(0));
+    createBookingBillingHistory($alice, 450000, 'paid', now()->setHour(12)->setMinute(0));
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.customers.index', [
+            'tab' => 'leaderboard',
+            'leaderboard_type' => 'today',
+        ]));
+
+    $response->assertOk();
+
+    $response->assertViewHas('leaderboardToday');
+    $response->assertSee('Today Top Spenders');
+});
+
+test('admin customers today leaderboard correctly aggregates walk-in and booking orders for same customer', function () {
+    $admin = adminUser();
+
+    $customer = createCustomerForLeaderboard([
+        'name' => 'Mixed Orders Customer',
+        'email' => 'mixed.orders@example.com',
+        'accurate_id' => 997001,
+        'customer_code' => 'CUST-997001',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    // Create a walk-in billing (table_session_id null path)
+    createWalkInBillingHistory($customer, 50000, 'paid', now()->setHour(10)->setMinute(0));
+
+    // Create a booking order for the same customer without customer_user_id reference
+    createBookingBillingHistory($customer, 100000, 'paid', now()->setHour(11)->setMinute(0), false);
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.customers.index', [
+            'tab' => 'leaderboard',
+            'leaderboard_type' => 'today',
+        ]));
+
+    $response->assertOk();
+
+    $response->assertViewHas('leaderboardToday', function ($leaderboardToday) use ($customer) {
+        if ($leaderboardToday->count() === 0) {
+            return false;
+        }
+
+        $found = $leaderboardToday->first(fn ($c) => $c->id === $customer->id);
+
+        if ($found === null) {
+            return false;
+        }
+
+        $spending = (float) ($found->transaction_daily_spending ?? 0);
+        $visits = (int) ($found->transaction_daily_visits ?? 0);
+        $score = (int) ($found->daily_leaderboard_score ?? 0);
+
+        // Should have total spending of 150000 (50000 + 100000)
+        // Should have total visits of 2
+        // Score should be FLOOR(150000 / 10000) + 2 = 15 + 2 = 17
+        return $spending === 150000.0
+            && $visits === 2
+            && $score === 17;
+    });
 });

@@ -716,7 +716,7 @@ class PrinterService
         $splitSecondNonCashMethod = strtoupper((string) ($billing->split_second_non_cash_method ?? 'NON-CASH 2'));
 
         return [
-            'transaction_code' => (string) ($billing->transaction_code ?? '-'),
+            'transaction_code' => (string) ($billing->order?->order_number ?? $billing->transaction_code ?? '-'),
             'date' => ($billing->updated_at ?? now())->format('d M Y H:i'),
             'cashier' => auth()->user()?->name ?? 'System Administrator',
             'customer_name' => $customerName,
@@ -775,7 +775,7 @@ class PrinterService
         $splitSecondNonCashMethod = strtoupper((string) ($billing->split_second_non_cash_method ?? 'NON-CASH 2'));
 
         return [
-            'transaction_code' => (string) ($billing->transaction_code ?? $order->order_number ?? '-'),
+            'transaction_code' => (string) ($order->order_number ?? $billing->transaction_code ?? '-'),
             'date' => ($billing->updated_at ?? $order->ordered_at ?? now())->format('d M Y H:i'),
             'cashier' => $order->createdBy?->name ?? auth()->user()?->name ?? 'System Administrator',
             'customer_name' => $customerName,
