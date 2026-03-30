@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Waiter\WaiterPosController;
 use App\Models\Area;
+use App\Models\BarOrder;
 use App\Models\CustomerUser;
 use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
@@ -369,6 +370,90 @@ test('waiter checkout auto prints one menu to multiple assigned target printers'
         ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
         ->assertOk()
         ->assertJsonPath('success', true);
+});
+
+test('waiter checkout with checker-only item does not create kitchen or bar orders', function () {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-CHK-ONLY');
+    $session = posSession($table, $customer, $waiter);
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'food'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+    PosCategorySetting::clearCache();
+
+    $checkerPrinter = Printer::create([
+        'name' => 'Waiter Checker Only',
+        'location' => 'checker',
+        'printer_type' => 'checker',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $menuItem = InventoryItem::create([
+        'name' => 'Waiter Checker Only Menu',
+        'code' => 'MENU-WAITER-CHECKER-ONLY-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'category_type' => 'food',
+        'price' => 35000,
+        'stock_quantity' => 100,
+        'is_active' => true,
+    ]);
+
+    $menuItem->printers()->sync([$checkerPrinter->id]);
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($checkerPrinter): void {
+        $mock->shouldReceive('printCheckerTicket')
+            ->once()
+            ->withArgs(function ($order, $printer) use ($checkerPrinter): bool {
+                return (int) $printer->id === (int) $checkerPrinter->id
+                    && (int) ($order->items->count() ?? 0) === 1;
+            })
+            ->andReturnTrue();
+
+        $mock->shouldReceive('printKitchenTicket')->never();
+        $mock->shouldReceive('printBarTicket')->never();
+        $mock->shouldReceive('printCashierTicket')->never();
+    });
+
+    $productId = 'item_'.$menuItem->id;
+
+    actingAs($waiter)
+        ->withSession([
+            'accurate_database' => 'test',
+            WaiterPosController::CART_KEY => [
+                $productId => [
+                    'id' => $productId,
+                    'name' => $menuItem->name,
+                    'price' => 35000,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    $order = Order::query()->where('table_session_id', $session->id)->latest('id')->first();
+
+    expect($order)->not->toBeNull()
+        ->and(KitchenOrder::query()->where('order_id', $order->id)->exists())->toBeFalse()
+        ->and(BarOrder::query()->where('order_id', $order->id)->exists())->toBeFalse();
 });
 
 test('waiter cannot checkout for a session belonging to another waiter', function () {

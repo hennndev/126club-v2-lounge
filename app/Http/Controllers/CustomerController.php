@@ -6,6 +6,7 @@ use App\Models\CustomerUser;
 use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\AccurateService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -71,6 +72,27 @@ class CustomerController extends Controller
             ->take($leaderboardLimit)
             ->get();
 
+        // Today's leaderboard data (9 AM to 9 AM next day, or 9 AM yesterday to 9 AM today if before 9 AM)
+        $now = Carbon::now();
+        $nineAMToday = $now->clone()->startOfDay()->setHour(9);
+
+        // If current time is before 9 AM, we're in yesterday's 9 AM - today's 9 AM window
+        if ($now->isBefore($nineAMToday)) {
+            $todayStartTime = $nineAMToday->clone()->subDay();
+            $todayEndTime = $nineAMToday;
+        } else {
+            // If current time is 9 AM or after, we're in today's 9 AM - tomorrow's 9 AM window
+            $todayStartTime = $nineAMToday;
+            $todayEndTime = $nineAMToday->clone()->addDay();
+        }
+
+        $leaderboardToday = $this->customerQueryWithTransactionStatsByDateRange($todayStartTime, $todayEndTime)
+            ->with(['user', 'profile'])
+            ->orderByDesc('daily_leaderboard_score')
+            ->orderByDesc('transaction_daily_spending')
+            ->take($leaderboardLimit)
+            ->get();
+
         return view('customers.index', compact(
             'customers',
             'totalCustomers',
@@ -78,6 +100,7 @@ class CustomerController extends Controller
             'totalVisits',
             'avgSpending',
             'leaderboard',
+            'leaderboardToday',
             'leaderboardLimit',
             'leaderboardLimitOptions',
             'perPage',
@@ -234,5 +257,45 @@ class CustomerController extends Controller
             ->selectRaw('COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_transaction_agg.walk_in_visits, 0) as transaction_total_visits')
             ->selectRaw('FLOOR((COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0)) / 10000) as transaction_points')
             ->selectRaw('FLOOR((COALESCE(booking_billing_agg.booking_spending, 0) + COALESCE(walk_in_transaction_agg.walk_in_spending, 0)) / 10000) + (COALESCE(booking_billing_agg.booking_visits, 0) + COALESCE(walk_in_transaction_agg.walk_in_visits, 0)) as leaderboard_score');
+    }
+
+    protected function customerQueryWithTransactionStatsByDateRange($startTime, $endTime)
+    {
+        // Booking orders: resolve customer via table_sessions.customer_id -> customer_users.user_id
+        $bookingOrderAgg = DB::table('orders')
+            ->join('table_sessions', 'table_sessions.id', '=', 'orders.table_session_id')
+            ->join('customer_users as booking_customers', 'booking_customers.user_id', '=', 'table_sessions.customer_id')
+            ->whereNotNull('orders.table_session_id')
+            ->where('orders.status', '!=', 'cancelled')
+            ->whereBetween('orders.created_at', [$startTime, $endTime])
+            ->groupBy('booking_customers.id')
+            ->selectRaw('booking_customers.id as customer_user_id')
+            ->selectRaw('SUM(orders.total) as booking_order_spending')
+            ->selectRaw('COUNT(orders.id) as booking_order_visits');
+
+        // Walk-in: if table_session_id is null, take from billings in the same time window
+        $walkInBillingAgg = DB::table('billings')
+            ->join('orders', 'orders.id', '=', 'billings.order_id')
+            ->whereNull('billings.table_session_id')
+            ->whereNotNull('orders.customer_user_id')
+            ->where('billings.billing_status', 'paid')
+            ->whereBetween('billings.created_at', [$startTime, $endTime])
+            ->groupBy('orders.customer_user_id')
+            ->selectRaw('orders.customer_user_id as customer_user_id')
+            ->selectRaw('SUM(billings.grand_total) as walk_in_billing_spending')
+            ->selectRaw('COUNT(billings.id) as walk_in_billing_visits');
+
+        return CustomerUser::query()
+            ->leftJoinSub($bookingOrderAgg, 'booking_order_agg', function ($join): void {
+                $join->on('booking_order_agg.customer_user_id', '=', 'customer_users.id');
+            })
+            ->leftJoinSub($walkInBillingAgg, 'walk_in_billing_agg', function ($join): void {
+                $join->on('walk_in_billing_agg.customer_user_id', '=', 'customer_users.id');
+            })
+            ->select('customer_users.*')
+            ->selectRaw('COALESCE(booking_order_agg.booking_order_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_spending, 0) as transaction_daily_spending')
+            ->selectRaw('COALESCE(booking_order_agg.booking_order_visits, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_visits, 0) as transaction_daily_visits')
+            ->selectRaw('FLOOR((COALESCE(booking_order_agg.booking_order_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_spending, 0)) / 10000) as transaction_daily_points')
+            ->selectRaw('FLOOR((COALESCE(booking_order_agg.booking_order_spending, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_spending, 0)) / 10000) + (COALESCE(booking_order_agg.booking_order_visits, 0) + COALESCE(walk_in_billing_agg.walk_in_billing_visits, 0)) as daily_leaderboard_score');
     }
 }
