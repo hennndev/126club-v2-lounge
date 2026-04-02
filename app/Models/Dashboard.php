@@ -10,6 +10,13 @@ class Dashboard extends Model
 
     protected $fillable = [
         'total_amount',
+        'total_food',
+        'total_alcohol',
+        'total_beverage',
+        'total_cigarette',
+        'total_breakage',
+        'total_room',
+        'total_ld',
         'total_penjualan_rokok',
         'total_tax',
         'total_service_charge',
@@ -26,6 +33,13 @@ class Dashboard extends Model
 
     protected $casts = [
         'total_amount' => 'decimal:2',
+        'total_food' => 'decimal:2',
+        'total_alcohol' => 'decimal:2',
+        'total_beverage' => 'decimal:2',
+        'total_cigarette' => 'decimal:2',
+        'total_breakage' => 'decimal:2',
+        'total_room' => 'decimal:2',
+        'total_ld' => 'decimal:2',
         'total_penjualan_rokok' => 'decimal:2',
         'total_tax' => 'decimal:2',
         'total_service_charge' => 'decimal:2',

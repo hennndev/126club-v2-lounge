@@ -71,6 +71,13 @@ class DashboardController extends Controller
 
         // --- Dashboard aggregate totals ---
         $dashboardAggregate = Dashboard::query()->find(1);
+        $dashboardTotalFood = (float) ($dashboardAggregate?->total_food ?? 0);
+        $dashboardTotalAlcohol = (float) ($dashboardAggregate?->total_alcohol ?? 0);
+        $dashboardTotalBeverage = (float) ($dashboardAggregate?->total_beverage ?? 0);
+        $dashboardTotalCigarette = (float) ($dashboardAggregate?->total_cigarette ?? 0);
+        $dashboardTotalBreakage = (float) ($dashboardAggregate?->total_breakage ?? 0);
+        $dashboardTotalRoom = (float) ($dashboardAggregate?->total_room ?? 0);
+        $dashboardTotalLd = (float) ($dashboardAggregate?->total_ld ?? 0);
         $dashboardTotalPenjualanRokok = (int) ($dashboardAggregate?->total_penjualan_rokok ?? 0);
         $dashboardTotalTax = (float) ($dashboardAggregate?->total_tax ?? 0);
         $dashboardTotalServiceCharge = (float) ($dashboardAggregate?->total_service_charge ?? 0);
@@ -94,6 +101,13 @@ class DashboardController extends Controller
             'totalProducts',
             'lowStockCount',
             'outOfStockCount',
+            'dashboardTotalFood',
+            'dashboardTotalAlcohol',
+            'dashboardTotalBeverage',
+            'dashboardTotalCigarette',
+            'dashboardTotalBreakage',
+            'dashboardTotalRoom',
+            'dashboardTotalLd',
             'dashboardTotalPenjualanRokok',
             'dashboardTotalTax',
             'dashboardTotalServiceCharge',

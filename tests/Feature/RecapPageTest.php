@@ -135,6 +135,13 @@ test('admin can open recap page', function () {
 
     Dashboard::query()->create([
         'total_amount' => 500000,
+        'total_food' => 51,
+        'total_alcohol' => 62,
+        'total_beverage' => 73,
+        'total_cigarette' => 84,
+        'total_breakage' => 95,
+        'total_room' => 106,
+        'total_ld' => 117,
         'total_penjualan_rokok' => 42,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
@@ -163,6 +170,20 @@ test('admin can open recap page', function () {
         ->assertSeeText('Total Pembayaran Tunai')
         ->assertSeeText('Total Tunai')
         ->assertSeeText('Rp 100.000')
+        ->assertSeeText('Total Food')
+        ->assertSeeText('Total Alcohol')
+        ->assertSeeText('Total Beverage')
+        ->assertSeeText('Total Cigarette')
+        ->assertSeeText('Total Breakage')
+        ->assertSeeText('Total Room')
+        ->assertSeeText('Total LD')
+        ->assertSeeText('51')
+        ->assertSeeText('62')
+        ->assertSeeText('73')
+        ->assertSeeText('84')
+        ->assertSeeText('95')
+        ->assertSeeText('106')
+        ->assertSeeText('117')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('42')
         ->assertSeeText('Item Keluar Kitchen')

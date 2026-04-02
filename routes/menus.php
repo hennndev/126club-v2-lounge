@@ -9,3 +9,4 @@ Route::get('menus/{inventory}/detail', [MenuController::class, 'fetchDetail'])->
 Route::patch('menus/{inventory}/tax-flags', [MenuController::class, 'updateTaxFlags'])->name('menus.update-tax-flags');
 Route::patch('menus/{inventory}/printer-targets', [MenuController::class, 'updatePrinterTargets'])->name('menus.update-printer-targets');
 Route::patch('menus/{inventory}/pos-name', [MenuController::class, 'updatePosName'])->name('menus.update-pos-name');
+Route::patch('menus/{inventory}/category-main', [MenuController::class, 'updateCategoryMain'])->name('menus.update-category-main');

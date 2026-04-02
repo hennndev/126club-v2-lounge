@@ -140,6 +140,41 @@
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div class="p-4 bg-lime-50 border border-lime-200 rounded-lg">
+          <p class="text-sm font-medium text-lime-700">Total Food (Qty)</p>
+          <p class="text-2xl font-bold text-lime-800 mt-1">{{ number_format($dashboardTotalFood, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p class="text-sm font-medium text-yellow-700">Total Alcohol (Qty)</p>
+          <p class="text-2xl font-bold text-yellow-800 mt-1">{{ number_format($dashboardTotalAlcohol, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-teal-50 border border-teal-200 rounded-lg">
+          <p class="text-sm font-medium text-teal-700">Total Beverage (Qty)</p>
+          <p class="text-2xl font-bold text-teal-800 mt-1">{{ number_format($dashboardTotalBeverage, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-fuchsia-50 border border-fuchsia-200 rounded-lg">
+          <p class="text-sm font-medium text-fuchsia-700">Total Cigarette (Qty)</p>
+          <p class="text-2xl font-bold text-fuchsia-800 mt-1">{{ number_format($dashboardTotalCigarette, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p class="text-sm font-medium text-red-700">Total Breakage (Qty)</p>
+          <p class="text-2xl font-bold text-red-800 mt-1">{{ number_format($dashboardTotalBreakage, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p class="text-sm font-medium text-blue-700">Total Room (Qty)</p>
+          <p class="text-2xl font-bold text-blue-800 mt-1">{{ number_format($dashboardTotalRoom, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+          <p class="text-sm font-medium text-purple-700">Total LD (Qty)</p>
+          <p class="text-2xl font-bold text-purple-800 mt-1">{{ number_format($dashboardTotalLd, 0, ',', '.') }}</p>
+        </div>
+
         <div class="p-4 bg-rose-50 border border-rose-200 rounded-lg">
           <p class="text-sm font-medium text-rose-700">Total Penjualan Rokok (Qty)</p>
           <p class="text-2xl font-bold text-rose-800 mt-1">{{ number_format($dashboardTotalPenjualanRokok, 0, ',', '.') }}</p>

@@ -20,6 +20,13 @@ class DashboardSyncService
 
         $totals = [
             'total_amount' => 0.0,
+            'total_food' => 0.0,
+            'total_alcohol' => 0.0,
+            'total_beverage' => 0.0,
+            'total_cigarette' => 0.0,
+            'total_breakage' => 0.0,
+            'total_room' => 0.0,
+            'total_ld' => 0.0,
             'total_penjualan_rokok' => 0.0,
             'total_tax' => 0.0,
             'total_service_charge' => 0.0,
@@ -98,6 +105,23 @@ class DashboardSyncService
                 $query->whereRaw('LOWER(TRIM(category_type)) like ?', ['%rokok%']);
             })
             ->sum('quantity');
+
+        $categoryMainQuantityMap = OrderItem::query()
+            ->selectRaw('LOWER(TRIM(COALESCE(inventory_items.category_main, ""))) as category_key')
+            ->selectRaw('SUM(order_items.quantity) as total_quantity')
+            ->join('inventory_items', 'inventory_items.id', '=', 'order_items.inventory_item_id')
+            ->whereIn('order_items.order_id', $relatedOrderIds->all())
+            ->where('order_items.status', '!=', 'cancelled')
+            ->groupBy('category_key')
+            ->pluck('total_quantity', 'category_key');
+
+        $totals['total_food'] = (float) ($categoryMainQuantityMap['food'] ?? 0);
+        $totals['total_alcohol'] = (float) ($categoryMainQuantityMap['alcohol'] ?? 0);
+        $totals['total_beverage'] = (float) ($categoryMainQuantityMap['beverage'] ?? 0);
+        $totals['total_cigarette'] = (float) ($categoryMainQuantityMap['cigarette'] ?? 0);
+        $totals['total_breakage'] = (float) ($categoryMainQuantityMap['breakage'] ?? 0);
+        $totals['total_room'] = (float) ($categoryMainQuantityMap['room'] ?? 0);
+        $totals['total_ld'] = (float) ($categoryMainQuantityMap['ld'] ?? 0);
 
         foreach ($paidBillings as $billing) {
             $paidAmount = (float) ($billing->paid_amount ?? $billing->grand_total ?? 0);

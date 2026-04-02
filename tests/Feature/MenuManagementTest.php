@@ -269,3 +269,57 @@ test('menu store rejects ingredient quantity that is zero or decimal', function 
     'zero quantity' => 0,
     'decimal quantity' => 1.5,
 ]);
+
+test('menu store updates existing item when accurate code already exists', function () {
+    $admin = adminUser();
+
+    $existing = InventoryItem::create([
+        'code' => '100337',
+        'accurate_id' => 999001,
+        'name' => 'Menu Lama',
+        'pos_name' => 'Menu Lama POS',
+        'category_type' => 'Old Category',
+        'price' => 5000,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'PCS',
+        'is_active' => true,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('saveItem')
+            ->once()
+            ->andReturn([
+                'r' => [
+                    'id' => 1650,
+                    'no' => '100337',
+                ],
+            ]);
+    });
+
+    $response = actingAs($admin)->postJson(route('admin.menus.store'), [
+        'code_mode' => 'auto',
+        'name' => 'Test Menu 1',
+        'item_type' => 'INVENTORY',
+        'category_type' => 'Main Course',
+        'category_main' => 'food',
+        'unit' => 'PCS',
+        'selling_price' => 10000,
+        'include_tax' => true,
+        'include_service_charge' => true,
+        'detail_group' => [],
+    ]);
+
+    $response
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    expect(InventoryItem::query()->where('code', '100337')->count())->toBe(1);
+
+    $updated = $existing->fresh();
+
+    expect((int) $updated->accurate_id)->toBe(1650)
+        ->and($updated->name)->toBe('Test Menu 1')
+        ->and($updated->category_type)->toBe('Main Course')
+        ->and($updated->category_main)->toBe('food');
+});

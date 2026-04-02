@@ -191,6 +191,8 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
 
+    config(['accurate.stock_warehouse_name' => 'Warehouse Test']);
+
     $customer = $booking->customer;
     $profile = UserProfile::create([
         'user_id' => $customer->id,
@@ -238,6 +240,10 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
 
                 foreach ($detailItems as $detailItem) {
                     if (! isset($detailItem['salesOrderNumber'])) {
+                        return false;
+                    }
+
+                    if (($detailItem['warehouseName'] ?? null) !== 'Warehouse Test') {
                         return false;
                     }
                 }

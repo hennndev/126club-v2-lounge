@@ -28,7 +28,7 @@ class AccurateService
     ): Collection {
         try {
             $params = [
-                'fields' => 'id,name,no,unitPrice,itemCategory,notes,detailGroup,itemUnit,suspended,availableToSellInAllUnit,allQuantity',
+                'fields' => 'id,name,no,unitPrice,itemCategory,notes,detailGroup,itemUnit,suspended,availableToSellInAllUnit,allQuantity,quantity',
                 'sort' => $sortBy,
                 'sp.page' => $request->get('page', 1),
                 'sp.pageSize' => $request->get('pageSize', $pageSize),
@@ -110,12 +110,15 @@ class AccurateService
                 $baseParams['filter.itemType.val'] = $request->item_type;
             }
 
+            if ($request->filled('warehouse_name')) {
+                $baseParams['warehouseName'] = $request->string('warehouse_name')->toString();
+            }
+
             $allItems = collect();
             $page = 1;
 
             do {
                 $response = $this->dataClient()->get("/api/{$endpoint}/list-stock.do", array_merge($baseParams, ['sp.page' => $page]));
-
                 if ($response->failed()) {
                     Log::error("Gagal mengambil daftar {$endpoint} dari Accurate", ['page' => $page, 'response' => $response->json()]);
                     break;
@@ -259,19 +262,26 @@ class AccurateService
 
             return $result;
         } catch (\Exception $e) {
-          Log::info("error", ['message' => $e->getMessage(), 'endpoint' => $endpoint, 'action' => $action, 'data' => $data]);
+            Log::info('error', ['message' => $e->getMessage(), 'endpoint' => $endpoint, 'action' => $action, 'data' => $data]);
             throw new Exception('Accurate Error: '.$e->getMessage());
         }
     }
 
-    protected function getStock(string $no): ?array
+    protected function getStock(string $no, ?string $warehouseName = null): ?array
     {
         try {
-            $response = $this->dataClient()->get('/api/item/get-stock.do', ['no' => $no]);
+            $params = ['no' => $no];
+
+            if ($warehouseName !== null && $warehouseName !== '') {
+                $params['warehouseName'] = $warehouseName;
+            }
+
+            $response = $this->dataClient()->get('/api/item/get-stock.do', $params);
 
             if ($response->failed()) {
                 Log::error('Gagal mengambil detail item dari Accurate', [
-                    'id' => $id,
+                    'no' => $no,
+                    'warehouse_name' => $warehouseName,
                     'response' => $response->json(),
                 ]);
 
@@ -281,7 +291,8 @@ class AccurateService
             return $response->json()['d'] ?? null;
         } catch (\Exception $e) {
             Log::error('Exception saat mengambil detail item', [
-                'id' => $id,
+                'no' => $no,
+                'warehouse_name' => $warehouseName,
                 'message' => $e->getMessage(),
             ]);
 
@@ -484,9 +495,9 @@ class AccurateService
         return $this->getStockList('item', $request, []);
     }
 
-    public function getStockItem(string $no)
+    public function getStockItem(string $no, ?string $warehouseName = null)
     {
-        return $this->getStock($no);
+        return $this->getStock($no, $warehouseName);
     }
 
     public function saveItem(array $data)

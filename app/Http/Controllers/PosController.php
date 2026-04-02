@@ -2206,12 +2206,15 @@ class PosController extends Controller
 
             $transDate = $order->ordered_at->format('d/m/Y');
 
-            $detailItem = $order->items->map(function ($item) {
+            $warehouseName = config('accurate.stock_warehouse_name');
+
+            $detailItem = $order->items->map(function ($item) use ($warehouseName) {
                 return [
                     'itemNo' => $item->inventoryItem?->code ?? $item->item_code,
                     'quantity' => $item->quantity,
                     'unitPrice' => (float) $item->price,
                     'discountPercent' => 0,
+                    'warehouseName' => $warehouseName,
                 ];
             })->values()->toArray();
 
