@@ -90,38 +90,38 @@
 
           <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div class="p-4 border border-gray-200 rounded-lg bg-lime-50">
-              <p class="text-sm font-medium text-lime-700">Total Food (Qty)</p>
-              <p class="text-2xl font-bold text-lime-800 mt-1">{{ number_format($dashboardPreview['total_food'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-lime-700">Total Food</p>
+              <p class="text-2xl font-bold text-lime-800 mt-1">Rp {{ number_format($dashboardPreview['total_food'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-yellow-50">
-              <p class="text-sm font-medium text-yellow-700">Total Alcohol (Qty)</p>
-              <p class="text-2xl font-bold text-yellow-800 mt-1">{{ number_format($dashboardPreview['total_alcohol'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-yellow-700">Total Alcohol</p>
+              <p class="text-2xl font-bold text-yellow-800 mt-1">Rp {{ number_format($dashboardPreview['total_alcohol'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-teal-50">
-              <p class="text-sm font-medium text-teal-700">Total Beverage (Qty)</p>
-              <p class="text-2xl font-bold text-teal-800 mt-1">{{ number_format($dashboardPreview['total_beverage'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-teal-700">Total Beverage</p>
+              <p class="text-2xl font-bold text-teal-800 mt-1">Rp {{ number_format($dashboardPreview['total_beverage'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-fuchsia-50">
-              <p class="text-sm font-medium text-fuchsia-700">Total Cigarette (Qty)</p>
-              <p class="text-2xl font-bold text-fuchsia-800 mt-1">{{ number_format($dashboardPreview['total_cigarette'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-fuchsia-700">Total Cigarette</p>
+              <p class="text-2xl font-bold text-fuchsia-800 mt-1">Rp {{ number_format($dashboardPreview['total_cigarette'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-red-50">
-              <p class="text-sm font-medium text-red-700">Total Breakage (Qty)</p>
-              <p class="text-2xl font-bold text-red-800 mt-1">{{ number_format($dashboardPreview['total_breakage'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-red-700">Total Breakage</p>
+              <p class="text-2xl font-bold text-red-800 mt-1">Rp {{ number_format($dashboardPreview['total_breakage'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-blue-50">
-              <p class="text-sm font-medium text-blue-700">Total Room (Qty)</p>
-              <p class="text-2xl font-bold text-blue-800 mt-1">{{ number_format($dashboardPreview['total_room'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-blue-700">Total Room</p>
+              <p class="text-2xl font-bold text-blue-800 mt-1">Rp {{ number_format($dashboardPreview['total_room'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-purple-50">
-              <p class="text-sm font-medium text-purple-700">Total LD (Qty)</p>
-              <p class="text-2xl font-bold text-purple-800 mt-1">{{ number_format($dashboardPreview['total_ld'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-sm font-medium text-purple-700">Total LD</p>
+              <p class="text-2xl font-bold text-purple-800 mt-1">Rp {{ number_format($dashboardPreview['total_ld'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
@@ -397,13 +397,13 @@
                     'total_kitchen_items' => number_format($history->total_kitchen_items, 0, ',', '.'),
                     'total_bar_items' => number_format($history->total_bar_items, 0, ',', '.'),
                     'total_amount' => 'Rp ' . number_format($history->total_amount, 0, ',', '.'),
-                    'total_food' => number_format($history->total_food ?? 0, 0, ',', '.'),
-                    'total_alcohol' => number_format($history->total_alcohol ?? 0, 0, ',', '.'),
-                    'total_beverage' => number_format($history->total_beverage ?? 0, 0, ',', '.'),
-                    'total_cigarette' => number_format($history->total_cigarette ?? 0, 0, ',', '.'),
-                    'total_breakage' => number_format($history->total_breakage ?? 0, 0, ',', '.'),
-                    'total_room' => number_format($history->total_room ?? 0, 0, ',', '.'),
-                    'total_ld' => number_format($history->total_ld ?? 0, 0, ',', '.'),
+                    'total_food' => 'Rp ' . number_format($history->total_food ?? 0, 0, ',', '.'),
+                    'total_alcohol' => 'Rp ' . number_format($history->total_alcohol ?? 0, 0, ',', '.'),
+                    'total_beverage' => 'Rp ' . number_format($history->total_beverage ?? 0, 0, ',', '.'),
+                    'total_cigarette' => 'Rp ' . number_format($history->total_cigarette ?? 0, 0, ',', '.'),
+                    'total_breakage' => 'Rp ' . number_format($history->total_breakage ?? 0, 0, ',', '.'),
+                    'total_room' => 'Rp ' . number_format($history->total_room ?? 0, 0, ',', '.'),
+                    'total_ld' => 'Rp ' . number_format($history->total_ld ?? 0, 0, ',', '.'),
                     'total_penjualan_rokok' => number_format($history->total_penjualan_rokok, 0, ',', '.'),
                     'total_tax' => 'Rp ' . number_format($history->total_tax, 0, ',', '.'),
                     'total_service_charge' => 'Rp ' . number_format($history->total_service_charge, 0, ',', '.'),
@@ -516,45 +516,45 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total Food (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total Food</p>
                   <p class="text-2xl font-bold text-lime-700 mt-1"
-                     x-text="selectedHistory?.total_food ?? '0'"></p>
+                     x-text="selectedHistory?.total_food ?? 'Rp 0'"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total Alcohol (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total Alcohol</p>
                   <p class="text-2xl font-bold text-yellow-700 mt-1"
-                     x-text="selectedHistory?.total_alcohol ?? '0'"></p>
+                     x-text="selectedHistory?.total_alcohol ?? 'Rp 0'"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total Beverage (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total Beverage</p>
                   <p class="text-2xl font-bold text-teal-700 mt-1"
-                     x-text="selectedHistory?.total_beverage ?? '0'"></p>
+                     x-text="selectedHistory?.total_beverage ?? 'Rp 0'"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total Cigarette (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total Cigarette</p>
                   <p class="text-2xl font-bold text-fuchsia-700 mt-1"
-                     x-text="selectedHistory?.total_cigarette ?? '0'"></p>
+                     x-text="selectedHistory?.total_cigarette ?? 'Rp 0'"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total Breakage (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total Breakage</p>
                   <p class="text-2xl font-bold text-red-700 mt-1"
-                     x-text="selectedHistory?.total_breakage ?? '0'"></p>
+                     x-text="selectedHistory?.total_breakage ?? 'Rp 0'"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total Room (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total Room</p>
                   <p class="text-2xl font-bold text-blue-700 mt-1"
-                     x-text="selectedHistory?.total_room ?? '0'"></p>
+                     x-text="selectedHistory?.total_room ?? 'Rp 0'"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-gray-500">Total LD (Qty)</p>
+                  <p class="text-sm font-medium text-gray-500">Total LD</p>
                   <p class="text-2xl font-bold text-purple-700 mt-1"
-                     x-text="selectedHistory?.total_ld ?? '0'"></p>
+                     x-text="selectedHistory?.total_ld ?? 'Rp 0'"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">

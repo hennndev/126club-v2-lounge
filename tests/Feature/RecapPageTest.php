@@ -135,13 +135,13 @@ test('admin can open recap page', function () {
 
     Dashboard::query()->create([
         'total_amount' => 500000,
-        'total_food' => 51,
-        'total_alcohol' => 62,
-        'total_beverage' => 73,
-        'total_cigarette' => 84,
-        'total_breakage' => 95,
-        'total_room' => 106,
-        'total_ld' => 117,
+        'total_food' => 51000,
+        'total_alcohol' => 62000,
+        'total_beverage' => 73000,
+        'total_cigarette' => 84000,
+        'total_breakage' => 95000,
+        'total_room' => 106000,
+        'total_ld' => 117000,
         'total_penjualan_rokok' => 42,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
@@ -177,13 +177,13 @@ test('admin can open recap page', function () {
         ->assertSeeText('Total Breakage')
         ->assertSeeText('Total Room')
         ->assertSeeText('Total LD')
-        ->assertSeeText('51')
-        ->assertSeeText('62')
-        ->assertSeeText('73')
-        ->assertSeeText('84')
-        ->assertSeeText('95')
-        ->assertSeeText('106')
-        ->assertSeeText('117')
+        ->assertSeeText('Rp 51.000')
+        ->assertSeeText('Rp 62.000')
+        ->assertSeeText('Rp 73.000')
+        ->assertSeeText('Rp 84.000')
+        ->assertSeeText('Rp 95.000')
+        ->assertSeeText('Rp 106.000')
+        ->assertSeeText('Rp 117.000')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('42')
         ->assertSeeText('Item Keluar Kitchen')
