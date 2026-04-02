@@ -106,22 +106,22 @@ class DashboardSyncService
             })
             ->sum('quantity');
 
-        $categoryMainQuantityMap = OrderItem::query()
+        $categoryMainAmountMap = OrderItem::query()
             ->selectRaw('LOWER(TRIM(COALESCE(inventory_items.category_main, ""))) as category_key')
-            ->selectRaw('SUM(order_items.quantity) as total_quantity')
+            ->selectRaw('SUM(order_items.subtotal) as total_amount')
             ->join('inventory_items', 'inventory_items.id', '=', 'order_items.inventory_item_id')
             ->whereIn('order_items.order_id', $relatedOrderIds->all())
             ->where('order_items.status', '!=', 'cancelled')
             ->groupBy('category_key')
-            ->pluck('total_quantity', 'category_key');
+            ->pluck('total_amount', 'category_key');
 
-        $totals['total_food'] = (float) ($categoryMainQuantityMap['food'] ?? 0);
-        $totals['total_alcohol'] = (float) ($categoryMainQuantityMap['alcohol'] ?? 0);
-        $totals['total_beverage'] = (float) ($categoryMainQuantityMap['beverage'] ?? 0);
-        $totals['total_cigarette'] = (float) ($categoryMainQuantityMap['cigarette'] ?? 0);
-        $totals['total_breakage'] = (float) ($categoryMainQuantityMap['breakage'] ?? 0);
-        $totals['total_room'] = (float) ($categoryMainQuantityMap['room'] ?? 0);
-        $totals['total_ld'] = (float) ($categoryMainQuantityMap['ld'] ?? 0);
+        $totals['total_food'] = (float) ($categoryMainAmountMap['food'] ?? 0);
+        $totals['total_alcohol'] = (float) ($categoryMainAmountMap['alcohol'] ?? 0);
+        $totals['total_beverage'] = (float) ($categoryMainAmountMap['beverage'] ?? 0);
+        $totals['total_cigarette'] = (float) ($categoryMainAmountMap['cigarette'] ?? 0);
+        $totals['total_breakage'] = (float) ($categoryMainAmountMap['breakage'] ?? 0);
+        $totals['total_room'] = (float) ($categoryMainAmountMap['room'] ?? 0);
+        $totals['total_ld'] = (float) ($categoryMainAmountMap['ld'] ?? 0);
 
         foreach ($paidBillings as $billing) {
             $paidAmount = (float) ($billing->paid_amount ?? $billing->grand_total ?? 0);

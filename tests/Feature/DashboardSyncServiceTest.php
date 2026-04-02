@@ -329,13 +329,13 @@ test('dashboard sync aggregates category main totals from related order items', 
 
     $dashboard = Dashboard::query()->findOrFail(1);
 
-    expect((float) $dashboard->total_food)->toBe(1.0)
-        ->and((float) $dashboard->total_alcohol)->toBe(1.0)
-        ->and((float) $dashboard->total_beverage)->toBe(1.0)
-        ->and((float) $dashboard->total_cigarette)->toBe(1.0)
-        ->and((float) $dashboard->total_breakage)->toBe(1.0)
-        ->and((float) $dashboard->total_room)->toBe(1.0)
-        ->and((float) $dashboard->total_ld)->toBe(1.0);
+    expect((float) $dashboard->total_food)->toBe(10000.0)
+        ->and((float) $dashboard->total_alcohol)->toBe(20000.0)
+        ->and((float) $dashboard->total_beverage)->toBe(30000.0)
+        ->and((float) $dashboard->total_cigarette)->toBe(40000.0)
+        ->and((float) $dashboard->total_breakage)->toBe(50000.0)
+        ->and((float) $dashboard->total_room)->toBe(60000.0)
+        ->and((float) $dashboard->total_ld)->toBe(70000.0);
 });
 
 test('dashboard sync aggregates only current operational-window transactions', function () {

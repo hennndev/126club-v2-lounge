@@ -151,32 +151,32 @@
           <span class="value">{{ number_format((int) ($dashboardPreview['total_bar_items'] ?? ($barQtyTotal ?? 0)), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total Food (Qty)</span>
-          <span class="value">{{ number_format((float) ($dashboardPreview['total_food'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total Food</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_food'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total Alcohol (Qty)</span>
-          <span class="value">{{ number_format((float) ($dashboardPreview['total_alcohol'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total Alcohol</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_alcohol'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total Beverage (Qty)</span>
-          <span class="value">{{ number_format((float) ($dashboardPreview['total_beverage'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total Beverage</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_beverage'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total Cigarette (Qty)</span>
-          <span class="value">{{ number_format((float) ($dashboardPreview['total_cigarette'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total Cigarette</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_cigarette'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total Breakage (Qty)</span>
-          <span class="value">{{ number_format((float) ($dashboardPreview['total_breakage'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total Breakage</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_breakage'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total Room (Qty)</span>
-          <span class="value">{{ number_format((float) ($dashboardPreview['total_room'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total Room</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_room'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="label">Total LD (Qty)</span>
-          <span class="value">{{ number_format((float) ($dashboardPreview['total_ld'] ?? 0), 0, ',', '.') }}</span>
+          <span class="label">Total LD</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_ld'] ?? 0), 0, ',', '.') }}</span>
         </div>
       </section>
 
