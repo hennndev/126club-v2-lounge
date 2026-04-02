@@ -73,13 +73,13 @@
           modal.classList.remove('hidden');
           // Pre-fill table selection if given
           if (tableId) {
-            const table = this.tables.find(t => t.id === tableId);
+            const tableInput = document.getElementById('table_id');
+            if (tableInput) {
+              tableInput.value = String(tableId);
+            }
+
+            const table = this.tables.find(t => String(t.id) === String(tableId));
             if (table) {
-              // update table_id hidden input
-              const tableInput = document.getElementById('table_id');
-              if (tableInput) {
-                tableInput.value = tableId;
-              }
               // fire custom event to let the modal update its preview
               document.dispatchEvent(new CustomEvent('table-selected', {
                 detail: table
@@ -254,6 +254,52 @@
 
   function closeMoveTableModal() {
     document.getElementById('moveTableModal')?.classList.add('hidden');
+  }
+
+  let pendingStatusForm = null;
+
+  function openStatusConfirmModal(form, title, message, confirmLabel, confirmButtonClasses) {
+    if (!form) {
+      return;
+    }
+
+    pendingStatusForm = form;
+
+    const titleEl = document.getElementById('statusConfirmTitle');
+    const messageEl = document.getElementById('statusConfirmMessage');
+    const submitButton = document.getElementById('statusConfirmSubmitBtn');
+
+    if (titleEl) {
+      titleEl.textContent = title || 'Konfirmasi Status';
+    }
+
+    if (messageEl) {
+      messageEl.textContent = message || 'Yakin mengubah status booking ini?';
+    }
+
+    if (submitButton) {
+      submitButton.textContent = confirmLabel || 'Ya';
+      submitButton.className = `px-4 py-2 text-white rounded-lg transition ${confirmButtonClasses || 'bg-green-600 hover:bg-green-700'}`;
+    }
+
+    document.getElementById('statusConfirmModal')?.classList.remove('hidden');
+  }
+
+  function closeStatusConfirmModal() {
+    pendingStatusForm = null;
+    document.getElementById('statusConfirmModal')?.classList.add('hidden');
+  }
+
+  function submitStatusConfirmation() {
+    if (!pendingStatusForm) {
+      closeStatusConfirmModal();
+
+      return;
+    }
+
+    const targetForm = pendingStatusForm;
+    closeStatusConfirmModal();
+    targetForm.submit();
   }
 
   function openActiveDeleteModal(bookingId, tableNumber) {
@@ -608,6 +654,7 @@
       closeStatusModal();
       closeBookingInfoModal();
       closeMoveTableModal();
+      closeStatusConfirmModal();
       closeMoveOrderModal();
       closeCancelOrderModal();
       closeDeleteOrderItemModal();
@@ -622,6 +669,9 @@
   });
   document.getElementById('moveTableModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeMoveTableModal();
+  });
+  document.getElementById('statusConfirmModal')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeStatusConfirmModal();
   });
   document.getElementById('activeDeleteModal')?.addEventListener('click', e => {
     if (e.target === e.currentTarget) closeActiveDeleteModal();

@@ -209,11 +209,41 @@
         <p class="text-sm font-semibold text-slate-800 truncate">
           {{ $tableBooking->booking_name ?? ($tableBooking->customer?->name ?? '-') }}
         </p>
-        <button type="button"
-                onclick="event.stopPropagation(); openMoveTableModal({{ $tableBooking->id }}, '{{ $table->table_number }}')"
-                class="mt-2 w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition">
-          Pindah Meja
-        </button>
+        <div class="mt-2 grid grid-cols-3 gap-2">
+          <form method="POST"
+                action="{{ route('admin.bookings.updateStatus', $tableBooking) }}"
+                onclick="event.stopPropagation()">
+            @csrf
+            @method('PATCH')
+            <input type="hidden"
+                   name="status"
+                   value="checked_in">
+            <button type="button"
+                    onclick="event.stopPropagation(); openStatusConfirmModal(this.closest('form'), 'Konfirmasi Check-in', 'Yakin ubah status booking ini menjadi Checked-in?', 'Ya, Check-in', 'bg-green-600 hover:bg-green-700')"
+                    class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 transition">
+              Check-in
+            </button>
+          </form>
+          <form method="POST"
+                action="{{ route('admin.bookings.updateStatus', $tableBooking) }}"
+                onclick="event.stopPropagation()">
+            @csrf
+            @method('PATCH')
+            <input type="hidden"
+                   name="status"
+                   value="cancelled">
+            <button type="button"
+                    onclick="event.stopPropagation(); openStatusConfirmModal(this.closest('form'), 'Konfirmasi Cancel', 'Yakin batalkan booking ini?', 'Ya, Cancel', 'bg-red-600 hover:bg-red-700')"
+                    class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-100 text-red-800 hover:bg-red-200 transition">
+              Cancel
+            </button>
+          </form>
+          <button type="button"
+                  onclick="event.stopPropagation(); openMoveTableModal({{ $tableBooking->id }}, '{{ $table->table_number }}')"
+                  class="w-full text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition">
+            Pindah Meja
+          </button>
+        </div>
       @endif
     </div>
   @endforeach
@@ -252,3 +282,28 @@
     </div>
   </div>
 @endif
+
+<div id="statusConfirmModal"
+     class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-xl max-w-sm w-full">
+    <div class="p-6 border-b border-gray-200">
+      <h3 id="statusConfirmTitle"
+          class="text-lg font-bold text-gray-900">Konfirmasi Status</h3>
+      <p id="statusConfirmMessage"
+         class="mt-1 text-sm text-gray-600">Yakin mengubah status booking ini?</p>
+    </div>
+    <div class="p-6 flex justify-end gap-3">
+      <button type="button"
+              onclick="closeStatusConfirmModal()"
+              class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+        Batal
+      </button>
+      <button id="statusConfirmSubmitBtn"
+              type="button"
+              onclick="submitStatusConfirmation()"
+              class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+        Ya
+      </button>
+    </div>
+  </div>
+</div>
