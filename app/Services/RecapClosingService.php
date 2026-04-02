@@ -49,6 +49,13 @@ class RecapClosingService
             $recapHistory = RecapHistory::query()->create([
                 'end_day' => $endDay,
                 'total_amount' => (float) $dashboard->total_amount,
+                'total_food' => (float) $dashboard->total_food,
+                'total_alcohol' => (float) $dashboard->total_alcohol,
+                'total_beverage' => (float) $dashboard->total_beverage,
+                'total_cigarette' => (float) $dashboard->total_cigarette,
+                'total_breakage' => (float) $dashboard->total_breakage,
+                'total_room' => (float) $dashboard->total_room,
+                'total_ld' => (float) $dashboard->total_ld,
                 'total_penjualan_rokok' => (float) $dashboard->total_penjualan_rokok,
                 'total_tax' => (float) $dashboard->total_tax,
                 'total_service_charge' => (float) $dashboard->total_service_charge,
@@ -76,6 +83,13 @@ class RecapClosingService
     private function hasDashboardData(Dashboard $dashboard): bool
     {
         return (float) $dashboard->total_amount > 0
+            || (float) $dashboard->total_food > 0
+            || (float) $dashboard->total_alcohol > 0
+            || (float) $dashboard->total_beverage > 0
+            || (float) $dashboard->total_cigarette > 0
+            || (float) $dashboard->total_breakage > 0
+            || (float) $dashboard->total_room > 0
+            || (float) $dashboard->total_ld > 0
             || (float) $dashboard->total_penjualan_rokok > 0
             || (float) $dashboard->total_tax > 0
             || (float) $dashboard->total_service_charge > 0
@@ -96,6 +110,13 @@ class RecapClosingService
     {
         return [
             'total_amount' => 0,
+            'total_food' => 0,
+            'total_alcohol' => 0,
+            'total_beverage' => 0,
+            'total_cigarette' => 0,
+            'total_breakage' => 0,
+            'total_room' => 0,
+            'total_ld' => 0,
             'total_penjualan_rokok' => 0,
             'total_tax' => 0,
             'total_service_charge' => 0,

@@ -134,6 +134,22 @@
           </div>
         </div>
 
+        <!-- Category Main -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1.5">Kategori Utama <span class="text-gray-400 font-normal text-xs">(opsional)</span></label>
+          <select x-model="form.category_main"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent">
+            <option value="">Pilih kategori utama...</option>
+            <option value="food">Food</option>
+            <option value="alcohol">Alcohol</option>
+            <option value="beverage">Beverage</option>
+            <option value="cigarette">Cigarette</option>
+            <option value="breakage">Breakage</option>
+            <option value="room">Room</option>
+            <option value="LD">LD</option>
+          </select>
+        </div>
+
         <div class="grid grid-cols-2 gap-4">
           <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
             <input type="checkbox"
@@ -371,6 +387,9 @@
                           <span class="text-xs font-bold text-emerald-700">{{ number_format((float) $menu->price, 0, ',', '.') }}</span>
                         </div>
                         <div class="mt-2 flex flex-wrap gap-1">
+                          @if ($menu->category_main)
+                            <span class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-700">{{ strtoupper($menu->category_main) }}</span>
+                          @endif
                           <span data-card-tax="{{ $menu->id }}"
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->include_tax ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400' }}">PPN</span>
                           <span data-card-sc="{{ $menu->id }}"
@@ -437,6 +456,30 @@
             <button type="button"
                     id="menuModalPosNameSave"
                     onclick="savePosName()"
+                    class="shrink-0 px-2.5 py-1.5 text-xs font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg transition disabled:opacity-50">
+              Simpan
+            </button>
+          </div>
+        </div>
+
+        {{-- Category Main Row --}}
+        <div class="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-100">
+          <span class="text-sm text-gray-500 shrink-0">Kategori Utama</span>
+          <div class="flex items-center gap-2 min-w-0">
+            <select id="menuModalCategoryMainSelect"
+                    class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-slate-500 focus:border-transparent w-44">
+              <option value="">Pilih kategori...</option>
+              <option value="food">Food</option>
+              <option value="alcohol">Alcohol</option>
+              <option value="beverage">Beverage</option>
+              <option value="cigarette">Cigarette</option>
+              <option value="breakage">Breakage</option>
+              <option value="room">Room</option>
+              <option value="LD">LD</option>
+            </select>
+            <button type="button"
+                    id="menuModalCategoryMainSave"
+                    onclick="saveCategoryMain()"
                     class="shrink-0 px-2.5 py-1.5 text-xs font-medium text-white bg-slate-700 hover:bg-slate-800 rounded-lg transition disabled:opacity-50">
               Simpan
             </button>
@@ -606,6 +649,7 @@
       const taxFlagsRouteTemplate = "{{ route('admin.menus.update-tax-flags', ['inventory' => '__INVENTORY__']) }}";
       const printerTargetsRouteTemplate = "{{ route('admin.menus.update-printer-targets', ['inventory' => '__INVENTORY__']) }}";
       const posNameRouteTemplate = "{{ route('admin.menus.update-pos-name', ['inventory' => '__INVENTORY__']) }}";
+      const categoryMainRouteTemplate = "{{ route('admin.menus.update-category-main', ['inventory' => '__INVENTORY__']) }}";
 
       // ── helpers ────────────────────────────────────────────────────────────
       function applyToggleStyle(el, field, isActive) {
@@ -757,6 +801,13 @@
         posNameSave.textContent = 'Simpan';
         posNameSave.disabled = false;
 
+        const categoryMainSelect = document.getElementById('menuModalCategoryMainSelect');
+        categoryMainSelect.value = menu.category_main || '';
+        categoryMainSelect.dataset.itemId = menu.id;
+        const categoryMainSave = document.getElementById('menuModalCategoryMainSave');
+        categoryMainSave.textContent = 'Simpan';
+        categoryMainSave.disabled = false;
+
         const taxToggle = document.getElementById('modalTaxToggle');
         taxToggle.dataset.itemId = menu.id;
         taxToggle.dataset.value = menu.include_tax ? '1' : '0';
@@ -896,6 +947,50 @@
         }
       }
 
+      async function saveCategoryMain() {
+        const categoryMainSelect = document.getElementById('menuModalCategoryMainSelect');
+        const saveBtn = document.getElementById('menuModalCategoryMainSave');
+        const itemId = categoryMainSelect.dataset.itemId;
+
+        if (!itemId) {
+          return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = '...';
+
+        try {
+          const response = await fetch(categoryMainRouteTemplate.replace('__INVENTORY__', String(itemId)), {
+            method: 'PATCH',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+              category_main: categoryMainSelect.value || null
+            }),
+          });
+          const data = await response.json();
+          if (data.success) {
+            saveBtn.textContent = 'Tersimpan ✓';
+            setTimeout(() => {
+              saveBtn.textContent = 'Simpan';
+              saveBtn.disabled = false;
+            }, 2000);
+            return;
+          }
+          throw new Error(data.message || 'Gagal');
+        } catch {
+          saveBtn.textContent = 'Gagal';
+          setTimeout(() => {
+            saveBtn.textContent = 'Simpan';
+            saveBtn.disabled = false;
+          }, 2000);
+        }
+      }
+
       document.addEventListener('change', async function(event) {
         const checkbox = event.target instanceof HTMLInputElement && event.target.matches('[data-menu-modal-printer]') ?
           event.target :
@@ -944,6 +1039,7 @@
             pos_name: '',
             item_type: 'GROUP',
             category_type: '',
+            category_main: '',
             unit: '',
             selling_price: '',
             include_tax: false,
@@ -1024,6 +1120,7 @@
               pos_name: '',
               item_type: 'GROUP',
               category_type: '',
+              category_main: '',
               unit: '',
               selling_price: '',
               include_tax: false,

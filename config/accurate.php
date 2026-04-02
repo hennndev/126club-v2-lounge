@@ -38,6 +38,9 @@ return [
     // Timeout untuk request ke Accurate API (dalam detik)
     'api_timeout' => env('ACCURATE_API_TIMEOUT', 120),
 
+    // Nama warehouse untuk sync stock items
+    'stock_warehouse_name' => env('ACCURATE_STOCK_WAREHOUSE_NAME', 'Room 126'),
+
     // Entities yang akan di-sync
     'sync_entities' => [
         'items' => [

@@ -1127,11 +1127,12 @@ class TableReservationController extends Controller
 
             // Consolidate all order items across all orders in the session
             $session->loadMissing('orders.items.inventoryItem');
+            $warehouseName = config('accurate.stock_warehouse_name');
 
             $detailItem = $session->orders
                 ->flatMap(fn ($order) => $order->items)
                 ->groupBy('inventory_item_id')
-                ->map(function ($group) {
+                ->map(function ($group) use ($warehouseName) {
                     $first = $group->first();
 
                     return [
@@ -1139,6 +1140,7 @@ class TableReservationController extends Controller
                         'quantity' => $group->sum('quantity'),
                         'unitPrice' => (float) $first->price,
                         'discountPercent' => 0,
+                        'warehouseName' => $warehouseName,
                     ];
                 })
                 ->values()

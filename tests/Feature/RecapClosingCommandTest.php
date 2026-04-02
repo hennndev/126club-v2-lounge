@@ -3,6 +3,7 @@
 use App\Models\Dashboard;
 use App\Models\RecapHistory;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 use function Pest\Laravel\artisan;
 
@@ -19,6 +20,13 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ['id' => 1],
         [
             'total_amount' => 250000,
+            'total_food' => 11000,
+            'total_alcohol' => 12000,
+            'total_beverage' => 13000,
+            'total_cigarette' => 14000,
+            'total_breakage' => 15000,
+            'total_room' => 16000,
+            'total_ld' => 17000,
             'total_penjualan_rokok' => 35000,
             'total_tax' => 15000,
             'total_service_charge' => 10000,
@@ -45,6 +53,13 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
         ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((float) $history->total_amount)->toBe(250000.0)
+        ->and((float) $history->total_food)->toBe(11000.0)
+        ->and((float) $history->total_alcohol)->toBe(12000.0)
+        ->and((float) $history->total_beverage)->toBe(13000.0)
+        ->and((float) $history->total_cigarette)->toBe(14000.0)
+        ->and((float) $history->total_breakage)->toBe(15000.0)
+        ->and((float) $history->total_room)->toBe(16000.0)
+        ->and((float) $history->total_ld)->toBe(17000.0)
         ->and((float) $history->total_penjualan_rokok)->toBe(35000.0)
         ->and((float) $history->total_tax)->toBe(15000.0)
         ->and((float) $history->total_service_charge)->toBe(10000.0)
@@ -56,6 +71,13 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and((int) $history->total_transactions)->toBe(5)
         ->and($history->last_synced_at?->format('Y-m-d H:i:s'))->toBe($lastSyncedAt->format('Y-m-d H:i:s'))
         ->and((float) $dashboard->total_amount)->toBe(0.0)
+        ->and((float) $dashboard->total_food)->toBe(0.0)
+        ->and((float) $dashboard->total_alcohol)->toBe(0.0)
+        ->and((float) $dashboard->total_beverage)->toBe(0.0)
+        ->and((float) $dashboard->total_cigarette)->toBe(0.0)
+        ->and((float) $dashboard->total_breakage)->toBe(0.0)
+        ->and((float) $dashboard->total_room)->toBe(0.0)
+        ->and((float) $dashboard->total_ld)->toBe(0.0)
         ->and((float) $dashboard->total_penjualan_rokok)->toBe(0.0)
         ->and((float) $dashboard->total_tax)->toBe(0.0)
         ->and((float) $dashboard->total_service_charge)->toBe(0.0)

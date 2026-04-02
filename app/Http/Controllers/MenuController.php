@@ -42,7 +42,7 @@ class MenuController extends Controller
                     ->where('is_active', true)
                     ->where('category_type', $categoryType)
                     ->orderBy('name')
-                    ->get(['id', 'code', 'name', 'pos_name', 'category_type', 'price', 'unit', 'include_tax', 'include_service_charge', 'is_item_group', 'is_count_portion_possible']);
+                    ->get(['id', 'code', 'name', 'pos_name', 'category_type', 'category_main', 'price', 'unit', 'include_tax', 'include_service_charge', 'is_item_group', 'is_count_portion_possible']);
 
                 return [$categoryType => $menus];
             });
@@ -79,6 +79,7 @@ class MenuController extends Controller
             'name' => 'required|string|max:255',
             'item_type' => ['required', 'string', 'in:GROUP,INVENTORY'],
             'category_type' => ['required', 'string', 'max:255'],
+            'category_main' => ['nullable', 'string', 'in:food,alcohol,beverage,cigarette,breakage,room,LD'],
             'unit' => 'required|string|max:50',
             'selling_price' => 'required|numeric|min:0',
             'include_tax' => ['nullable', 'boolean'],
@@ -130,25 +131,36 @@ class MenuController extends Controller
                 ?? null;
 
             if ($accurateId !== null) {
-                $inventoryItem = InventoryItem::updateOrCreate(
-                    ['accurate_id' => $accurateId],
-                    [
-                        'accurate_id' => $accurateId,
-                        'code' => $accurateNo ?? 'ACC-'.$accurateId,
-                        'name' => $validated['name'],
-                        'pos_name' => $validated['pos_name'] ?? $validated['name'],
-                        'category_type' => $validated['category_type'] ?? '',
-                        'price' => $validated['selling_price'],
-                        'include_tax' => (bool) ($validated['include_tax'] ?? false),
-                        'include_service_charge' => (bool) ($validated['include_service_charge'] ?? false),
-                        'is_item_group' => array_key_exists('is_item_group', $validated)
-                            ? (bool) $validated['is_item_group']
-                            : ($validated['item_type'] === 'GROUP'),
-                        'stock_quantity' => 0,
-                        'unit' => $validated['unit'],
-                        'is_active' => true,
-                    ]
-                );
+                $resolvedCode = $accurateNo ?? 'ACC-'.$accurateId;
+
+                $attributes = [
+                    'accurate_id' => $accurateId,
+                    'code' => $resolvedCode,
+                    'name' => $validated['name'],
+                    'pos_name' => $validated['pos_name'] ?? $validated['name'],
+                    'category_type' => $validated['category_type'] ?? '',
+                    'category_main' => $validated['category_main'] ?? null,
+                    'price' => $validated['selling_price'],
+                    'include_tax' => (bool) ($validated['include_tax'] ?? false),
+                    'include_service_charge' => (bool) ($validated['include_service_charge'] ?? false),
+                    'is_item_group' => array_key_exists('is_item_group', $validated)
+                        ? (bool) $validated['is_item_group']
+                        : ($validated['item_type'] === 'GROUP'),
+                    'stock_quantity' => 0,
+                    'unit' => $validated['unit'],
+                    'is_active' => true,
+                ];
+
+                $inventoryItem = InventoryItem::query()
+                    ->where('accurate_id', $accurateId)
+                    ->orWhere('code', $resolvedCode)
+                    ->first();
+
+                if ($inventoryItem) {
+                    $inventoryItem->update($attributes);
+                } else {
+                    $inventoryItem = InventoryItem::create($attributes);
+                }
 
                 $inventoryItem->printers()->sync($validated['printer_ids'] ?? []);
             }
@@ -211,6 +223,17 @@ class MenuController extends Controller
         $inventory->update(['pos_name' => $validated['pos_name']]);
 
         return response()->json(['success' => true, 'pos_name' => $inventory->fresh()->pos_name]);
+    }
+
+    public function updateCategoryMain(Request $request, InventoryItem $inventory): JsonResponse
+    {
+        $validated = $request->validate([
+            'category_main' => ['nullable', 'string', 'in:food,alcohol,beverage,cigarette,breakage,room,LD'],
+        ]);
+
+        $inventory->update(['category_main' => $validated['category_main'] ?? null]);
+
+        return response()->json(['success' => true, 'category_main' => $inventory->fresh()->category_main]);
     }
 
     public function updatePrinterTargets(Request $request, InventoryItem $inventory): JsonResponse

@@ -230,6 +230,114 @@ test('dashboard sync includes walk-in split orders with null payment method', fu
         ->and((int) $dashboard->total_transactions)->toBe(1);
 });
 
+test('dashboard sync aggregates category main totals from related order items', function () {
+    $admin = adminUser();
+
+    $session = makeDashboardSession($admin->id);
+
+    Billing::create([
+        'table_session_id' => $session->id,
+        'is_walk_in' => false,
+        'is_booking' => true,
+        'minimum_charge' => 0,
+        'orders_total' => 540000,
+        'subtotal' => 540000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 540000,
+        'paid_amount' => 540000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'DSH-CAT-'.uniqid(),
+        'status' => 'pending',
+        'items_total' => 540000,
+        'discount_amount' => 0,
+        'total' => 540000,
+        'ordered_at' => now(),
+    ]);
+
+    $itemsByCategory = [
+        ['key' => 'food', 'subtotal' => 10000],
+        ['key' => 'alcohol', 'subtotal' => 20000],
+        ['key' => 'beverage', 'subtotal' => 30000],
+        ['key' => 'cigarette', 'subtotal' => 40000],
+        ['key' => 'breakage', 'subtotal' => 50000],
+        ['key' => 'room', 'subtotal' => 60000],
+        ['key' => 'LD', 'subtotal' => 70000],
+    ];
+
+    foreach ($itemsByCategory as $itemCategory) {
+        $inventoryItem = InventoryItem::create([
+            'code' => strtoupper($itemCategory['key']).'-'.uniqid(),
+            'accurate_id' => random_int(100000, 999999),
+            'name' => ucfirst(strtolower((string) $itemCategory['key'])).' Item '.uniqid(),
+            'category_type' => 'beverage',
+            'category_main' => $itemCategory['key'],
+            'price' => (float) $itemCategory['subtotal'],
+            'stock_quantity' => 10,
+            'threshold' => 2,
+            'unit' => 'pcs',
+            'is_active' => true,
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'inventory_item_id' => $inventoryItem->id,
+            'item_name' => $inventoryItem->name,
+            'item_code' => $inventoryItem->code,
+            'quantity' => 1,
+            'price' => (float) $itemCategory['subtotal'],
+            'subtotal' => (float) $itemCategory['subtotal'],
+            'status' => 'served',
+        ]);
+    }
+
+    $cancelledInventoryItem = InventoryItem::create([
+        'code' => 'FOOD-CANCELLED-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Food Cancelled '.uniqid(),
+        'category_type' => 'food',
+        'category_main' => 'food',
+        'price' => 99999,
+        'stock_quantity' => 10,
+        'threshold' => 2,
+        'unit' => 'pcs',
+        'is_active' => true,
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $cancelledInventoryItem->id,
+        'item_name' => $cancelledInventoryItem->name,
+        'item_code' => $cancelledInventoryItem->code,
+        'quantity' => 1,
+        'price' => 99999,
+        'subtotal' => 99999,
+        'status' => 'cancelled',
+    ]);
+
+    (new DashboardSyncService)->sync();
+
+    $dashboard = Dashboard::query()->findOrFail(1);
+
+    expect((float) $dashboard->total_food)->toBe(1.0)
+        ->and((float) $dashboard->total_alcohol)->toBe(1.0)
+        ->and((float) $dashboard->total_beverage)->toBe(1.0)
+        ->and((float) $dashboard->total_cigarette)->toBe(1.0)
+        ->and((float) $dashboard->total_breakage)->toBe(1.0)
+        ->and((float) $dashboard->total_room)->toBe(1.0)
+        ->and((float) $dashboard->total_ld)->toBe(1.0);
+});
+
 test('dashboard sync aggregates only current operational-window transactions', function () {
     Carbon::setTestNow(Carbon::create(2026, 3, 27, 2, 0, 0, 'Asia/Jakarta'));
 

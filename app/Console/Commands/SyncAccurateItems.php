@@ -76,6 +76,11 @@ class SyncAccurateItems extends Command
         'itemProduced', 'materialProduced',
     ];
 
+    protected function targetWarehouseName(): string
+    {
+        return (string) config('accurate.stock_warehouse_name', 'Room 126');
+    }
+
     protected function fetchStockMap(): array
     {
         $map = [];
@@ -87,11 +92,11 @@ class SyncAccurateItems extends Command
             $request->merge([
                 'page' => $page,
                 'pageSize' => $pageSize,
+                'warehouse_name' => $this->targetWarehouseName(),
             ]);
 
-            // list-stock.do returns no + unit1Quantity (total stock across warehouses)
+            // list-stock.do with sp.warehouseName returns warehouse-scoped quantities
             $stocks = $this->accurateService->getStockItems($request);
-            Log::info('DATA', ['stocks' => $stocks]);
 
             if ($stocks->isEmpty()) {
                 break;
@@ -100,21 +105,27 @@ class SyncAccurateItems extends Command
             foreach ($stocks as $stock) {
                 $no = $stock['no'] ?? null;
                 if ($no !== null) {
-                    $map[$no] = $stock['quantity'] ?? $stock['quantity'] ?? 0;
+                    $map[$no] = $stock['quantity']
+                        ?? $stock['unit1Quantity']
+                        ?? $stock['allQuantity']
+                        ?? 0;
                 }
             }
 
             $page++;
         } while ($stocks->count() >= $pageSize);
 
-        Log::info('Accurate Stock Map fetched', ['total_items' => count($map)]);
+        Log::info('Accurate Stock Map fetched', [
+            'warehouse_name' => $this->targetWarehouseName(),
+            'total_items' => count($map),
+        ]);
 
         return $map;
     }
 
     protected function syncItems()
     {
-        // $stockMap = $this->fetchStockMap();
+        $stockMap = $this->fetchStockMap();
         $syncedAccurateIds = [];
 
         $page = 1;
@@ -128,6 +139,8 @@ class SyncAccurateItems extends Command
 
             $items = $this->accurateService->getItems($request, $this->itemFields);
 
+            Log::info('items', ['items' => $items]);
+
             if ($items->isEmpty()) {
                 break;
             }
@@ -140,7 +153,7 @@ class SyncAccurateItems extends Command
                         $syncedAccurateIds[] = $accurateId;
                     }
 
-                    $this->syncSingleItem($itemData);
+                    $this->syncSingleItem($itemData, $stockMap);
                 } catch (Exception $e) {
                     Log::warning('Sync item failed', ['id' => $itemData['id'] ?? null, 'error' => $e->getMessage()]);
                 }
@@ -163,8 +176,14 @@ class SyncAccurateItems extends Command
             return;
         }
 
+        InventoryItem::query()
+            ->whereNotIn('accurate_id', $syncedAccurateIds)
+            ->has('orderItems')
+            ->update(['is_active' => false]);
+
         $staleItems = InventoryItem::query()
             ->whereNotIn('accurate_id', $syncedAccurateIds)
+            ->doesntHave('orderItems')
             ->get();
 
         foreach ($staleItems as $staleItem) {
@@ -183,7 +202,7 @@ class SyncAccurateItems extends Command
         }
     }
 
-    protected function syncSingleItem(array $itemData)
+    protected function syncSingleItem(array $itemData, array $stockMap = [])
     {
         $accurateId = $itemData['id'] ?? null;
 
@@ -194,24 +213,34 @@ class SyncAccurateItems extends Command
         }
         $itemNo = $itemData['no'] ?? null;
         $detailGroup = $this->mapDetailGroup($itemData['detailGroup'] ?? []);
-
-        Log::info('items detail', ['detailGroup' => $itemData]);
+        $stockQuantity = $itemNo !== null
+            ? ($stockMap[$itemNo] ?? ($itemData['allQuantity'] ?? 0))
+            : ($itemData['allQuantity'] ?? 0);
 
         $itemDataToSave = [
+            'accurate_id' => (int) $accurateId,
             'name' => $itemData['name'] ?? 'Unknown Item',
             'code' => $itemNo ?? 'UNKNOWN-'.$accurateId,
             'unit' => $itemData['unit1Name'] ?? 'Unit',
             'category_type' => $itemData['itemCategory']['name'] ?? 'Uncategorized',
             'price' => $itemData['unitPrice'] ?? 0,
-            'stock_quantity' => $itemData['allQuantity'] ?? 0,
+            'stock_quantity' => $stockQuantity,
             'is_active' => ($itemData['suspended'] ?? false) === false,
             'detail_group' => $detailGroup,
         ];
 
-        InventoryItem::updateOrCreate(
-            ['accurate_id' => $accurateId],
-            $itemDataToSave
-        );
+        $existingItem = InventoryItem::query()
+            ->where('accurate_id', $accurateId)
+            ->orWhere('code', $itemDataToSave['code'])
+            ->first();
+
+        if ($existingItem) {
+            $existingItem->update($itemDataToSave);
+
+            return;
+        }
+
+        InventoryItem::create($itemDataToSave);
     }
 
     protected function mapDetailGroup(array $detailGroup): array

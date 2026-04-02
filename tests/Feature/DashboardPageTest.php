@@ -20,6 +20,13 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
 
     Dashboard::query()->create([
         'total_amount' => 500000,
+        'total_food' => 51,
+        'total_alcohol' => 62,
+        'total_beverage' => 73,
+        'total_cigarette' => 84,
+        'total_breakage' => 95,
+        'total_room' => 106,
+        'total_ld' => 117,
         'total_penjualan_rokok' => 4200,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
@@ -38,6 +45,13 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->get(route('admin.dashboard'))
         ->assertSuccessful()
         ->assertSeeText('Ringkasan Transaksi Dashboard')
+        ->assertSeeText('Total Food')
+        ->assertSeeText('Total Alcohol')
+        ->assertSeeText('Total Beverage')
+        ->assertSeeText('Total Cigarette')
+        ->assertSeeText('Total Breakage')
+        ->assertSeeText('Total Room')
+        ->assertSeeText('Total LD')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('Total Pajak')
         ->assertSeeText('Total Service Charge')
@@ -48,6 +62,13 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Total Pembayaran QRIS')
         ->assertSeeText('Total Item Keluar Kitchen')
         ->assertSeeText('Total Item Keluar Bar')
+        ->assertSeeText('51')
+        ->assertSeeText('62')
+        ->assertSeeText('73')
+        ->assertSeeText('84')
+        ->assertSeeText('95')
+        ->assertSeeText('106')
+        ->assertSeeText('117')
         ->assertSeeText('Rp 15.000')
         ->assertSeeText('Rp 12.000')
         ->assertSeeText('Rp 100.000')
