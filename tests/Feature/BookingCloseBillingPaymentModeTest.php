@@ -190,6 +190,7 @@ test('close billing deducts booking down payment from grand total', function () 
 test('close billing sends ROOM-BILLING sales order number and maps salesOrderNumber into invoice detail items', function () {
     $admin = adminUser();
     [$booking] = makeBookingCloseBillingFixture($admin);
+    $booking->update(['down_payment_amount' => 20000]);
 
     config(['accurate.stock_warehouse_name' => 'Warehouse Test']);
 
@@ -231,10 +232,31 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
 
         $mock->shouldReceive('saveSalesInvoice')
             ->once()
+            ->withArgs(function (array $payload): bool {
+                return array_key_exists('customerNo', $payload)
+                    && array_key_exists('inputDownPayment', $payload)
+                    && array_key_exists('invoiceDp', $payload)
+                    && count($payload) === 3
+                    && (float) $payload['inputDownPayment'] === 20000.0
+                    && $payload['invoiceDp'] === true;
+            })
+            ->andReturn(['r' => ['number' => 'INV-DP-TEST-001']]);
+
+        $mock->shouldReceive('saveSalesInvoice')
+            ->once()
             ->withArgs(function (array $payload) use (&$capturedSoNumber): bool {
                 $detailItems = $payload['detailItem'] ?? [];
+                $detailDownPayment = $payload['detailDownPayment'] ?? [];
 
                 if ($detailItems === []) {
+                    return false;
+                }
+
+                if (($detailDownPayment[0]['paymentAmount'] ?? null) !== 20000.0) {
+                    return false;
+                }
+
+                if (($detailDownPayment[0]['invoiceNumber'] ?? null) !== 'INV-DP-TEST-001') {
                     return false;
                 }
 

@@ -30,6 +30,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         'total_penjualan_rokok' => 4200,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
+        'total_dp' => 13000,
         'total_cash' => 100000,
         'total_transfer' => 120000,
         'total_debit' => 90000,
@@ -55,6 +56,8 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('Total Pajak')
         ->assertSeeText('Total Service Charge')
+        ->assertSeeText('Total DP')
+        ->assertSeeText('(booking)')
         ->assertSeeText('Total Pembayaran Tunai')
         ->assertSeeText('Total Pembayaran Transfer')
         ->assertSeeText('Total Pembayaran Debit')
@@ -71,6 +74,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Rp 117.000')
         ->assertSeeText('Rp 15.000')
         ->assertSeeText('Rp 12.000')
+        ->assertSeeText('Rp 13.000')
         ->assertSeeText('Rp 100.000')
         ->assertSeeText('Rp 120.000')
         ->assertSeeText('Rp 90.000')

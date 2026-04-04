@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\RecapHistory;
 use App\Models\Tabel;
+use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Services\DashboardSyncService;
 use Illuminate\Support\Carbon;
@@ -336,6 +337,89 @@ test('dashboard sync aggregates category main totals from related order items', 
         ->and((float) $dashboard->total_breakage)->toBe(50000.0)
         ->and((float) $dashboard->total_room)->toBe(60000.0)
         ->and((float) $dashboard->total_ld)->toBe(70000.0);
+});
+
+test('dashboard sync aggregates total dp from paid booking reservations', function () {
+    $admin = adminUser();
+
+    $sessionWithDp = makeDashboardSession($admin->id);
+    $sessionWithoutDp = makeDashboardSession($admin->id);
+    $walkInSession = makeDashboardSession($admin->id);
+
+    $reservation = TableReservation::create([
+        'booking_code' => random_int(100000, 999999),
+        'table_id' => $sessionWithDp->table_id,
+        'customer_id' => $admin->id,
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => now()->format('H:i:s'),
+        'status' => 'checked_in',
+        'down_payment_amount' => 25000,
+    ]);
+
+    $sessionWithDp->update(['table_reservation_id' => $reservation->id]);
+
+    Billing::create([
+        'table_session_id' => $sessionWithDp->id,
+        'is_walk_in' => false,
+        'is_booking' => true,
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 100000,
+        'paid_amount' => 100000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    Billing::create([
+        'table_session_id' => $sessionWithoutDp->id,
+        'is_walk_in' => false,
+        'is_booking' => true,
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 50000,
+        'paid_amount' => 50000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    Billing::create([
+        'table_session_id' => $walkInSession->id,
+        'is_walk_in' => true,
+        'is_booking' => false,
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 25000,
+        'paid_amount' => 25000,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    (new DashboardSyncService)->sync();
+
+    $dashboard = Dashboard::query()->findOrFail(1);
+
+    expect((float) $dashboard->total_dp)->toBe(25000.0);
 });
 
 test('dashboard sync aggregates only current operational-window transactions', function () {

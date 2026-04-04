@@ -190,6 +190,11 @@
           <p class="text-2xl font-bold text-orange-800 mt-1">Rp {{ number_format($dashboardTotalServiceCharge, 0, ',', '.') }}</p>
         </div>
 
+        <div class="p-4 bg-cyan-50 border border-cyan-200 rounded-lg">
+          <p class="text-sm font-medium text-cyan-700">Total DP <span class="text-xs font-normal">(booking)</span></p>
+          <p class="text-2xl font-bold text-cyan-800 mt-1">Rp {{ number_format($dashboardTotalDp, 0, ',', '.') }}</p>
+        </div>
+
         <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
           <p class="text-sm font-medium text-gray-700">Total Pembayaran Tunai</p>
           <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($dashboardTotalCash, 0, ',', '.') }}</p>

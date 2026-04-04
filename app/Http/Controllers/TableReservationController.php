@@ -1171,6 +1171,24 @@ class TableReservationController extends Controller
 
             $soResult = $this->accurateService->saveSalesOrder($soPayload);
 
+            $downPaymentAmount = (float) ($booking->down_payment_amount ?? 0);
+            $downPaymentInvoiceNumber = null;
+
+            if ($downPaymentAmount > 0) {
+                $downPaymentPayload = [
+                    'customerNo' => $customerNo,
+                    'inputDownPayment' => $downPaymentAmount,
+                    'invoiceDp' => true,
+                ];
+
+                $downPaymentResult = $this->accurateService->saveSalesInvoice($downPaymentPayload);
+                $downPaymentInvoiceNumber = $downPaymentResult['r']['number'] ?? $downPaymentResult['d']['number'] ?? null;
+
+                if (! $downPaymentInvoiceNumber) {
+                    throw new \RuntimeException('Invoice DP dari Accurate tidak mengembalikan nomor invoice.');
+                }
+            }
+
             // 2. Save Sales Invoice
             $invPayload = [
                 'customerNo' => $customerNo,
@@ -1182,6 +1200,15 @@ class TableReservationController extends Controller
                     $detailItem
                 ),
             ];
+
+            if ($downPaymentAmount > 0) {
+                $invPayload['detailDownPayment'] = [
+                    [
+                        'paymentAmount' => $downPaymentAmount,
+                        'invoiceNumber' => $downPaymentInvoiceNumber,
+                    ],
+                ];
+            }
 
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);
 

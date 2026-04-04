@@ -30,6 +30,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
             'total_penjualan_rokok' => 35000,
             'total_tax' => 15000,
             'total_service_charge' => 10000,
+            'total_dp' => 9000,
             'total_cash' => 50000,
             'total_transfer' => 100000,
             'total_debit' => 30000,
@@ -63,6 +64,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and((float) $history->total_penjualan_rokok)->toBe(35000.0)
         ->and((float) $history->total_tax)->toBe(15000.0)
         ->and((float) $history->total_service_charge)->toBe(10000.0)
+        ->and((float) $history->total_dp)->toBe(9000.0)
         ->and((float) $history->total_cash)->toBe(50000.0)
         ->and((float) $history->total_transfer)->toBe(100000.0)
         ->and((float) $history->total_debit)->toBe(30000.0)
@@ -81,6 +83,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and((float) $dashboard->total_penjualan_rokok)->toBe(0.0)
         ->and((float) $dashboard->total_tax)->toBe(0.0)
         ->and((float) $dashboard->total_service_charge)->toBe(0.0)
+        ->and((float) $dashboard->total_dp)->toBe(0.0)
         ->and((float) $dashboard->total_cash)->toBe(0.0)
         ->and((float) $dashboard->total_transfer)->toBe(0.0)
         ->and((float) $dashboard->total_debit)->toBe(0.0)

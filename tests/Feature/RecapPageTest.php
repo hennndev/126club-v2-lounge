@@ -145,6 +145,7 @@ test('admin can open recap page', function () {
         'total_penjualan_rokok' => 42,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
+        'total_dp' => 13000,
         'total_cash' => 100000,
         'total_transfer' => 120000,
         'total_debit' => 90000,
@@ -170,6 +171,9 @@ test('admin can open recap page', function () {
         ->assertSeeText('Total Pembayaran Tunai')
         ->assertSeeText('Total Tunai')
         ->assertSeeText('Rp 100.000')
+        ->assertSeeText('Total DP')
+        ->assertSeeText('(booking)')
+        ->assertSeeText('Rp 13.000')
         ->assertSeeText('Total Food')
         ->assertSeeText('Total Alcohol')
         ->assertSeeText('Total Beverage')
@@ -193,7 +197,6 @@ test('admin can open recap page', function () {
             'end_datetime' => $end->format('Y-m-d\TH:i'),
         ]))
         ->assertDontSeeText('Total Diskon')
-        ->assertDontSeeText('Total DP')
         ->assertDontSeeText('Filter Rekapan')
         ->assertDontSeeText('Timeline Kejadian');
 });

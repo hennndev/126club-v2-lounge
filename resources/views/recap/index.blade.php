@@ -144,6 +144,11 @@
               <p class="text-2xl font-bold text-orange-800 mt-1">Rp {{ number_format($dashboardPreview['total_service_charge'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
+            <div class="p-4 border border-gray-200 rounded-lg bg-cyan-50">
+              <p class="text-sm font-medium text-cyan-700">Total DP <span class="text-xs font-normal">(booking)</span></p>
+              <p class="text-2xl font-bold text-cyan-800 mt-1">Rp {{ number_format($dashboardPreview['total_down_payment'] ?? 0, 0, ',', '.') }}</p>
+            </div>
+
             <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
               <p class="text-sm font-medium text-gray-500">Total Tunai</p>
               <p class="text-2xl font-bold text-gray-900 mt-1">Rp {{ number_format($dashboardPreview['total_cash'] ?? 0, 0, ',', '.') }}</p>
@@ -407,6 +412,7 @@
                     'total_penjualan_rokok' => number_format($history->total_penjualan_rokok, 0, ',', '.'),
                     'total_tax' => 'Rp ' . number_format($history->total_tax, 0, ',', '.'),
                     'total_service_charge' => 'Rp ' . number_format($history->total_service_charge, 0, ',', '.'),
+                    'total_dp' => 'Rp ' . number_format($history->total_dp ?? 0, 0, ',', '.'),
                     'total_cash' => 'Rp ' . number_format($history->total_cash, 0, ',', '.'),
                     'total_transfer' => 'Rp ' . number_format($history->total_transfer, 0, ',', '.'),
                     'total_debit' => 'Rp ' . number_format($history->total_debit, 0, ',', '.'),
@@ -561,6 +567,12 @@
                   <p class="text-sm font-medium text-gray-500">Total Penjualan Rokok (Qty)</p>
                   <p class="text-2xl font-bold text-rose-700 mt-1"
                      x-text="selectedHistory?.total_penjualan_rokok ?? '0'"></p>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <p class="text-sm font-medium text-gray-500">Total DP <span class="text-xs font-normal">(booking)</span></p>
+                  <p class="text-2xl font-bold text-cyan-700 mt-1"
+                     x-text="selectedHistory?.total_dp ?? 'Rp 0'"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
