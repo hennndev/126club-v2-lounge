@@ -653,6 +653,7 @@
       closeDeleteModal();
       closeStatusModal();
       closeBookingInfoModal();
+      if (typeof closeHistoryBookingDetailModal === 'function') closeHistoryBookingDetailModal();
       closeMoveTableModal();
       closeStatusConfirmModal();
       closeMoveOrderModal();

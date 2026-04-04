@@ -513,7 +513,7 @@ test('booking receipt displays closed billing schema with tax, service charge, s
     $response
         ->assertSuccessful()
         ->assertSee('Total Bill', false)
-        ->assertSee('PPN (10%)', false)
+        ->assertSee('PB1 (10%)', false)
         ->assertSee('Service Charge (8%)', false)
         ->assertSee('Sub Total', false)
         ->assertSee('DP', false)

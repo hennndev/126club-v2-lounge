@@ -197,7 +197,7 @@
         </div>
         <div class="flex-1 min-w-0">
           <h3 class="font-semibold text-slate-800 mb-1">Pengaturan Umum</h3>
-          <p class="text-sm text-slate-500 mb-3">Konfigurasi PPN dan service charge</p>
+          <p class="text-sm text-slate-500 mb-3">Konfigurasi PB1 dan service charge</p>
           <span class="text-sm font-medium text-violet-600 hover:text-violet-700">Lihat Detail →</span>
         </div>
       </a>

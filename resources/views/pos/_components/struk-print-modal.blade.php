@@ -84,7 +84,7 @@
         <div x-show="(receiptData?.tax || 0) > 0"
              class="flex justify-between">
           <span class="text-gray-500"
-                x-text="'PPN (' + (receiptData?.taxPercentage || 0) + '%)'"></span>
+                x-text="'PB1 (' + (receiptData?.taxPercentage || 0) + '%)'"></span>
           <span class="font-semibold text-gray-800"
                 x-text="formatCurrency(receiptData?.tax || 0)"></span>
         </div>

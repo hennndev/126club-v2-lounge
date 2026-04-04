@@ -223,7 +223,7 @@
                     <p class="text-[10px] text-gray-800"><span class="font-semibold">{{ $orderItem['quantity'] }}x</span> {{ $orderItem['name'] }}</p>
                     <p class="text-[10px] text-gray-600">Subtotal: Rp {{ number_format($orderItem['subtotal'], 0, ',', '.') }}</p>
                     @if (($orderItem['tax_amount'] ?? 0) > 0)
-                      <p class="text-[10px] text-amber-700">PPN: Rp {{ number_format($orderItem['tax_amount'], 0, ',', '.') }}</p>
+                      <p class="text-[10px] text-amber-700">PB1: Rp {{ number_format($orderItem['tax_amount'], 0, ',', '.') }}</p>
                     @endif
                     @if (($orderItem['service_charge_amount'] ?? 0) > 0)
                       <p class="text-[10px] text-orange-700">Service: Rp {{ number_format($orderItem['service_charge_amount'], 0, ',', '.') }}</p>
@@ -240,7 +240,7 @@
 
               <div class="mt-1.5 space-y-1 border-t border-dashed border-gray-300 pt-1.5">
                 <div class="flex items-center justify-between"><span class="label">Total Bill</span><span class="value">Rp {{ number_format($transaction['total_bill'] ?? 0, 0, ',', '.') }}</span></div>
-                <div class="flex items-center justify-between"><span class="label">PPN</span><span class="value">Rp {{ number_format($transaction['tax_total'] ?? 0, 0, ',', '.') }}</span></div>
+                <div class="flex items-center justify-between"><span class="label">PB1</span><span class="value">Rp {{ number_format($transaction['tax_total'] ?? 0, 0, ',', '.') }}</span></div>
                 <div class="flex items-center justify-between"><span class="label">Service Charge</span><span class="value">Rp {{ number_format($transaction['service_charge_total'] ?? 0, 0, ',', '.') }}</span></div>
                 <div class="flex items-center justify-between"><span class="label">Sub Total</span><span class="value">Rp {{ number_format($transaction['sub_total'] ?? 0, 0, ',', '.') }}</span></div>
                 <div class="flex items-center justify-between"><span class="label">Diskon</span><span class="value">- Rp {{ number_format($transaction['discount_amount'] ?? 0, 0, ',', '.') }}</span></div>

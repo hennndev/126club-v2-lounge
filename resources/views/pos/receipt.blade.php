@@ -307,7 +307,7 @@
 
     @if (($totals['tax'] ?? 0) > 0)
       <div class="total-row">
-        <span>PPN ({{ $totals['tax_percentage'] ?? 0 }}%)</span>
+        <span>PB1 ({{ $totals['tax_percentage'] ?? 0 }}%)</span>
         <span>Rp {{ number_format($totals['tax'] ?? 0, 0, ',', '.') }}</span>
       </div>
     @endif

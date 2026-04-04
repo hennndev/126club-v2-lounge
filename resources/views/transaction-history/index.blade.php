@@ -372,7 +372,7 @@
           <div class="space-y-2">
             <template x-if="(selectedDetailOrder?.taxTotal ?? 0) > 0">
               <div class="flex items-center justify-between">
-                <p class="text-sm text-gray-500">PPN</p>
+                <p class="text-sm text-gray-500">PB1</p>
                 <p class="text-sm font-semibold text-gray-700"
                    x-text="selectedDetailOrder?.taxTotalFormatted"></p>
               </div>

@@ -208,7 +208,8 @@
                   default => '',
               };
             @endphp
-            <tr class="hover:bg-gray-50 transition-colors booking-row"
+            <tr class="hover:bg-gray-50 transition-colors booking-row cursor-pointer"
+                data-booking-id="{{ $booking->id }}"
                 data-status="{{ $booking->status }}"
                 data-category="{{ $booking->table?->area_id }}">
               <td class="px-5 py-4 whitespace-nowrap">
@@ -372,13 +373,33 @@
                  class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">Prev</a>
             @endif
 
-            @foreach ($bookings->getUrlRange(max(1, $bookings->currentPage() - 2), min($bookings->lastPage(), $bookings->currentPage() + 2)) as $page => $url)
-              @if ($page === $bookings->currentPage())
+            @php
+              $historyCurrentPage = (int) $bookings->currentPage();
+              $historyLastPage = (int) $bookings->lastPage();
+              $historyVisiblePages = collect([1, $historyCurrentPage - 1, $historyCurrentPage, $historyCurrentPage + 1, $historyLastPage])
+                  ->filter(fn($page) => $page >= 1 && $page <= $historyLastPage)
+                  ->unique()
+                  ->sort()
+                  ->values();
+
+              $historyPreviousVisiblePage = null;
+            @endphp
+
+            @foreach ($historyVisiblePages as $page)
+              @if ($historyPreviousVisiblePage !== null && $page - $historyPreviousVisiblePage > 1)
+                <span class="pagination-ellipsis inline-flex items-center justify-center w-9 h-9 text-gray-400 select-none">...</span>
+              @endif
+
+              @if ($page === $historyCurrentPage)
                 <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-800 text-white font-semibold">{{ $page }}</span>
               @else
-                <a href="{{ $url }}"
+                <a href="{{ $bookings->url($page) }}"
                    class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">{{ $page }}</a>
               @endif
+
+              @php
+                $historyPreviousVisiblePage = $page;
+              @endphp
             @endforeach
 
             @if ($bookings->hasMorePages())
@@ -392,6 +413,90 @@
       </div>
     @endif
   @endif
+</div>
+
+<div id="historyBillingDetailModal"
+     class="hidden fixed inset-0 z-[70]">
+  <div class="absolute inset-0 bg-black/40"
+       onclick="closeHistoryBookingDetailModal()"></div>
+  <div class="relative z-[71] min-h-full flex items-center justify-center p-4">
+    <div class="w-full max-w-xl bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-semibold text-gray-900">Detail Billing Booking</h3>
+          <p id="historyBillingDetailSubtitle"
+             class="text-xs text-gray-500 mt-0.5">-</p>
+        </div>
+        <button type="button"
+                onclick="closeHistoryBookingDetailModal()"
+                class="text-gray-400 hover:text-gray-600 transition">✕</button>
+      </div>
+
+      <div class="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">Jumlah Orders</p>
+          <p id="historyBillingDetailOrderCount"
+             class="font-semibold text-gray-900 mt-0.5">0</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">Total Bill</p>
+          <p id="historyBillingDetailTotalBill"
+             class="font-semibold text-gray-900 mt-0.5">Rp 0</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">Mode Pembayaran</p>
+          <p id="historyBillingDetailPaymentMode"
+             class="font-semibold text-gray-900 mt-0.5">-</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">Metode Pembayaran</p>
+          <p id="historyBillingDetailPaymentMethod"
+             class="font-semibold text-gray-900 mt-0.5">-</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 sm:col-span-2">
+          <p class="text-xs text-gray-500">Reference Number</p>
+          <p id="historyBillingDetailReferenceNumber"
+             class="font-semibold text-gray-900 mt-0.5 break-words">-</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">Tax</p>
+          <p id="historyBillingDetailTax"
+             class="font-semibold text-gray-900 mt-0.5">Rp 0</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">Service Charge</p>
+          <p id="historyBillingDetailServiceCharge"
+             class="font-semibold text-gray-900 mt-0.5">Rp 0</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">Sub Total (setelah tax + service)</p>
+          <p id="historyBillingDetailSubTotal"
+             class="font-semibold text-gray-900 mt-0.5">Rp 0</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">Discount</p>
+          <p id="historyBillingDetailDiscount"
+             class="font-semibold text-gray-900 mt-0.5">-</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">DP</p>
+          <p id="historyBillingDetailDownPayment"
+             class="font-semibold text-gray-900 mt-0.5">Rp 0</p>
+        </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 sm:col-span-2">
+          <p class="text-xs text-gray-500">Sisa yang Harus Dibayar</p>
+          <p id="historyBillingDetailRemainingPayment"
+             class="font-semibold text-gray-900 mt-0.5">Rp 0</p>
+        </div>
+      </div>
+
+      <div class="px-5 py-4 border-t border-gray-100 flex justify-end">
+        <button type="button"
+                onclick="closeHistoryBookingDetailModal()"
+                class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Tutup</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="historyErrorModal"
@@ -420,6 +525,70 @@
 </div>
 
 @php
+  $historyBillingDetailMap = $bookings
+      ->mapWithKeys(function ($booking) {
+          $session = $booking->tableSession;
+          $billing = $session?->billing;
+          $paymentModeValue = strtolower((string) ($billing?->payment_mode ?? '-'));
+          $totalBillAmount = (float) ($billing?->subtotal ?? 0);
+          $taxAmount = (float) ($billing?->tax ?? 0);
+          $serviceChargeAmount = (float) ($billing?->service_charge ?? 0);
+          $subTotalAmount = $totalBillAmount + $taxAmount + $serviceChargeAmount;
+          $downPaymentAmount = (float) ($booking->down_payment_amount ?? 0);
+
+          if ($paymentModeValue === 'split') {
+              $splitMethodLabels = collect();
+
+              if ((float) ($billing?->split_cash_amount ?? 0) > 0) {
+                  $splitMethodLabels->push('CASH');
+              }
+
+              if ((float) ($billing?->split_debit_amount ?? 0) > 0) {
+                  $splitMethodLabels->push(strtoupper((string) ($billing?->split_non_cash_method ?? 'NON-CASH 1')));
+              }
+
+              if ((float) ($billing?->split_second_non_cash_amount ?? 0) > 0) {
+                  $splitMethodLabels->push(strtoupper((string) ($billing?->split_second_non_cash_method ?? 'NON-CASH 2')));
+              }
+
+              $splitReferences = collect();
+
+              if (filled($billing?->split_non_cash_reference_number)) {
+                  $splitReferences->push('Ref 1: ' . (string) $billing->split_non_cash_reference_number);
+              }
+
+              if (filled($billing?->split_second_non_cash_reference_number)) {
+                  $splitReferences->push('Ref 2: ' . (string) $billing->split_second_non_cash_reference_number);
+              }
+
+              $paymentMethodDisplay = $splitMethodLabels->isNotEmpty() ? $splitMethodLabels->implode(' + ') : 'SPLIT';
+
+              $referenceNumberDisplay = $splitReferences->isNotEmpty() ? $splitReferences->implode(' | ') : '-';
+          } else {
+              $paymentMethodDisplay = strtoupper((string) ($billing?->payment_method ?? '-'));
+              $referenceNumberDisplay = filled($billing?->payment_reference_number) ? (string) $billing->payment_reference_number : '-';
+          }
+
+          return [
+              $booking->id => [
+                  'customer' => $booking->customer->name,
+                  'table' => $booking->table?->table_number ?? '-',
+                  'order_count' => (int) ($session?->orders?->count() ?? 0),
+                  'total_bill' => $totalBillAmount,
+                  'tax_amount' => (float) ($billing?->tax ?? 0),
+                  'service_charge' => (float) ($billing?->service_charge ?? 0),
+                  'sub_total' => $subTotalAmount,
+                  'discount_amount' => (float) ($billing?->discount_amount ?? 0),
+                  'down_payment_amount' => $downPaymentAmount,
+                  'remaining_payment' => (float) ($billing?->grand_total ?? 0),
+                  'payment_mode' => strtoupper((string) ($billing?->payment_mode ?? '-')),
+                  'payment_method' => $paymentMethodDisplay,
+                  'reference_number' => $referenceNumberDisplay,
+              ],
+          ];
+      })
+      ->all();
+
   $historyOrdersMap = $bookings
       ->mapWithKeys(function ($booking) {
           $orders =
@@ -458,7 +627,110 @@
 @endphp
 
 <script>
+  const historyBillingDetailData = @json($historyBillingDetailMap);
   const historyOrdersData = @json($historyOrdersMap);
+
+  function openHistoryBookingDetailModal(bookingId) {
+    const data = historyBillingDetailData[String(bookingId)] || historyBillingDetailData[bookingId];
+    if (!data) {
+      return;
+    }
+
+    const formatRupiah = (value) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+
+    const modal = document.getElementById('historyBillingDetailModal');
+    if (!modal) {
+      return;
+    }
+
+    const subtitle = document.getElementById('historyBillingDetailSubtitle');
+    const orderCount = document.getElementById('historyBillingDetailOrderCount');
+    const totalBill = document.getElementById('historyBillingDetailTotalBill');
+    const tax = document.getElementById('historyBillingDetailTax');
+    const serviceCharge = document.getElementById('historyBillingDetailServiceCharge');
+    const subTotal = document.getElementById('historyBillingDetailSubTotal');
+    const discount = document.getElementById('historyBillingDetailDiscount');
+    const downPayment = document.getElementById('historyBillingDetailDownPayment');
+    const remainingPayment = document.getElementById('historyBillingDetailRemainingPayment');
+    const paymentMode = document.getElementById('historyBillingDetailPaymentMode');
+    const paymentMethod = document.getElementById('historyBillingDetailPaymentMethod');
+    const referenceNumber = document.getElementById('historyBillingDetailReferenceNumber');
+
+    if (subtitle) {
+      subtitle.textContent = `${data.customer} — Meja ${data.table}`;
+    }
+
+    if (orderCount) {
+      orderCount.textContent = Number(data.order_count || 0).toLocaleString('id-ID');
+    }
+
+    if (totalBill) {
+      totalBill.textContent = formatRupiah(data.total_bill || 0);
+    }
+
+    if (tax) {
+      tax.textContent = formatRupiah(data.tax_amount || 0);
+    }
+
+    if (serviceCharge) {
+      serviceCharge.textContent = formatRupiah(data.service_charge || 0);
+    }
+
+    if (subTotal) {
+      subTotal.textContent = formatRupiah(data.sub_total || 0);
+    }
+
+    if (discount) {
+      const discountAmount = Number(data.discount_amount || 0);
+      discount.textContent = discountAmount > 0 ? `- ${formatRupiah(discountAmount)}` : '-';
+    }
+
+    if (downPayment) {
+      downPayment.textContent = formatRupiah(data.down_payment_amount || 0);
+    }
+
+    if (remainingPayment) {
+      remainingPayment.textContent = formatRupiah(data.remaining_payment || 0);
+    }
+
+    if (paymentMode) {
+      paymentMode.textContent = data.payment_mode || '-';
+    }
+
+    if (paymentMethod) {
+      paymentMethod.textContent = data.payment_method || '-';
+    }
+
+    if (referenceNumber) {
+      referenceNumber.textContent = data.reference_number || '-';
+    }
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeHistoryBookingDetailModal() {
+    const modal = document.getElementById('historyBillingDetailModal');
+    if (!modal) {
+      return;
+    }
+
+    modal.classList.add('hidden');
+  }
+
+  document.querySelectorAll('#bookingTableBody .booking-row').forEach((row) => {
+    row.addEventListener('click', (event) => {
+      if (event.target.closest('button, a, form, input, select, textarea, label, details, summary')) {
+        return;
+      }
+
+      const bookingId = row.dataset.bookingId;
+      if (!bookingId) {
+        return;
+      }
+
+      openHistoryBookingDetailModal(bookingId);
+    });
+  });
 
   function openHistoryBookingOrdersModal(bookingId) {
     const data = historyOrdersData[String(bookingId)] || historyOrdersData[bookingId];

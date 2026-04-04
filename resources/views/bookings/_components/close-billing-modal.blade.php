@@ -49,7 +49,7 @@
         </div>
         <div class="flex justify-between text-gray-600"
              id="cbTaxRow">
-          <span id="cbTaxLabel">PPN</span>
+          <span id="cbTaxLabel">PB1</span>
           <span id="cbTax">Rp 0</span>
         </div>
         <div class="flex justify-between text-gray-600"
@@ -550,8 +550,8 @@
       `Service Charge (${serviceChargePercentage}%)` :
       'Service Charge';
     const taxLabel = taxPercentage > 0 ?
-      `PPN (${taxPercentage}%)` :
-      'PPN';
+      `PB1 (${taxPercentage}%)` :
+      'PB1';
 
     document.getElementById('cbServiceChargeLabel').textContent = serviceLabel;
     document.getElementById('cbTaxLabel').textContent = taxLabel;

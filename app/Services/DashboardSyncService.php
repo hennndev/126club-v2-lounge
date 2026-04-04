@@ -145,9 +145,10 @@ class DashboardSyncService
                 $splitSecondNonCashAmount = (float) ($billing->split_second_non_cash_amount ?? 0);
 
                 $totals['total_cash'] += $splitCashAmount;
-                $splitNonCashAmount = $splitNonCashAmount > 0
-                    ? $splitNonCashAmount
-                    : max($paidAmount - $splitCashAmount, 0);
+
+                if ($splitNonCashAmount <= 0 && $splitSecondNonCashAmount <= 0) {
+                    $splitNonCashAmount = max($paidAmount - $splitCashAmount, 0);
+                }
 
                 $splitNonCashMethod = $billing->split_non_cash_method ?: 'debit';
                 $this->addPaymentAmount($totals, $this->normalizePaymentMethod($splitNonCashMethod), $splitNonCashAmount);

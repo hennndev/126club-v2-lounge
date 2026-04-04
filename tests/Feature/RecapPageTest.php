@@ -311,7 +311,7 @@ test('recap close preview page shows printable a4 summary', function () {
         ->assertSeeText('3x')
         ->assertSeeText('2x')
         ->assertSeeText('Subtotal: Rp 30.000')
-        ->assertSeeText('PPN: Rp 3.000')
+        ->assertSeeText('PB1: Rp 3.000')
         ->assertSeeText('Service: Rp 2.000')
         ->assertSee(route('admin.recap.close-export'));
 });
@@ -1550,7 +1550,7 @@ test('recap cashier table shows payment reference and order item details', funct
         ->assertSeeText('2x')
         ->assertSeeText('Harga: Rp 22.500')
         ->assertSeeText('Subtotal: Rp 45.000')
-        ->assertSeeText('PPN: Rp 4.500')
+        ->assertSeeText('PB1: Rp 4.500')
         ->assertSeeText('Service: Rp 3.000');
 });
 

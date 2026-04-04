@@ -96,7 +96,7 @@ test('active tables estimate uses total pesanan as the base instead of minimum c
         ->assertDontSee('Subtotal Tagihan')
         ->assertSee('Service Charge (25%)')
         ->assertSee('Rp 1.650.000')
-        ->assertSee('PPN (10%)')
+        ->assertSee('PB1 (10%)')
         ->assertSee('Rp 825.000')
         ->assertSeeInOrder(['Estimasi Total', 'Rp 9.075.000']);
 });
