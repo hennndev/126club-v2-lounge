@@ -340,9 +340,13 @@ class RecapController extends Controller
             ->values();
 
         $totalDiscount = (float) $cashierTransactions->sum('discount_amount');
-        $totalDownPayment = (float) $cashierTransactions->sum('down_payment_amount');
+        $liveTotalDownPayment = (float) $cashierTransactions->sum('down_payment_amount');
 
         $dashboardAggregate = Dashboard::query()->find(1);
+        $dashboardTotalDp = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_dp ?? 0);
+        $resolvedTotalDp = $isSelectedEndDayClosed
+            ? 0.0
+            : ($dashboardTotalDp > 0 ? $dashboardTotalDp : $liveTotalDownPayment);
 
         $recapHistories = RecapHistory::query()
             ->latest('end_day')
@@ -433,7 +437,7 @@ class RecapController extends Controller
             'totalTax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
             'totalServiceCharge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
             'totalDiscount' => $totalDiscount,
-            'totalDownPayment' => $totalDownPayment,
+            'totalDownPayment' => $resolvedTotalDp,
             'totalCash' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['cash'],
             'paymentMethodTotals' => $paymentMethodTotals,
             'kitchenItems' => $kitchenItems,
@@ -453,7 +457,7 @@ class RecapController extends Controller
                 'total_tax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
                 'total_service_charge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
                 'total_discount' => $totalDiscount,
-                'total_down_payment' => $totalDownPayment,
+                'total_down_payment' => $resolvedTotalDp,
                 'total_cash' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['cash'],
                 'total_transfer' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['transfer'],
                 'total_debit' => $isSelectedEndDayClosed ? 0.0 : (float) $paymentMethodTotals['debit'],
@@ -647,7 +651,7 @@ class RecapController extends Controller
             'totalTax' => (float) $recapHistory->total_tax,
             'totalServiceCharge' => (float) $recapHistory->total_service_charge,
             'totalDiscount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
-            'totalDownPayment' => (float) ($liveRecapData['totalDownPayment'] ?? 0),
+            'totalDownPayment' => (float) ($recapHistory->total_dp ?? 0),
             'paymentMethodTotals' => [
                 'cash' => (float) $recapHistory->total_cash,
                 'transfer' => (float) $recapHistory->total_transfer,
@@ -670,7 +674,7 @@ class RecapController extends Controller
                 'total_tax' => (float) $recapHistory->total_tax,
                 'total_service_charge' => (float) $recapHistory->total_service_charge,
                 'total_discount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
-                'total_down_payment' => (float) ($liveRecapData['totalDownPayment'] ?? 0),
+                'total_down_payment' => (float) ($recapHistory->total_dp ?? 0),
                 'total_cash' => (float) $recapHistory->total_cash,
                 'total_transfer' => (float) $recapHistory->total_transfer,
                 'total_debit' => (float) $recapHistory->total_debit,
@@ -705,6 +709,7 @@ class RecapController extends Controller
             ['Total LD', (float) ($recapData['dashboardPreview']['total_ld'] ?? 0)],
             ['Total Pajak', $recapData['totalTax']],
             ['Total Service Charge', $recapData['totalServiceCharge']],
+            ['Total DP (Booking)', (float) ($recapData['dashboardPreview']['total_down_payment'] ?? 0)],
             ['Total Pembayaran Tunai', $recapData['paymentMethodTotals']['cash']],
             ['Total Pembayaran Transfer', $recapData['paymentMethodTotals']['transfer']],
             ['Total Pembayaran Debit', $recapData['paymentMethodTotals']['debit']],
@@ -778,6 +783,7 @@ class RecapController extends Controller
             ['Total Penjualan Rokok', (float) $recapHistory->total_penjualan_rokok],
             ['Total Pajak', (float) $recapHistory->total_tax],
             ['Total Service Charge', (float) $recapHistory->total_service_charge],
+            ['Total DP (Booking)', (float) ($recapHistory->total_dp ?? 0)],
             ['Total Pembayaran Tunai', (float) $recapHistory->total_cash],
             ['Total Pembayaran Transfer', (float) $recapHistory->total_transfer],
             ['Total Pembayaran Debit', (float) $recapHistory->total_debit],

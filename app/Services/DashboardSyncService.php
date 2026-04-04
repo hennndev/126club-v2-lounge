@@ -9,6 +9,7 @@ use App\Models\KitchenOrderItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\RecapHistory;
+use App\Models\TableSession;
 use Illuminate\Support\Carbon;
 
 class DashboardSyncService
@@ -30,6 +31,7 @@ class DashboardSyncService
             'total_penjualan_rokok' => 0.0,
             'total_tax' => 0.0,
             'total_service_charge' => 0.0,
+            'total_dp' => 0.0,
             'total_cash' => 0.0,
             'total_transfer' => 0.0,
             'total_debit' => 0.0,
@@ -80,6 +82,12 @@ class DashboardSyncService
             ->filter()
             ->unique()
             ->values();
+
+        $totals['total_dp'] = (float) TableSession::query()
+            ->with('reservation:id,down_payment_amount')
+            ->whereIn('id', $bookingSessionIds->all())
+            ->get()
+            ->sum(fn (TableSession $session): float => (float) ($session->reservation?->down_payment_amount ?? 0));
 
         $relatedOrderIds = collect();
 

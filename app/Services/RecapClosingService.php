@@ -59,6 +59,7 @@ class RecapClosingService
                 'total_penjualan_rokok' => (float) $dashboard->total_penjualan_rokok,
                 'total_tax' => (float) $dashboard->total_tax,
                 'total_service_charge' => (float) $dashboard->total_service_charge,
+                'total_dp' => (float) $dashboard->total_dp,
                 'total_cash' => (float) $dashboard->total_cash,
                 'total_transfer' => (float) $dashboard->total_transfer,
                 'total_debit' => (float) $dashboard->total_debit,
@@ -93,6 +94,7 @@ class RecapClosingService
             || (float) $dashboard->total_penjualan_rokok > 0
             || (float) $dashboard->total_tax > 0
             || (float) $dashboard->total_service_charge > 0
+            || (float) $dashboard->total_dp > 0
             || (float) $dashboard->total_cash > 0
             || (float) $dashboard->total_transfer > 0
             || (float) $dashboard->total_debit > 0
@@ -120,6 +122,7 @@ class RecapClosingService
             'total_penjualan_rokok' => 0,
             'total_tax' => 0,
             'total_service_charge' => 0,
+            'total_dp' => 0,
             'total_cash' => 0,
             'total_transfer' => 0,
             'total_debit' => 0,

@@ -189,7 +189,7 @@
           <div class="flex items-center justify-between gap-2"><span class="label">Kredit</span><span class="value">Rp {{ number_format($paymentMethodTotals['kredit'] ?? 0, 0, ',', '.') }}</span></div>
           <div class="flex items-center justify-between gap-2"><span class="label">QRIS</span><span class="value">Rp {{ number_format($paymentMethodTotals['qris'] ?? 0, 0, ',', '.') }}</span></div>
           <div class="flex items-center justify-between gap-2"><span class="label">Total Diskon</span><span class="value">Rp {{ number_format($totalDiscount ?? 0, 0, ',', '.') }}</span></div>
-          <div class="flex items-center justify-between gap-2"><span class="label">Total DP</span><span class="value">Rp {{ number_format($totalDownPayment ?? 0, 0, ',', '.') }}</span></div>
+          <div class="flex items-center justify-between gap-2"><span class="label">Total DP (booking)</span><span class="value">Rp {{ number_format($totalDownPayment ?? 0, 0, ',', '.') }}</span></div>
         </div>
       </section>
 
