@@ -899,7 +899,9 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         'lifetime_spending' => 0,
     ]);
 
-    mock(AccurateService::class, function (MockInterface $mock): void {
+    $capturedInvoicePayload = null;
+
+    mock(AccurateService::class, function (MockInterface $mock) use (&$capturedInvoicePayload): void {
         // Item has no group components → decrement item's own stock
         $mock->shouldReceive('getItemGroupComponents')
             ->andReturn([]);
@@ -923,6 +925,11 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
 
         $mock->shouldReceive('saveSalesInvoice')
             ->once()
+            ->withArgs(function (array $payload) use (&$capturedInvoicePayload): bool {
+                $capturedInvoicePayload = $payload;
+
+                return true;
+            })
             ->andReturn([
                 'r' => [
                     'number' => 'LOUNGE-WALKIN-20260318-12345',
@@ -963,6 +970,15 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->assertJsonPath('tax_percentage', 11)
         ->assertJsonPath('tax', 5500)
         ->assertJsonPath('total', 61050);
+
+    expect($capturedInvoicePayload)->not->toBeNull()
+        ->and((string) ($capturedInvoicePayload['detailExpense'][0]['accountNo'] ?? ''))->toBe('210201')
+        ->and((string) ($capturedInvoicePayload['detailExpense'][0]['expenseName'] ?? ''))->toBe('PB 1')
+        ->and(collect($capturedInvoicePayload['detailItem'] ?? [])->count())->toBe(2)
+        ->and(collect($capturedInvoicePayload['detailItem'] ?? [])->contains(function (array $item): bool {
+            return (string) ($item['itemNo'] ?? '') === 'SERVICE-CHARGE'
+                && (float) ($item['unitPrice'] ?? 0) === 5550.0;
+        }))->toBeTrue();
 
     $order = Order::query()->latest('id')->first();
     $billing = Billing::query()->where('order_id', $order?->id)->first();

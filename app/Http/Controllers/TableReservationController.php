@@ -1146,6 +1146,9 @@ class TableReservationController extends Controller
                 ->values()
                 ->toArray();
 
+            $taxAmount = (float) ($billing->tax ?? 0);
+            $serviceChargeAmount = (float) ($billing->service_charge ?? 0);
+
             if (empty($detailItem)) {
                 $billing->update([
                     'error_message' => 'Item order tidak ditemukan untuk dikirim ke Accurate.',
@@ -1169,6 +1172,22 @@ class TableReservationController extends Controller
                 'detailItem' => $detailItem,
             ];
 
+            if ($serviceChargeAmount > 0) {
+                $soPayload['detailItem'][] = [
+                    'itemNo' => 'SERVICE-CHARGE',
+                    'quantity' => 1,
+                    'unitPrice' => $serviceChargeAmount,
+                ];
+            }
+
+            if ($taxAmount > 0) {
+                $soPayload['detailExpense'][] = [
+                    'accountNo' => '210201',
+                    'expenseAmount' => $taxAmount,
+                    'expenseName' => 'PB 1',
+                ];
+            }
+
             $soResult = $this->accurateService->saveSalesOrder($soPayload);
 
             $downPaymentAmount = (float) ($booking->down_payment_amount ?? 0);
@@ -1179,6 +1198,7 @@ class TableReservationController extends Controller
                     'customerNo' => $customerNo,
                     'inputDownPayment' => $downPaymentAmount,
                     'invoiceDp' => true,
+                    'orderDownPaymentNumber' => $soNumber,
                 ];
 
                 $downPaymentResult = $this->accurateService->saveSalesInvoice($downPaymentPayload);
@@ -1201,6 +1221,21 @@ class TableReservationController extends Controller
                 ),
             ];
 
+            if ($taxAmount > 0) {
+                $invPayload['detailExpense'][] = [
+                    'accountNo' => '210201',
+                    'expenseAmount' => $taxAmount,
+                    'expenseName' => 'PB 1',
+                ];
+            }
+
+            if ($serviceChargeAmount > 0) {
+                $invPayload['detailItem'][] = [
+                    'itemNo' => 'SERVICE-CHARGE',
+                    'unitPrice' => $serviceChargeAmount,
+                ];
+            }
+
             if ($downPaymentAmount > 0) {
                 $invPayload['detailDownPayment'] = [
                     [
@@ -1209,13 +1244,7 @@ class TableReservationController extends Controller
                     ],
                 ];
             }
-
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);
-
-            Log::info('Accurate Billing Sync: Invoice result', [
-                'booking_id' => $booking->id,
-                'inv_result' => $invResult,
-            ]);
             $invNumber = $invResult['r']['number'] ?? $invResult['d']['number'] ?? $soNumber;
 
             // 3. Persist Accurate numbers on the billing record
@@ -1223,12 +1252,6 @@ class TableReservationController extends Controller
                 'accurate_so_number' => $soNumber,
                 'accurate_inv_number' => $invNumber,
                 'error_message' => null,
-            ]);
-
-            Log::info('Accurate Billing Sync: OK', [
-                'booking_id' => $booking->id,
-                'so_number' => $soNumber,
-                'inv_number' => $invNumber,
             ]);
         } catch (\Exception $e) {
             $billing->update([

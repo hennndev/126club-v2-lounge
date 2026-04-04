@@ -157,6 +157,10 @@ test('history re-sync accurate creates sales order and invoice when accurate num
     [$admin, $booking, $billing] = makeHistoryBookingFixture([
         'accurate_so_number' => null,
         'accurate_inv_number' => null,
+        'tax_percentage' => 10,
+        'tax' => 12000,
+        'service_charge_percentage' => 5,
+        'service_charge' => 6600,
     ]);
 
     mock(AccurateService::class, function (MockInterface $mock): void {
@@ -164,6 +168,18 @@ test('history re-sync accurate creates sales order and invoice when accurate num
             ->once()
             ->withArgs(function (array $payload): bool {
                 if (! isset($payload['number']) || empty($payload['detailItem'])) {
+                    return false;
+                }
+
+                if (($payload['detailExpense'][0]['accountNo'] ?? null) !== '210201') {
+                    return false;
+                }
+
+                if (($payload['detailExpense'][0]['expenseName'] ?? null) !== 'PB 1') {
+                    return false;
+                }
+
+                if (! collect($payload['detailItem'])->contains(fn (array $item): bool => ($item['itemNo'] ?? null) === 'SERVICE-CHARGE' && (int) ($item['quantity'] ?? 0) === 1 && (float) ($item['unitPrice'] ?? 0) === 6600.0)) {
                     return false;
                 }
 
@@ -180,8 +196,18 @@ test('history re-sync accurate creates sales order and invoice when accurate num
                     return false;
                 }
 
-                return collect($payload['detailItem'])
-                    ->every(fn (array $item): bool => isset($item['salesOrderNumber']));
+                if (($payload['detailExpense'][0]['accountNo'] ?? null) !== '210201') {
+                    return false;
+                }
+
+                if (($payload['detailExpense'][0]['expenseName'] ?? null) !== 'PB 1') {
+                    return false;
+                }
+
+                return collect($payload['detailItem'])->contains(
+                    fn (array $item): bool => ($item['itemNo'] ?? null) === 'SERVICE-CHARGE'
+                        && (float) ($item['unitPrice'] ?? 0) === 6600.0
+                );
             })
             ->andReturnUsing(function (array $payload) {
                 return ['r' => ['number' => $payload['number']]];
