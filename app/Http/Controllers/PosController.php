@@ -2193,6 +2193,7 @@ class PosController extends Controller
     {
         try {
             $order->load(['items.inventoryItem']);
+            $billing = Billing::query()->where('order_id', $order->id)->latest('id')->first();
 
             if (! $customerUser) {
                 return;
@@ -2205,6 +2206,8 @@ class PosController extends Controller
             }
 
             $transDate = $order->ordered_at->format('d/m/Y');
+            $taxAmount = (float) ($billing?->tax ?? 0);
+            $serviceChargeAmount = (float) ($billing?->service_charge ?? 0);
 
             $warehouseName = config('accurate.stock_warehouse_name');
 
@@ -2225,6 +2228,22 @@ class PosController extends Controller
                 'memo' => 'Walk-in POS — '.$order->order_number,
                 'detailItem' => $detailItem,
             ];
+
+            if ($serviceChargeAmount > 0) {
+                $soBasePayload['detailItem'][] = [
+                    'itemNo' => 'SERVICE-CHARGE',
+                    'quantity' => 1,
+                    'unitPrice' => $serviceChargeAmount,
+                ];
+            }
+
+            if ($taxAmount > 0) {
+                $soBasePayload['detailExpense'][] = [
+                    'accountNo' => '210201',
+                    'expenseAmount' => $taxAmount,
+                    'expenseName' => 'PB 1',
+                ];
+            }
 
             $soNumber = null;
             $maxAttempts = 3;
@@ -2261,6 +2280,27 @@ class PosController extends Controller
                     fn (array $item): array => array_merge($item, ['salesOrderNumber' => $soNumber]),
                     $detailItem
                 );
+            }
+
+            if ($taxAmount > 0) {
+                $invPayload['detailExpense'][] = [
+                    'accountNo' => '210201',
+                    'expenseAmount' => $taxAmount,
+                    'expenseName' => 'PB 1',
+                ];
+            }
+
+            if ($serviceChargeAmount > 0) {
+                $serviceChargeItem = [
+                    'itemNo' => 'SERVICE-CHARGE',
+                    'unitPrice' => $serviceChargeAmount,
+                ];
+
+                if ($soNumber) {
+                    $serviceChargeItem['salesOrderNumber'] = $soNumber;
+                }
+
+                $invPayload['detailItem'][] = $serviceChargeItem;
             }
 
             $invResult = $this->accurateService->saveSalesInvoice($invPayload);

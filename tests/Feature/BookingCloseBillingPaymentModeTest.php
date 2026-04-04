@@ -192,6 +192,11 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
     [$booking] = makeBookingCloseBillingFixture($admin);
     $booking->update(['down_payment_amount' => 20000]);
 
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 5,
+        'tax_percentage' => 10,
+    ]);
+
     config(['accurate.stock_warehouse_name' => 'Warehouse Test']);
 
     $customer = $booking->customer;
@@ -222,6 +227,19 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
                 if (! preg_match('/^ROOM-(BILLING|WALKIN)-\d{8}-\d{5}$/', $payload['number'])) {
                     return false;
                 }
+
+                if (($payload['detailExpense'][0]['accountNo'] ?? null) !== '210201') {
+                    return false;
+                }
+
+                if (($payload['detailExpense'][0]['expenseName'] ?? null) !== 'PB 1') {
+                    return false;
+                }
+
+                if (! collect($payload['detailItem'])->contains(fn (array $item): bool => ($item['itemNo'] ?? null) === 'SERVICE-CHARGE' && (int) ($item['quantity'] ?? 0) === 1 && (float) ($item['unitPrice'] ?? 0) > 0)) {
+                    return false;
+                }
+
                 $capturedSoNumber = $payload['number'];
 
                 return true;
@@ -232,13 +250,13 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
 
         $mock->shouldReceive('saveSalesInvoice')
             ->once()
-            ->withArgs(function (array $payload): bool {
+            ->withArgs(function (array $payload) use (&$capturedSoNumber): bool {
                 return array_key_exists('customerNo', $payload)
                     && array_key_exists('inputDownPayment', $payload)
                     && array_key_exists('invoiceDp', $payload)
-                    && count($payload) === 3
                     && (float) $payload['inputDownPayment'] === 20000.0
-                    && $payload['invoiceDp'] === true;
+                    && $payload['invoiceDp'] === true
+                    && ($payload['orderDownPaymentNumber'] ?? null) === $capturedSoNumber;
             })
             ->andReturn(['r' => ['number' => 'INV-DP-TEST-001']]);
 
@@ -260,7 +278,19 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
                     return false;
                 }
 
+                if (($payload['detailExpense'][0]['accountNo'] ?? null) !== '210201') {
+                    return false;
+                }
+
+                if (($payload['detailExpense'][0]['expenseName'] ?? null) !== 'PB 1') {
+                    return false;
+                }
+
                 foreach ($detailItems as $detailItem) {
+                    if (($detailItem['itemNo'] ?? null) === 'SERVICE-CHARGE') {
+                        continue;
+                    }
+
                     if (! isset($detailItem['salesOrderNumber'])) {
                         return false;
                     }
@@ -268,6 +298,16 @@ test('close billing sends ROOM-BILLING sales order number and maps salesOrderNum
                     if (($detailItem['warehouseName'] ?? null) !== 'Warehouse Test') {
                         return false;
                     }
+                }
+
+                $serviceChargeItem = collect($detailItems)->firstWhere('itemNo', 'SERVICE-CHARGE');
+
+                if ($serviceChargeItem === null) {
+                    return false;
+                }
+
+                if ((float) ($serviceChargeItem['unitPrice'] ?? 0) <= 0) {
+                    return false;
                 }
 
                 return true;
@@ -447,6 +487,56 @@ test('close billing calculates service charge based on subtotal plus tax when ta
     expect((float) $updatedBilling->service_charge)->toBe(6600.0)
         ->and((float) $updatedBilling->tax)->toBe(12000.0)
         ->and((float) $updatedBilling->grand_total)->toBe(138600.0);
+});
+
+test('close billing pushes pb1 tax metadata and service charge line item to accurate invoice', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 5,
+        'tax_percentage' => 10,
+    ]);
+
+    $customer = $booking->customer;
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081299900002',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => 120002,
+        'customer_code' => 'CUST-CLOSE-002',
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('saveSalesOrder')
+            ->once()
+            ->andReturnUsing(function (array $payload) {
+                return ['r' => ['number' => $payload['number']]];
+            });
+
+        $mock->shouldReceive('saveSalesInvoice')
+            ->once()
+            ->andReturn(['r' => ['number' => 'INV-PB1-001']]);
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.bookings.closeBilling', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect((float) $updatedBilling->service_charge)->toBe(6600.0)
+        ->and((float) $updatedBilling->tax)->toBe(12000.0);
 });
 
 test('close billing calculates percentage discount after tax and service charge', function () {
