@@ -40,7 +40,7 @@
         <div class="p-6">
           <label class="block text-sm font-semibold text-slate-700 mb-1"
                  for="tax_percentage">
-            PPN / Pajak (%)
+            PB1 / Pajak (%)
           </label>
           <p class="text-xs text-slate-400 mb-3">Persentase pajak yang ditambahkan ke subtotal billing customer.</p>
           <div class="flex items-center gap-3">

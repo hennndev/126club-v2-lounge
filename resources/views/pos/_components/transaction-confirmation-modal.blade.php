@@ -143,7 +143,7 @@
         <div x-show="calculatedTax() > 0"
              style="display: none;"
              class="flex justify-between text-sm text-gray-300">
-          <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
+          <span x-text="'PB1 (' + posCharges.taxPercentage + '%)'"></span>
           <span x-text="formatCurrency(calculatedTax())"></span>
         </div>
         <div x-show="calculatedServiceCharge() > 0"
@@ -186,7 +186,7 @@
                   stroke-width="2"
                   d="M13 16h-1v-4h-1m1-4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
           </svg>
-          <p class="text-xs text-emerald-700">Khusus walk-in: PPN dan service charge dihitung terlebih dahulu, lalu diskon dipotong dari subtotal tersebut.</p>
+          <p class="text-xs text-emerald-700">Khusus walk-in: PB1 dan service charge dihitung terlebih dahulu, lalu diskon dipotong dari subtotal tersebut.</p>
         </div>
       </template>
 
@@ -202,7 +202,7 @@
                   stroke-width="2"
                   d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
           </svg>
-          <p class="text-xs text-amber-700">Transaksi booking tidak memerlukan pembayaran di tempat. Estimasi total tetap memperhitungkan flag PPN dan service charge per item.</p>
+          <p class="text-xs text-amber-700">Transaksi booking tidak memerlukan pembayaran di tempat. Estimasi total tetap memperhitungkan flag PB1 dan service charge per item.</p>
         </div>
       </template>
 

@@ -97,7 +97,7 @@
             <th class="px-5 py-3 text-left text-sm font-semibold text-gray-600">Event</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Orders</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Service Charge</th>
-            <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">PPN</th>
+            <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">PB1</th>
             <th class="px-5 py-3 text-right text-sm font-semibold text-gray-600">Aksi</th>
             <th class="px-5 py-3 text-center text-sm font-semibold text-gray-600">Remove</th>
           </tr>
@@ -303,7 +303,7 @@
                 @endif
               </td>
 
-              {{-- Tax / PPN --}}
+              {{-- Tax / PB1 --}}
               <td class="px-5 py-4 whitespace-nowrap text-right">
                 @php
                   $taxAmount = (float) ($chargePreview['tax'] ?? 0);

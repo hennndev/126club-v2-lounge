@@ -253,7 +253,7 @@
                               <p class="mt-1 text-[11px] text-gray-600">Harga: Rp {{ number_format($orderItem['price'], 0, ',', '.') }}</p>
                               <p class="text-[11px] text-gray-600">Subtotal: Rp {{ number_format($orderItem['subtotal'], 0, ',', '.') }}</p>
                               @if (($orderItem['tax_amount'] ?? 0) > 0)
-                                <p class="text-[11px] text-amber-700">PPN: Rp {{ number_format($orderItem['tax_amount'], 0, ',', '.') }}</p>
+                                <p class="text-[11px] text-amber-700">PB1: Rp {{ number_format($orderItem['tax_amount'], 0, ',', '.') }}</p>
                               @endif
                               @if (($orderItem['service_charge_amount'] ?? 0) > 0)
                                 <p class="text-[11px] text-orange-700">Service: Rp {{ number_format($orderItem['service_charge_amount'], 0, ',', '.') }}</p>
@@ -269,7 +269,7 @@
                               <span>Rp {{ number_format($transaction['total_bill'] ?? 0, 0, ',', '.') }}</span>
                             </div>
                             <div class="flex items-center justify-between text-amber-700">
-                              <span>PPN</span>
+                              <span>PB1</span>
                               <span>Rp {{ number_format($transaction['tax_total'] ?? 0, 0, ',', '.') }}</span>
                             </div>
                             <div class="flex items-center justify-between text-orange-700">

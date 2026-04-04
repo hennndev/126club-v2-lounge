@@ -109,7 +109,7 @@ class PrinterService
             $escpos->text($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format($totalBill, 0, ',', '.'), $width)."\n");
 
             if ($tax > 0) {
-                $escpos->text($this->formatClosedBillingPair('PPN ('.(int) $payload['tax_percentage'].'%)', 'Rp '.number_format($tax, 0, ',', '.'), $width)."\n");
+                $escpos->text($this->formatClosedBillingPair('PB1 ('.(int) $payload['tax_percentage'].'%)', 'Rp '.number_format($tax, 0, ',', '.'), $width)."\n");
             }
 
             if ($serviceCharge > 0) {
@@ -419,7 +419,7 @@ class PrinterService
                 }
 
                 if ($receiptTotals['tax'] > 0) {
-                    $escpos->text($this->padLine('PPN', '', '', 'Rp '.number_format($receiptTotals['tax'], 0, ',', '.'), $printer->width));
+                    $escpos->text($this->padLine('PB1', '', '', 'Rp '.number_format($receiptTotals['tax'], 0, ',', '.'), $printer->width));
                 }
 
                 $escpos->text(str_repeat('-', $printer->width)."\n");
@@ -484,7 +484,7 @@ class PrinterService
             }
 
             if ($receiptTotals['tax'] > 0) {
-                $lines[] = 'PPN     : Rp '.number_format($receiptTotals['tax'], 0, ',', '.');
+                $lines[] = 'PB1     : Rp '.number_format($receiptTotals['tax'], 0, ',', '.');
             }
         }
 
@@ -850,7 +850,7 @@ class PrinterService
 
         if ($tax > 0) {
             $lines[] = $this->formatClosedBillingPair(
-                'PPN ('.(int) $payload['tax_percentage'].'%)',
+                'PB1 ('.(int) $payload['tax_percentage'].'%)',
                 'Rp '.number_format($tax, 0, ',', '.'),
                 $width
             );
@@ -1145,7 +1145,7 @@ class PrinterService
                     $escpos->text('  Subtotal: Rp '.number_format((float) ($item['subtotal'] ?? 0), 0, ',', '.')."\n");
 
                     if ((float) ($item['tax_amount'] ?? 0) > 0) {
-                        $escpos->text('  PPN: Rp '.number_format((float) $item['tax_amount'], 0, ',', '.')."\n");
+                        $escpos->text('  PB1: Rp '.number_format((float) $item['tax_amount'], 0, ',', '.')."\n");
                     }
 
                     if ((float) ($item['service_charge_amount'] ?? 0) > 0) {
@@ -1162,7 +1162,7 @@ class PrinterService
                 }
 
                 $escpos->text('  '.trim($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format((float) ($transaction['total_bill'] ?? 0), 0, ',', '.'), $width))."\n");
-                $escpos->text('  '.trim($this->formatClosedBillingPair('PPN', 'Rp '.number_format((float) ($transaction['tax_total'] ?? 0), 0, ',', '.'), $width))."\n");
+                $escpos->text('  '.trim($this->formatClosedBillingPair('PB1', 'Rp '.number_format((float) ($transaction['tax_total'] ?? 0), 0, ',', '.'), $width))."\n");
                 $escpos->text('  '.trim($this->formatClosedBillingPair('Service Charge', 'Rp '.number_format((float) ($transaction['service_charge_total'] ?? 0), 0, ',', '.'), $width))."\n");
                 $escpos->text('  '.trim($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format((float) ($transaction['sub_total'] ?? 0), 0, ',', '.'), $width))."\n");
 
@@ -1263,7 +1263,7 @@ class PrinterService
                 $lines[] = '  Subtotal: Rp '.number_format((float) ($itemData['subtotal'] ?? 0), 0, ',', '.');
 
                 if ((float) ($itemData['tax_amount'] ?? 0) > 0) {
-                    $lines[] = '  PPN: Rp '.number_format((float) $itemData['tax_amount'], 0, ',', '.');
+                    $lines[] = '  PB1: Rp '.number_format((float) $itemData['tax_amount'], 0, ',', '.');
                 }
 
                 if ((float) ($itemData['service_charge_amount'] ?? 0) > 0) {
@@ -1280,7 +1280,7 @@ class PrinterService
             }
 
             $lines[] = '  '.trim($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format((float) ($transactionData['total_bill'] ?? 0), 0, ',', '.'), $width));
-            $lines[] = '  '.trim($this->formatClosedBillingPair('PPN', 'Rp '.number_format((float) ($transactionData['tax_total'] ?? 0), 0, ',', '.'), $width));
+            $lines[] = '  '.trim($this->formatClosedBillingPair('PB1', 'Rp '.number_format((float) ($transactionData['tax_total'] ?? 0), 0, ',', '.'), $width));
             $lines[] = '  '.trim($this->formatClosedBillingPair('Service Charge', 'Rp '.number_format((float) ($transactionData['service_charge_total'] ?? 0), 0, ',', '.'), $width));
             $lines[] = '  '.trim($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format((float) ($transactionData['sub_total'] ?? 0), 0, ',', '.'), $width));
 

@@ -1483,7 +1483,7 @@
               '<hr class="sep">' +
               ((d.itemsTotal || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Subtotal: ' + this.formatCurrency(d.itemsTotal || 0) + '</p>' : '') +
               ((d.discountAmount || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Diskon: -' + this.formatCurrency(d.discountAmount || 0) + '</p>' : '') +
-              ((d.tax || 0) > 0 ? '<p style="text-align:right;margin:2px 0">PPN (' + (d.taxPercentage || 0) + '%): ' + this.formatCurrency(d.tax || 0) + '</p>' : '') +
+              ((d.tax || 0) > 0 ? '<p style="text-align:right;margin:2px 0">PB1 (' + (d.taxPercentage || 0) + '%): ' + this.formatCurrency(d.tax || 0) + '</p>' : '') +
               ((d.serviceCharge || 0) > 0 ? '<p style="text-align:right;margin:2px 0">Service Charge (' + (d.serviceChargePercentage || 0) + '%): ' + this.formatCurrency(d.serviceCharge || 0) + '</p>' : '') +
               '<p style="text-align:right;font-weight:bold">TOTAL: ' + d.formattedTotal + '</p>' +
               '<hr class="sep">' +

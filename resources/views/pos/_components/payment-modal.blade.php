@@ -420,7 +420,7 @@
         <div x-show="calculatedTax() > 0"
              style="display: none;"
              class="flex justify-between text-sm text-gray-300">
-          <span x-text="'PPN (' + posCharges.taxPercentage + '%)'"></span>
+          <span x-text="'PB1 (' + posCharges.taxPercentage + '%)'"></span>
           <span x-text="formatCurrency(calculatedTax())"></span>
         </div>
         <div x-show="calculatedServiceCharge() > 0"

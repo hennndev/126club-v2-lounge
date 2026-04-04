@@ -155,7 +155,7 @@
             <input type="checkbox"
                    x-model="form.include_tax"
                    class="h-4 w-4 rounded border-gray-300 text-slate-700 focus:ring-slate-500">
-            Pakai PPN
+            Pakai PB1
           </label>
           <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
             <input type="checkbox"
@@ -391,7 +391,7 @@
                             <span class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-700">{{ strtoupper($menu->category_main) }}</span>
                           @endif
                           <span data-card-tax="{{ $menu->id }}"
-                                class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->include_tax ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400' }}">PPN</span>
+                                class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->include_tax ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-400' }}">PB1</span>
                           <span data-card-sc="{{ $menu->id }}"
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->include_service_charge ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400' }}">SC</span>
                           <span data-card-group="{{ $menu->id }}"
@@ -502,7 +502,7 @@
                       d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
               </svg>
               <div>
-                <p class="text-sm font-medium text-gray-800">PPN</p>
+                <p class="text-sm font-medium text-gray-800">PB1</p>
                 <p class="text-xs text-gray-400">Pajak Pertambahan Nilai</p>
               </div>
             </div>
@@ -660,11 +660,11 @@
         if (isActive) {
           el.classList.add(...activeClasses);
           el.classList.remove(...inactiveClasses);
-          el.textContent = field === 'include_tax' ? 'PPN: ON' : field === 'include_service_charge' ? 'SC: ON' : field === 'is_count_portion_possible' ? 'COUNT: ON' : 'GROUP: ON';
+          el.textContent = field === 'include_tax' ? 'PB1: ON' : field === 'include_service_charge' ? 'SC: ON' : field === 'is_count_portion_possible' ? 'COUNT: ON' : 'GROUP: ON';
         } else {
           el.classList.add(...inactiveClasses);
           el.classList.remove(...activeClasses);
-          el.textContent = field === 'include_tax' ? 'PPN: OFF' : field === 'include_service_charge' ? 'SC: OFF' : field === 'is_count_portion_possible' ? 'COUNT: OFF' : 'GROUP: OFF';
+          el.textContent = field === 'include_tax' ? 'PB1: OFF' : field === 'include_service_charge' ? 'SC: OFF' : field === 'is_count_portion_possible' ? 'COUNT: OFF' : 'GROUP: OFF';
         }
       }
 

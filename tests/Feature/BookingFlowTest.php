@@ -1506,6 +1506,139 @@ test('history tab shows ordered items for each booking customer', function () {
         ->assertSee('Lihat Orders (1 item)');
 });
 
+test('history tab row includes billing detail payload for modal', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'completed',
+        'down_payment_amount' => 10000,
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now()->subHours(3),
+        'checked_out_at' => now()->subHours(1),
+        'status' => 'completed',
+    ]);
+
+    Order::create([
+        'table_session_id' => $session->id,
+        'created_by' => $admin->id,
+        'order_number' => 'ORD-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 120000,
+        'discount_amount' => 5000,
+        'total' => 115000,
+        'ordered_at' => now()->subHours(2),
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 120000,
+        'subtotal' => 120000,
+        'tax' => 12000,
+        'tax_percentage' => 10,
+        'service_charge' => 8000,
+        'service_charge_percentage' => 6.67,
+        'discount_amount' => 5000,
+        'grand_total' => 125000,
+        'paid_amount' => 125000,
+        'billing_status' => 'paid',
+        'payment_mode' => 'normal',
+        'payment_method' => 'transfer',
+        'payment_reference_number' => 'TRX-REF-001',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'history']))
+        ->assertOk()
+        ->assertSee('id="historyBillingDetailModal"', false)
+        ->assertSee('data-booking-id="'.$booking->id.'"', false)
+        ->assertSee('"order_count":1', false)
+        ->assertSee('"total_bill":120000', false)
+        ->assertSee('"tax_amount":12000', false)
+        ->assertSee('"service_charge":8000', false)
+        ->assertSee('"sub_total":140000', false)
+        ->assertSee('"discount_amount":5000', false)
+        ->assertSee('"down_payment_amount":10000', false)
+        ->assertSee('"remaining_payment":125000', false)
+        ->assertSee('"payment_mode":"NORMAL"', false)
+        ->assertSee('"payment_method":"TRANSFER"', false)
+        ->assertSee('"reference_number":"TRX-REF-001"', false);
+});
+
+test('history tab row includes split payment method and reference payload for modal', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '21:00',
+        'status' => 'completed',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now()->subHours(3),
+        'checked_out_at' => now()->subHours(1),
+        'status' => 'completed',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 200000,
+        'subtotal' => 200000,
+        'tax' => 20000,
+        'tax_percentage' => 10,
+        'service_charge' => 10000,
+        'service_charge_percentage' => 5,
+        'discount_amount' => 0,
+        'grand_total' => 230000,
+        'paid_amount' => 230000,
+        'billing_status' => 'paid',
+        'payment_mode' => 'split',
+        'split_cash_amount' => 30000,
+        'split_debit_amount' => 100000,
+        'split_non_cash_method' => 'qris',
+        'split_non_cash_reference_number' => 'QR-123',
+        'split_second_non_cash_amount' => 100000,
+        'split_second_non_cash_method' => 'transfer',
+        'split_second_non_cash_reference_number' => 'TRF-456',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'history']))
+        ->assertOk()
+        ->assertSee('"payment_mode":"SPLIT"', false)
+        ->assertSee('"payment_method":"CASH + QRIS + TRANSFER"', false)
+        ->assertSee('"reference_number":"Ref 1: QR-123 | Ref 2: TRF-456"', false);
+});
+
 test('history tab shows reprint receipt action when booking has billing', function () {
     $admin = adminUser();
     $area = makeArea();
@@ -1641,7 +1774,7 @@ test('history tab uses pagination for bookings', function () {
         $customer = makeBookingCustomer();
 
         TableReservation::create([
-            'booking_code' => rand(1000, 9999),
+            'booking_code' => 100000 + $index,
             'table_id' => $table->id,
             'customer_id' => $customer->id,
             'reservation_date' => now()->subDays($index)->toDateString(),
@@ -1661,4 +1794,34 @@ test('history tab uses pagination for bookings', function () {
     });
 
     $response->assertSee('page=2', false);
+});
+
+test('history tab pagination shows first and last page with ellipsis on middle pages', function () {
+    $admin = adminUser();
+    $area = makeArea();
+
+    for ($index = 1; $index <= 55; $index++) {
+        $table = makeTable($area, [
+            'table_number' => 'HIST-FLEX-'.$index,
+            'qr_code' => 'HIST-FLEX-QR-'.$index,
+            'status' => 'available',
+        ]);
+        $customer = makeBookingCustomer();
+
+        TableReservation::create([
+            'booking_code' => 200000 + $index,
+            'table_id' => $table->id,
+            'customer_id' => $customer->id,
+            'reservation_date' => now()->subDays($index)->toDateString(),
+            'reservation_time' => '20:00',
+            'status' => 'completed',
+        ]);
+    }
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'history', 'page' => 3]))
+        ->assertOk()
+        ->assertSee('page=1', false)
+        ->assertSee('page=6', false)
+        ->assertSee('pagination-ellipsis', false);
 });

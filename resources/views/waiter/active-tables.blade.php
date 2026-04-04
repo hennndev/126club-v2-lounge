@@ -201,7 +201,7 @@
               {{-- Tax --}}
               @if ($taxAmount > 0)
                 <div class="flex items-center justify-between text-sm">
-                  <span class="text-slate-500">PPN ({{ $taxPercentage }}%)</span>
+                  <span class="text-slate-500">PB1 ({{ $taxPercentage }}%)</span>
                   <span class="text-slate-700">Rp {{ number_format($taxAmount, 0, ',', '.') }}</span>
                 </div>
               @endif

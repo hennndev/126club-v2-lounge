@@ -315,7 +315,7 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
         ->assertSee('Memproses...', false);
 });
 
-test('walk in payment summary shows ppn row before service charge row', function () {
+test('walk in payment summary shows pb1 row before service charge row', function () {
     $admin = adminUser();
 
     $response = actingAs($admin)->get(route('admin.pos.index'));
@@ -340,7 +340,7 @@ test('walk in payment summary shows discount row after subtotal row', function (
         ], false);
 });
 
-test('walk in confirmation summary shows ppn row before service charge row', function () {
+test('walk in confirmation summary shows pb1 row before service charge row', function () {
     $admin = adminUser();
 
     $response = actingAs($admin)->get(route('admin.pos.index'));

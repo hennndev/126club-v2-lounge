@@ -231,6 +231,49 @@ test('dashboard sync includes walk-in split orders with null payment method', fu
         ->and((int) $dashboard->total_transactions)->toBe(1);
 });
 
+test('dashboard sync does not double count split second non-cash amount when first non-cash is zero', function () {
+    $admin = adminUser();
+
+    createDashboardKitchenAndBarItems($admin->id, 1, 1);
+
+    Billing::create([
+        'table_session_id' => null,
+        'order_id' => null,
+        'is_walk_in' => true,
+        'is_booking' => false,
+        'minimum_charge' => 0,
+        'orders_total' => 600000,
+        'subtotal' => 600000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 600000,
+        'paid_amount' => 600000,
+        'billing_status' => 'paid',
+        'payment_method' => null,
+        'payment_mode' => 'split',
+        'split_cash_amount' => 100000,
+        'split_debit_amount' => 0,
+        'split_non_cash_method' => 'debit',
+        'split_non_cash_reference_number' => null,
+        'split_second_non_cash_amount' => 500000,
+        'split_second_non_cash_method' => 'transfer',
+        'split_second_non_cash_reference_number' => 'TRX-500K',
+    ]);
+
+    (new DashboardSyncService)->sync();
+
+    $dashboard = Dashboard::query()->findOrFail(1);
+
+    expect((float) $dashboard->total_amount)->toBe(600000.0)
+        ->and((float) $dashboard->total_cash)->toBe(100000.0)
+        ->and((float) $dashboard->total_transfer)->toBe(500000.0)
+        ->and((float) $dashboard->total_debit)->toBe(0.0)
+        ->and((int) $dashboard->total_transactions)->toBe(1);
+});
+
 test('dashboard sync aggregates category main totals from related order items', function () {
     $admin = adminUser();
 
