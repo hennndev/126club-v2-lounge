@@ -190,6 +190,18 @@
         </div>
       </template>
 
+      <template x-if="checkoutForm.customer_type === 'walk-in'">
+        <label class="flex items-start gap-2.5 bg-slate-50 border border-slate-200 rounded-xl p-3 cursor-pointer">
+          <input type="checkbox"
+                 x-model="checkoutForm.auto_print_receipt"
+                 class="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-400">
+          <div>
+            <p class="text-xs font-semibold text-slate-800">Auto print struk setelah submit</p>
+            <p class="text-[11px] text-slate-600 mt-0.5">Jika aktif, tombol “Ya, Selesaikan Transaksi” langsung mengirim struk ke printer.</p>
+          </div>
+        </label>
+      </template>
+
       <!-- Booking note -->
       <template x-if="checkoutForm.customer_type !== 'walk-in'">
         <div class="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl p-3">
@@ -209,17 +221,35 @@
     </div>
 
     <!-- Footer -->
-    <div class="flex gap-3 px-5 pb-5 pt-3 border-t border-gray-100">
+    <div class="flex flex-col gap-3 px-5 pb-5 pt-3 border-t border-gray-100">
       <button type="button"
               @click="if (!isProcessing) { showConfirmModal = false }"
               :disabled="isProcessing"
-              class="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 font-medium text-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
+              class="w-full px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 font-medium text-sm transition disabled:opacity-50 disabled:cursor-not-allowed">
         Kembali
       </button>
+      <template x-if="checkoutForm.customer_type === 'walk-in'">
+        <button type="button"
+                @click="printWalkInDraftReceipt()"
+                :disabled="isProcessing || !canProceedToCheckout() || requiresWaiterSelection()"
+                class="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-500 font-semibold text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+          <svg class="w-4 h-4"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+          Print Struk
+        </button>
+      </template>
+
       <button type="button"
-              @click="submitCheckout()"
+              @click="submitCheckout(false)"
               :disabled="isProcessing || !canProceedToCheckout() || requiresWaiterSelection()"
-              class="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 font-semibold text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+              class="w-full px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 font-semibold text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
         <svg x-show="isProcessing"
              class="w-4 h-4 animate-spin"
              fill="none"

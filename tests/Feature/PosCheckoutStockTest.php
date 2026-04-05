@@ -301,7 +301,7 @@ test('pos confirmation modal keeps loading state visible while checkout is proce
 
     $response->assertOk()
         ->assertSee('@click.self="if (!isProcessing) { showConfirmModal = false }"', false)
-        ->assertSee('@click="submitCheckout()"', false)
+        ->assertSee('@click="submitCheckout(false)"', false)
         ->assertSee(':disabled="isProcessing"', false)
         ->assertSee('Discount (Opsional)', false)
         ->assertSee('Split Bill', false)
@@ -1262,6 +1262,156 @@ test('walk in checkout auto print only targets selected checker printers', funct
     expect($orderId)->toBeGreaterThan(0)
         ->and(KitchenOrder::query()->where('order_id', $orderId)->exists())->toBeFalse()
         ->and(BarOrder::query()->where('order_id', $orderId)->exists())->toBeFalse();
+});
+
+test('walk in checkout can skip automatic receipt printing', function () {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081999999999',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => null,
+        'customer_code' => null,
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    $targetPrinter = Printer::create([
+        'name' => 'Walkin Prep Printer',
+        'location' => 'kitchen',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_active' => true,
+    ]);
+
+    $inventoryItem = makePosInventoryItem(['stock_quantity' => 8, 'category_type' => 'main-course']);
+    $inventoryItem->printers()->sync([$targetPrinter->id]);
+
+    PosCategorySetting::updateOrCreate(
+        ['category_type' => 'main-course'],
+        [
+            'show_in_pos' => true,
+            'is_menu' => true,
+            'is_item_group' => false,
+            'preparation_location' => 'kitchen',
+            'source' => 'inventory',
+        ]
+    );
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')->andReturn([]);
+        $mock->shouldReceive('saveCustomer')->andReturn(['r' => ['id' => 1, 'customerNo' => 'CUST-001']]);
+        $mock->shouldReceive('saveSalesOrder')->andReturn(['r' => ['number' => 'SO-001']]);
+        $mock->shouldReceive('saveSalesInvoice')->andReturn(['r' => ['number' => 'INV-001']]);
+    });
+
+    mock(PrinterService::class, function (MockInterface $mock) use ($targetPrinter): void {
+        $mock->shouldReceive('printKitchenTicket')
+            ->once()
+            ->withArgs(function ($order, $printer) use ($targetPrinter): bool {
+                return $printer->id === $targetPrinter->id
+                    && (int) ($order->items->count() ?? 0) === 1;
+            })
+            ->andReturnTrue();
+
+        $mock->shouldReceive('printWalkInBillingReceipt')->never();
+        $mock->shouldReceive('printReceipt')->never();
+        $mock->shouldReceive('printBarTicket')->never();
+    });
+
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'walk-in',
+            'walk_in_customer_id' => $customer->id,
+            'payment_method' => 'cash',
+            'payment_mode' => 'normal',
+            'discount_percentage' => 0,
+            'auto_print_receipt' => false,
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('receipt_printed', false);
+});
+
+test('walk in draft receipt print sends payload to printer service', function () {
+    $admin = adminUser();
+
+    $printer = Printer::create([
+        'name' => 'Walk-in Draft Printer',
+        'location' => 'cashier',
+        'printer_type' => 'cashier',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => true,
+        'is_active' => true,
+    ]);
+
+    GeneralSetting::instance()->update([
+        'walk_in_receipt_printer_id' => $printer->id,
+    ]);
+
+    mock(PrinterService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('printWalkInDraftReceipt')
+            ->once()
+            ->withArgs(function (array $payload, Printer $printer): bool {
+                return $printer->name === 'Walk-in Draft Printer'
+                    && (string) ($payload['customer_name'] ?? '') === 'Guest Test'
+                    && (float) ($payload['grand_total'] ?? 0) === 100000.0
+                    && count($payload['items'] ?? []) === 1;
+            })
+            ->andReturnTrue();
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.pos.print-walk-in-draft-receipt'), [
+            'customer_name' => 'Guest Test',
+            'items' => [
+                [
+                    'name' => 'Nasi Goreng',
+                    'qty' => 1,
+                    'price' => 100000,
+                    'subtotal' => 100000,
+                ],
+            ],
+            'subtotal' => 100000,
+            'discount_amount' => 0,
+            'tax' => 0,
+            'tax_percentage' => 0,
+            'service_charge' => 0,
+            'service_charge_percentage' => 0,
+            'grand_total' => 100000,
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'payment_reference_number' => '',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
 });
 
 test('booking checkout does not print receipt even when cashier printer exists', function () {

@@ -1639,6 +1639,181 @@ test('history tab row includes split payment method and reference payload for mo
         ->assertSee('"reference_number":"Ref 1: QR-123 | Ref 2: TRF-456"', false);
 });
 
+test('history tab shows edit payment action in billing detail modal', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '22:00',
+        'status' => 'completed',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now()->subHours(3),
+        'checked_out_at' => now()->subHours(1),
+        'status' => 'completed',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 100000,
+        'subtotal' => 100000,
+        'tax' => 10000,
+        'tax_percentage' => 10,
+        'service_charge' => 5000,
+        'service_charge_percentage' => 5,
+        'discount_amount' => 0,
+        'grand_total' => 115000,
+        'paid_amount' => 115000,
+        'billing_status' => 'paid',
+        'payment_mode' => 'normal',
+        'payment_method' => 'transfer',
+        'payment_reference_number' => 'HIST-PAY-001',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'history']))
+        ->assertOk()
+        ->assertSee('id="historyBillingEditPaymentButton"', false)
+        ->assertSee('id="historyPaymentEditModal"', false)
+        ->assertSee('"update_payment_url":', false);
+});
+
+test('history payment update endpoint updates billing payment fields', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '22:30',
+        'status' => 'completed',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now()->subHours(3),
+        'checked_out_at' => now()->subHours(1),
+        'status' => 'completed',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 120000,
+        'subtotal' => 120000,
+        'tax' => 12000,
+        'tax_percentage' => 10,
+        'service_charge' => 6000,
+        'service_charge_percentage' => 5,
+        'discount_amount' => 0,
+        'grand_total' => 138000,
+        'paid_amount' => 138000,
+        'billing_status' => 'paid',
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $this->actingAs($admin)
+        ->patchJson(route('admin.bookings.updateHistoryPayment', $booking), [
+            'payment_mode' => 'normal',
+            'payment_method' => 'transfer',
+            'payment_reference_number' => 'TRF-HISTORY-987',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $billing->refresh();
+
+    expect((string) $billing->payment_mode)->toBe('normal')
+        ->and((string) $billing->payment_method)->toBe('transfer')
+        ->and((string) $billing->payment_reference_number)->toBe('TRF-HISTORY-987')
+        ->and($billing->split_cash_amount)->toBeNull()
+        ->and($billing->split_debit_amount)->toBeNull();
+});
+
+test('history payment split method non-cash requires reference number', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'available']);
+    $customer = makeBookingCustomer();
+
+    $booking = TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'reservation_date' => now()->subDay()->toDateString(),
+        'reservation_time' => '22:00',
+        'status' => 'completed',
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => $booking->id,
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SES-'.uniqid(),
+        'checked_in_at' => now()->subHours(3),
+        'checked_out_at' => now()->subHour(),
+        'status' => 'completed',
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 120000,
+        'subtotal' => 120000,
+        'tax' => 12000,
+        'tax_percentage' => 10,
+        'service_charge' => 6000,
+        'service_charge_percentage' => 5,
+        'discount_amount' => 0,
+        'grand_total' => 138000,
+        'paid_amount' => 138000,
+        'billing_status' => 'paid',
+        'payment_mode' => 'normal',
+        'payment_method' => 'cash',
+    ]);
+
+    $session->update(['billing_id' => $billing->id]);
+
+    $this->actingAs($admin)
+        ->patchJson(route('admin.bookings.updateHistoryPayment', $booking), [
+            'payment_mode' => 'split',
+            'split_cash_amount' => 38000,
+            'split_non_cash_amount' => 100000,
+            'split_non_cash_method' => 'qris',
+            'split_non_cash_reference_number' => '',
+            'split_second_non_cash_amount' => 0,
+            'split_second_non_cash_method' => null,
+            'split_second_non_cash_reference_number' => null,
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('errors.split_non_cash_reference_number.0', 'Nomor referensi non-cash pertama untuk split bill wajib diisi.');
+});
+
 test('history tab shows reprint receipt action when booking has billing', function () {
     $admin = adminUser();
     $area = makeArea();

@@ -45,6 +45,14 @@ class PrinterService
     /**
      * @param  array<string, mixed>  $payload
      */
+    public function printWalkInDraftReceipt(array $payload, Printer $printer): bool
+    {
+        return $this->printBillingTemplatePayload($payload, $printer, 'WALK-IN DRAFT RECEIPT', 'WALK-IN DRAFT RECEIPT PREVIEW');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     protected function printBillingTemplatePayload(array $payload, Printer $printer, string $logTitle, string $previewTitle): bool
     {
         $width = max((int) ($printer->width ?: 42), 42);

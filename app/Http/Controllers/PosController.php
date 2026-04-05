@@ -494,6 +494,7 @@ class PosController extends Controller
             'split_second_non_cash_reference_number' => 'nullable|string|max:100',
             'checker_printer_ids' => 'nullable|array',
             'checker_printer_ids.*' => 'integer|exists:printers,id',
+            'auto_print_receipt' => 'nullable|boolean',
         ]);
 
         $cartNotes = $request->input('cart_notes', []);
@@ -713,6 +714,10 @@ class PosController extends Controller
 
             // Walk-in: no table session, immediate payment + receipt
             if ($validated['customer_type'] === 'walk-in') {
+                $autoPrintReceipt = array_key_exists('auto_print_receipt', $validated)
+                    ? (bool) $validated['auto_print_receipt']
+                    : true;
+
                 $request->validate([
                     'walk_in_customer_id' => 'required|exists:users,id',
                 ]);
@@ -1025,7 +1030,9 @@ class PosController extends Controller
                 // Push to Accurate: Sales Order + Sales Invoice (non-blocking)
                 $this->pushOrderToAccurate($order, $customerUser, $totals['grand_total']);
 
-                $receiptPrinted = $this->printOrderReceipt($order, 'walk_in');
+                $receiptPrinted = $autoPrintReceipt
+                    ? $this->printOrderReceipt($order, 'walk_in')
+                    : false;
 
                 return response()->json([
                     'success' => true,
@@ -1522,6 +1529,98 @@ class PosController extends Controller
                 'message' => 'Failed to print receipt: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    public function printWalkInDraftReceipt(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'customer_name' => 'nullable|string|max:100',
+            'items' => 'required|array|min:1',
+            'items.*.name' => 'required|string|max:200',
+            'items.*.qty' => 'required|integer|min:1',
+            'items.*.price' => 'required|numeric|min:0',
+            'items.*.subtotal' => 'required|numeric|min:0',
+            'subtotal' => 'required|numeric|min:0',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'tax' => 'nullable|numeric|min:0',
+            'tax_percentage' => 'nullable|numeric|min:0|max:100',
+            'service_charge' => 'nullable|numeric|min:0',
+            'service_charge_percentage' => 'nullable|numeric|min:0|max:100',
+            'grand_total' => 'required|numeric|min:0',
+            'payment_mode' => 'nullable|in:normal,split',
+            'payment_method' => 'nullable|string|max:50',
+            'payment_reference_number' => 'nullable|string|max:100',
+            'split_cash_amount' => 'nullable|numeric|min:0',
+            'split_non_cash_amount' => 'nullable|numeric|min:0',
+            'split_non_cash_method' => 'nullable|string|max:50',
+            'split_non_cash_reference_number' => 'nullable|string|max:100',
+            'split_second_non_cash_amount' => 'nullable|numeric|min:0',
+            'split_second_non_cash_method' => 'nullable|string|max:50',
+            'split_second_non_cash_reference_number' => 'nullable|string|max:100',
+        ]);
+
+        $printer = $this->resolveReceiptPrinter('walk_in');
+
+        if (! $printer) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No default printer configured.',
+            ], 400);
+        }
+
+        $draftNumber = 'DRAFT-'.now()->format('Ymd-His');
+        $paymentMode = strtolower((string) ($validated['payment_mode'] ?? 'normal'));
+        $paymentMethod = strtoupper((string) ($validated['payment_method'] ?? 'CASH'));
+
+        $payload = [
+            'transaction_code' => $draftNumber,
+            'date' => now()->setTimezone('Asia/Jakarta')->format('d/m/Y H:i'),
+            'cashier' => (string) (Auth::user()?->name ?? 'Admin'),
+            'customer_name' => (string) ($validated['customer_name'] ?? 'Walk-in'),
+            'type' => 'WALK-IN (DRAFT)',
+            'table' => 'WALK-IN',
+            'items' => collect($validated['items'])
+                ->map(fn (array $item): array => [
+                    'name' => (string) ($item['name'] ?? '-'),
+                    'qty' => (int) ($item['qty'] ?? 0),
+                    'price' => (float) ($item['price'] ?? 0),
+                    'subtotal' => (float) ($item['subtotal'] ?? 0),
+                ])
+                ->values()
+                ->all(),
+            'down_payment_amount' => 0,
+            'subtotal' => (float) ($validated['subtotal'] ?? 0),
+            'discount_amount' => (float) ($validated['discount_amount'] ?? 0),
+            'tax' => (float) ($validated['tax'] ?? 0),
+            'tax_percentage' => (float) ($validated['tax_percentage'] ?? 0),
+            'service_charge' => (float) ($validated['service_charge'] ?? 0),
+            'service_charge_percentage' => (float) ($validated['service_charge_percentage'] ?? 0),
+            'grand_total' => (float) ($validated['grand_total'] ?? 0),
+            'payment_mode' => $paymentMode,
+            'payment_method' => $paymentMode === 'split' ? 'SPLIT BILL' : $paymentMethod,
+            'payment_reference_number' => (string) ($validated['payment_reference_number'] ?? ''),
+            'split_cash_amount' => (float) ($validated['split_cash_amount'] ?? 0),
+            'split_non_cash_amount' => (float) ($validated['split_non_cash_amount'] ?? 0),
+            'split_non_cash_method' => strtoupper((string) ($validated['split_non_cash_method'] ?? 'NON-CASH 1')),
+            'split_non_cash_reference_number' => (string) ($validated['split_non_cash_reference_number'] ?? ''),
+            'split_second_non_cash_amount' => (float) ($validated['split_second_non_cash_amount'] ?? 0),
+            'split_second_non_cash_method' => strtoupper((string) ($validated['split_second_non_cash_method'] ?? 'NON-CASH 2')),
+            'split_second_non_cash_reference_number' => (string) ($validated['split_second_non_cash_reference_number'] ?? ''),
+        ];
+
+        $printed = $this->printerService->printWalkInDraftReceipt($payload, $printer);
+
+        if (! $printed) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengirim draft struk ke printer.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Draft struk berhasil dikirim ke printer.',
+        ]);
     }
 
     /**

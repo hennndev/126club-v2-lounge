@@ -194,7 +194,7 @@
       <!-- For Walk-in: Show Cetak Struk button -->
       <button type="button"
               x-show="receiptData?.customerType === 'walk-in'"
-              @click="receiptData?.orderId && window.open(posRoutes.receiptBase + '/' + receiptData.orderId + '/receipt', 'struk', 'width=360,height=700,scrollbars=yes'); closeReceiptModal()"
+              @click="printReceipt('cashier'); closeReceiptModal()"
               class="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-500 font-semibold text-sm transition flex items-center justify-center gap-2">
         <svg class="w-4 h-4"
              fill="none"

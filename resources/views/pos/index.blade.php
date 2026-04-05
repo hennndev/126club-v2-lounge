@@ -39,6 +39,7 @@
         previewCheckoutAvailability: "{{ route('admin.pos.preview-checkout-availability') }}",
         checkout: "{{ route('admin.pos.checkout') }}",
         printReceiptBase: "{{ url('admin/pos/print-receipt') }}",
+        printWalkInDraftReceipt: "{{ route('admin.pos.print-walk-in-draft-receipt') }}",
         verifyAuthCode: "{{ route('admin.settings.daily-auth-code.verify') }}",
         sendAuthCodeEmail: "{{ route('admin.settings.daily-auth-code.send-email') }}",
         walkInSearchCustomers: "{{ route('admin.pos.walk-in.search-customers') }}",
@@ -221,6 +222,7 @@
             customer_type: '',
             customer_user_id: '',
             walk_in_customer_id: '',
+            auto_print_receipt: true,
             payment_method: 'cash',
             payment_mode: 'normal',
             payment_reference_number: '',
@@ -642,6 +644,7 @@
             this.checkoutForm.payment_mode = 'normal';
             this.checkoutForm.payment_method = 'cash';
             this.checkoutForm.payment_reference_number = '';
+            this.checkoutForm.auto_print_receipt = true;
             this.checkoutForm.split_cash_amount = 0;
             this.checkoutForm.split_non_cash_amount = this.payableTotal();
             this.checkoutForm.split_non_cash_method = 'debit';
@@ -1024,7 +1027,7 @@
             return Math.floor(this.payableTotal() / 10000);
           },
 
-          async submitCheckout() {
+          async submitCheckout(forcePrintReceipt = false) {
             if (this.isProcessing) {
               return;
             }
@@ -1087,6 +1090,7 @@
 
               if (this.checkoutForm.customer_type === 'walk-in') {
                 payload.discount_type = this.checkoutForm.discount_type;
+                payload.auto_print_receipt = forcePrintReceipt ? true : Boolean(this.checkoutForm.auto_print_receipt);
 
                 if (this.checkoutForm.discount_type === 'percentage') {
                   payload.discount_percentage = this.getWalkInDiscountPercentage();
@@ -1190,6 +1194,7 @@
                   customer_type: '',
                   customer_user_id: '',
                   walk_in_customer_id: '',
+                  auto_print_receipt: true,
                   payment_method: 'cash',
                   payment_mode: 'normal',
                   payment_reference_number: '',
@@ -1491,6 +1496,65 @@
             const html = '<html><head><title>Struk</' + 'title><style>' + css + '</' + 'style></' + 'head><body>' + body + '</' + 'body></' + 'html>';
             this._printHtml(html);
             return true;
+          },
+
+          printWalkInDraftReceipt() {
+            if (this.checkoutForm.customer_type !== 'walk-in') {
+              return;
+            }
+
+            if (!this.validateWalkInPaymentFields()) {
+              return;
+            }
+
+            const payload = {
+              customer_name: this.checkoutForm.customerName || 'Walk-in',
+              items: this.cart.map((item) => ({
+                name: item.name,
+                qty: Number(item.quantity || 0),
+                price: Number(item.price || 0),
+                subtotal: Number(item.price || 0) * Number(item.quantity || 0),
+              })),
+              subtotal: Number(this.cartTotal || 0),
+              discount_amount: Number(this.discountAmount() || 0),
+              tax: Number(this.calculatedTax() || 0),
+              tax_percentage: Number(this.posCharges.taxPercentage || 0),
+              service_charge: Number(this.calculatedServiceCharge() || 0),
+              service_charge_percentage: Number(this.posCharges.serviceChargePercentage || 0),
+              grand_total: Number(this.payableTotal() || 0),
+              payment_mode: this.checkoutForm.payment_mode || 'normal',
+              payment_method: this.checkoutForm.payment_method || 'cash',
+              payment_reference_number: this.checkoutForm.payment_reference_number || '',
+              split_cash_amount: Number(this.checkoutForm.split_cash_amount || 0),
+              split_non_cash_amount: Number(this.checkoutForm.split_non_cash_amount || 0),
+              split_non_cash_method: this.checkoutForm.split_non_cash_method || '',
+              split_non_cash_reference_number: this.checkoutForm.split_non_cash_reference_number || '',
+              split_second_non_cash_amount: Number(this.checkoutForm.split_second_non_cash_amount || 0),
+              split_second_non_cash_method: this.checkoutForm.split_second_non_cash_method || '',
+              split_second_non_cash_reference_number: this.checkoutForm.split_second_non_cash_reference_number || '',
+            };
+
+            fetch(posRoutes.printWalkInDraftReceipt, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                  'Accept': 'application/json',
+                },
+                body: JSON.stringify(payload),
+              })
+              .then(async (response) => {
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                  throw new Error(data.message || 'Gagal mencetak draft struk.');
+                }
+
+                this.showToastMessage(data.message || 'Draft struk berhasil dikirim ke printer.', 'success');
+              })
+              .catch((error) => {
+                this.showToastMessage(error.message || 'Gagal mencetak draft struk.', 'error');
+              });
           },
 
           _printHtml(html) {
