@@ -492,8 +492,184 @@
 
       <div class="px-5 py-4 border-t border-gray-100 flex justify-end">
         <button type="button"
+                id="historyBillingEditPaymentButton"
+                onclick="openHistoryPaymentEditModal()"
+                class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 transition mr-2">Edit Payment</button>
+        <button type="button"
                 onclick="closeHistoryBookingDetailModal()"
                 class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="historyPaymentEditModal"
+     class="hidden fixed inset-0 z-[72]">
+  <div class="absolute inset-0 bg-black/40"
+       onclick="closeHistoryPaymentEditModal()"></div>
+  <div class="relative z-[73] min-h-full flex items-center justify-center p-4">
+    <div class="w-full max-w-xl bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-semibold text-gray-900">Edit Payment History</h3>
+          <p id="historyPaymentEditSubtitle"
+             class="text-xs text-gray-500 mt-0.5">-</p>
+        </div>
+        <button type="button"
+                onclick="closeHistoryPaymentEditModal()"
+                class="text-gray-400 hover:text-gray-600 transition">✕</button>
+      </div>
+
+      <div class="px-5 py-4 space-y-3 text-sm">
+        <div>
+          <label for="historyPaymentEditMode"
+                 class="block text-xs font-medium text-gray-600 mb-1">Mode Pembayaran</label>
+          <select id="historyPaymentEditMode"
+                  onchange="toggleHistoryPaymentEditFields()"
+                  class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+            <option value="normal">Normal</option>
+            <option value="split">Split</option>
+          </select>
+        </div>
+
+        <div id="historyPaymentEditNormalFields"
+             class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="historyPaymentEditMethod"
+                   class="block text-xs font-medium text-gray-600 mb-1">Metode Pembayaran</label>
+            <select id="historyPaymentEditMethod"
+                    class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+              <option value="cash">CASH</option>
+              <option value="kredit">KREDIT</option>
+              <option value="debit">DEBIT</option>
+              <option value="qris">QRIS</option>
+              <option value="transfer">TRANSFER</option>
+            </select>
+          </div>
+          <div>
+            <label for="historyPaymentEditReference"
+                   class="block text-xs font-medium text-gray-600 mb-1">Reference Number</label>
+            <input id="historyPaymentEditReference"
+                   type="text"
+                   maxlength="100"
+                   placeholder="Isi jika non-cash"
+                   class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+          </div>
+        </div>
+
+        <div id="historyPaymentEditSplitFields"
+             class="hidden space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="historyPaymentEditSplitCashDisplay"
+                     class="block text-xs font-medium text-gray-600 mb-1">Split Cash Amount</label>
+              <input id="historyPaymentEditSplitCashDisplay"
+                     type="text"
+                     inputmode="numeric"
+                     value="Rp 0"
+                     oninput="onHistorySplitInput('Cash', event)"
+                     class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+              <input id="historyPaymentEditSplitCash"
+                     type="hidden"
+                     value="0">
+            </div>
+            <div>
+              <label for="historyPaymentEditSplitFirstAmountDisplay"
+                     class="block text-xs font-medium text-gray-600 mb-1">Split Non-cash 1 Amount</label>
+              <input id="historyPaymentEditSplitFirstAmountDisplay"
+                     type="text"
+                     inputmode="numeric"
+                     value="Rp 0"
+                     oninput="onHistorySplitInput('FirstAmount', event)"
+                     class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+              <input id="historyPaymentEditSplitFirstAmount"
+                     type="hidden"
+                     value="0">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="historyPaymentEditSplitFirstMethod"
+                     class="block text-xs font-medium text-gray-600 mb-1">Split Non-cash 1 Method</label>
+              <select id="historyPaymentEditSplitFirstMethod"
+                      class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+                <option value="">Pilih metode</option>
+                <option value="debit">DEBIT</option>
+                <option value="kredit">KREDIT</option>
+                <option value="qris">QRIS</option>
+                <option value="transfer">TRANSFER</option>
+                <option value="ewallet">EWALLET</option>
+                <option value="lainnya">LAINNYA</option>
+              </select>
+            </div>
+            <div>
+              <label for="historyPaymentEditSplitFirstReference"
+                     class="block text-xs font-medium text-gray-600 mb-1">Split Non-cash 1 Reference</label>
+              <input id="historyPaymentEditSplitFirstReference"
+                     type="text"
+                     maxlength="100"
+                     class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="historyPaymentEditSplitSecondAmountDisplay"
+                     class="block text-xs font-medium text-gray-600 mb-1">Split Non-cash 2 Amount</label>
+              <input id="historyPaymentEditSplitSecondAmountDisplay"
+                     type="text"
+                     inputmode="numeric"
+                     value="Rp 0"
+                     oninput="onHistorySplitInput('SecondAmount', event)"
+                     class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+              <input id="historyPaymentEditSplitSecondAmount"
+                     type="hidden"
+                     value="0">
+            </div>
+            <div>
+              <label for="historyPaymentEditSplitSecondMethod"
+                     class="block text-xs font-medium text-gray-600 mb-1">Split Non-cash 2 Method</label>
+              <select id="historyPaymentEditSplitSecondMethod"
+                      class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+                <option value="">Pilih metode</option>
+                <option value="debit">DEBIT</option>
+                <option value="kredit">KREDIT</option>
+                <option value="qris">QRIS</option>
+                <option value="transfer">TRANSFER</option>
+                <option value="ewallet">EWALLET</option>
+                <option value="lainnya">LAINNYA</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label for="historyPaymentEditSplitSecondReference"
+                   class="block text-xs font-medium text-gray-600 mb-1">Split Non-cash 2 Reference</label>
+            <input id="historyPaymentEditSplitSecondReference"
+                   type="text"
+                   maxlength="100"
+                   class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+          <p class="text-xs text-amber-700">Grand Total Billing: <span id="historyPaymentEditGrandTotal"
+                  class="font-semibold">Rp 0</span></p>
+        </div>
+
+        <p id="historyPaymentEditError"
+           class="hidden text-xs text-red-600"></p>
+      </div>
+
+      <div class="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+        <button type="button"
+                onclick="closeHistoryPaymentEditModal()"
+                class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Batal</button>
+        <button type="button"
+                id="historyPaymentEditSubmit"
+                onclick="submitHistoryPaymentEdit()"
+                class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition">Simpan Payment</button>
       </div>
     </div>
   </div>
@@ -584,6 +760,18 @@
                   'payment_mode' => strtoupper((string) ($billing?->payment_mode ?? '-')),
                   'payment_method' => $paymentMethodDisplay,
                   'reference_number' => $referenceNumberDisplay,
+                  'payment_mode_value' => strtolower((string) ($billing?->payment_mode ?? 'normal')),
+                  'payment_method_value' => strtolower((string) ($billing?->payment_method ?? 'cash')),
+                  'payment_reference_number' => (string) ($billing?->payment_reference_number ?? ''),
+                  'split_cash_amount' => (float) ($billing?->split_cash_amount ?? 0),
+                  'split_non_cash_amount' => (float) ($billing?->split_debit_amount ?? 0),
+                  'split_non_cash_method' => strtolower((string) ($billing?->split_non_cash_method ?? '')),
+                  'split_non_cash_reference_number' => (string) ($billing?->split_non_cash_reference_number ?? ''),
+                  'split_second_non_cash_amount' => (float) ($billing?->split_second_non_cash_amount ?? 0),
+                  'split_second_non_cash_method' => strtolower((string) ($billing?->split_second_non_cash_method ?? '')),
+                  'split_second_non_cash_reference_number' => (string) ($billing?->split_second_non_cash_reference_number ?? ''),
+                  'grand_total' => (float) ($billing?->grand_total ?? 0),
+                  'update_payment_url' => route('admin.bookings.updateHistoryPayment', $booking),
               ],
           ];
       })
@@ -629,6 +817,138 @@
 <script>
   const historyBillingDetailData = @json($historyBillingDetailMap);
   const historyOrdersData = @json($historyOrdersMap);
+  let historyPaymentEditBookingId = null;
+  let historyPaymentEditPreviousMode = 'normal';
+
+  function historyFormatRupiah(value) {
+    return `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+  }
+
+  function historyExtractNumber(inputValue) {
+    const digits = String(inputValue || '').replace(/[^0-9]/g, '');
+    return digits ? Number(digits) : 0;
+  }
+
+  function historySetSplitInput(which, amount) {
+    const normalizedAmount = Math.max(Number(amount || 0), 0);
+    const hidden = document.getElementById(`historyPaymentEditSplit${which}`);
+    const display = document.getElementById(`historyPaymentEditSplit${which}Display`);
+
+    if (hidden) {
+      hidden.value = String(normalizedAmount);
+    }
+
+    if (display) {
+      display.value = historyFormatRupiah(normalizedAmount);
+    }
+  }
+
+  function historyApplySplitDisableState() {
+    const splitCashAmount = Number(document.getElementById('historyPaymentEditSplitCash')?.value || 0);
+    const splitSecondAmount = Number(document.getElementById('historyPaymentEditSplitSecondAmount')?.value || 0);
+
+    const cashDisplay = document.getElementById('historyPaymentEditSplitCashDisplay');
+    const secondDisplay = document.getElementById('historyPaymentEditSplitSecondAmountDisplay');
+    const secondMethod = document.getElementById('historyPaymentEditSplitSecondMethod');
+    const secondReference = document.getElementById('historyPaymentEditSplitSecondReference');
+
+    const shouldDisableSecondNonCash = splitCashAmount > 0;
+    const shouldDisableCash = splitSecondAmount > 0;
+
+    if (cashDisplay) {
+      cashDisplay.disabled = shouldDisableCash;
+      cashDisplay.classList.toggle('bg-gray-100', shouldDisableCash);
+      cashDisplay.classList.toggle('cursor-not-allowed', shouldDisableCash);
+    }
+
+    if (secondDisplay) {
+      secondDisplay.disabled = shouldDisableSecondNonCash;
+      secondDisplay.classList.toggle('bg-gray-100', shouldDisableSecondNonCash);
+      secondDisplay.classList.toggle('cursor-not-allowed', shouldDisableSecondNonCash);
+    }
+
+    if (secondMethod) {
+      secondMethod.disabled = shouldDisableSecondNonCash;
+      secondMethod.classList.toggle('bg-gray-100', shouldDisableSecondNonCash);
+      secondMethod.classList.toggle('cursor-not-allowed', shouldDisableSecondNonCash);
+    }
+
+    if (secondReference) {
+      secondReference.disabled = shouldDisableSecondNonCash;
+      secondReference.classList.toggle('bg-gray-100', shouldDisableSecondNonCash);
+      secondReference.classList.toggle('cursor-not-allowed', shouldDisableSecondNonCash);
+    }
+  }
+
+  function historyAutoFillSplitFromGrandTotal() {
+    const data = historyBillingDetailData[String(historyPaymentEditBookingId)] || historyBillingDetailData[historyPaymentEditBookingId];
+    const grandTotal = Number(data?.grand_total || 0);
+
+    historySetSplitInput('Cash', 0);
+    historySetSplitInput('FirstAmount', grandTotal);
+    historySetSplitInput('SecondAmount', 0);
+
+    const splitFirstMethod = document.getElementById('historyPaymentEditSplitFirstMethod');
+    const splitSecondMethod = document.getElementById('historyPaymentEditSplitSecondMethod');
+    const splitFirstReference = document.getElementById('historyPaymentEditSplitFirstReference');
+    const splitSecondReference = document.getElementById('historyPaymentEditSplitSecondReference');
+
+    if (splitFirstMethod && !splitFirstMethod.value) {
+      splitFirstMethod.value = 'debit';
+    }
+
+    if (splitSecondMethod && !splitSecondMethod.value) {
+      splitSecondMethod.value = 'debit';
+    }
+
+    if (splitFirstReference) {
+      splitFirstReference.value = splitFirstReference.value || '';
+    }
+
+    if (splitSecondReference) {
+      splitSecondReference.value = splitSecondReference.value || '';
+    }
+  }
+
+  function onHistorySplitInput(which, event) {
+    const input = event?.target;
+    const enteredAmount = historyExtractNumber(input?.value);
+
+    const data = historyBillingDetailData[String(historyPaymentEditBookingId)] || historyBillingDetailData[historyPaymentEditBookingId];
+    const maxAmount = Math.max(Number(data?.grand_total || 0), 0);
+    const normalizedAmount = Math.min(Math.max(enteredAmount, 0), maxAmount);
+
+    let splitCashAmount = Number(document.getElementById('historyPaymentEditSplitCash')?.value || 0);
+    let splitFirstAmount = Number(document.getElementById('historyPaymentEditSplitFirstAmount')?.value || 0);
+    let splitSecondAmount = Number(document.getElementById('historyPaymentEditSplitSecondAmount')?.value || 0);
+
+    if (which === 'Cash') {
+      splitCashAmount = normalizedAmount;
+      splitFirstAmount = Math.max(maxAmount - splitCashAmount, 0);
+      splitSecondAmount = 0;
+    }
+
+    if (which === 'FirstAmount') {
+      splitFirstAmount = normalizedAmount;
+
+      if (splitCashAmount > maxAmount - splitFirstAmount) {
+        splitCashAmount = Math.max(maxAmount - splitFirstAmount, 0);
+      }
+
+      splitSecondAmount = Math.max(maxAmount - splitCashAmount - splitFirstAmount, 0);
+    }
+
+    if (which === 'SecondAmount') {
+      splitSecondAmount = normalizedAmount;
+      splitCashAmount = 0;
+      splitFirstAmount = Math.max(maxAmount - splitSecondAmount, 0);
+    }
+
+    historySetSplitInput('Cash', splitCashAmount);
+    historySetSplitInput('FirstAmount', splitFirstAmount);
+    historySetSplitInput('SecondAmount', splitSecondAmount);
+    historyApplySplitDisableState();
+  }
 
   function openHistoryBookingDetailModal(bookingId) {
     const data = historyBillingDetailData[String(bookingId)] || historyBillingDetailData[bookingId];
@@ -659,6 +979,8 @@
     if (subtitle) {
       subtitle.textContent = `${data.customer} — Meja ${data.table}`;
     }
+
+    modal.dataset.bookingId = String(bookingId);
 
     if (orderCount) {
       orderCount.textContent = Number(data.order_count || 0).toLocaleString('id-ID');
@@ -715,6 +1037,224 @@
     }
 
     modal.classList.add('hidden');
+  }
+
+  function toggleHistoryPaymentEditFields() {
+    const mode = document.getElementById('historyPaymentEditMode')?.value || 'normal';
+    const normalFields = document.getElementById('historyPaymentEditNormalFields');
+    const splitFields = document.getElementById('historyPaymentEditSplitFields');
+
+    if (normalFields) {
+      normalFields.classList.toggle('hidden', mode !== 'normal');
+    }
+
+    if (splitFields) {
+      splitFields.classList.toggle('hidden', mode !== 'split');
+    }
+
+    if (mode === 'split') {
+      const splitCash = Number(document.getElementById('historyPaymentEditSplitCash')?.value || 0);
+      const splitFirstAmount = Number(document.getElementById('historyPaymentEditSplitFirstAmount')?.value || 0);
+      const splitSecondAmount = Number(document.getElementById('historyPaymentEditSplitSecondAmount')?.value || 0);
+      const isAllZero = splitCash <= 0 && splitFirstAmount <= 0 && splitSecondAmount <= 0;
+
+      if (historyPaymentEditPreviousMode !== 'split' || isAllZero) {
+        historyAutoFillSplitFromGrandTotal();
+      }
+
+      historyApplySplitDisableState();
+    }
+
+    historyPaymentEditPreviousMode = mode;
+  }
+
+  function openHistoryPaymentEditModal(bookingId = null) {
+    const sourceBookingId = bookingId || document.getElementById('historyBillingDetailModal')?.dataset?.bookingId;
+    const data = historyBillingDetailData[String(sourceBookingId)] || historyBillingDetailData[sourceBookingId];
+
+    if (!data) {
+      return;
+    }
+
+    historyPaymentEditBookingId = String(sourceBookingId);
+
+    const subtitle = document.getElementById('historyPaymentEditSubtitle');
+    const paymentMode = document.getElementById('historyPaymentEditMode');
+    const paymentMethod = document.getElementById('historyPaymentEditMethod');
+    const paymentReference = document.getElementById('historyPaymentEditReference');
+    const splitCash = document.getElementById('historyPaymentEditSplitCash');
+    const splitFirstAmount = document.getElementById('historyPaymentEditSplitFirstAmount');
+    const splitFirstMethod = document.getElementById('historyPaymentEditSplitFirstMethod');
+    const splitFirstReference = document.getElementById('historyPaymentEditSplitFirstReference');
+    const splitSecondAmount = document.getElementById('historyPaymentEditSplitSecondAmount');
+    const splitSecondMethod = document.getElementById('historyPaymentEditSplitSecondMethod');
+    const splitSecondReference = document.getElementById('historyPaymentEditSplitSecondReference');
+    const grandTotal = document.getElementById('historyPaymentEditGrandTotal');
+    const error = document.getElementById('historyPaymentEditError');
+
+    if (subtitle) {
+      subtitle.textContent = `${data.customer} — Meja ${data.table}`;
+    }
+
+    if (paymentMode) {
+      paymentMode.value = data.payment_mode_value || 'normal';
+      historyPaymentEditPreviousMode = paymentMode.value || 'normal';
+    }
+
+    if (paymentMethod) {
+      paymentMethod.value = data.payment_method_value || 'cash';
+    }
+
+    if (paymentReference) {
+      paymentReference.value = data.payment_reference_number || '';
+    }
+
+    if (splitCash) {
+      historySetSplitInput('Cash', Number(data.split_cash_amount || 0));
+    }
+
+    if (splitFirstAmount) {
+      historySetSplitInput('FirstAmount', Number(data.split_non_cash_amount || 0));
+    }
+
+    if (splitFirstMethod) {
+      splitFirstMethod.value = data.split_non_cash_method || '';
+    }
+
+    if (splitFirstReference) {
+      splitFirstReference.value = data.split_non_cash_reference_number || '';
+    }
+
+    if (splitSecondAmount) {
+      historySetSplitInput('SecondAmount', Number(data.split_second_non_cash_amount || 0));
+    }
+
+    if (splitSecondMethod) {
+      splitSecondMethod.value = data.split_second_non_cash_method || '';
+    }
+
+    if (splitSecondReference) {
+      splitSecondReference.value = data.split_second_non_cash_reference_number || '';
+    }
+
+    if (grandTotal) {
+      grandTotal.textContent = historyFormatRupiah(data.grand_total || 0);
+    }
+
+    if (error) {
+      error.textContent = '';
+      error.classList.add('hidden');
+    }
+
+    toggleHistoryPaymentEditFields();
+    historyApplySplitDisableState();
+    document.getElementById('historyPaymentEditModal')?.classList.remove('hidden');
+  }
+
+  function closeHistoryPaymentEditModal() {
+    document.getElementById('historyPaymentEditModal')?.classList.add('hidden');
+    historyPaymentEditBookingId = null;
+  }
+
+  async function submitHistoryPaymentEdit() {
+    if (!historyPaymentEditBookingId) {
+      return;
+    }
+
+    const data = historyBillingDetailData[String(historyPaymentEditBookingId)] || historyBillingDetailData[historyPaymentEditBookingId];
+    if (!data || !data.update_payment_url) {
+      return;
+    }
+
+    const submitButton = document.getElementById('historyPaymentEditSubmit');
+    const error = document.getElementById('historyPaymentEditError');
+    const mode = document.getElementById('historyPaymentEditMode')?.value || 'normal';
+
+    const payload = {
+      payment_mode: mode,
+      payment_method: document.getElementById('historyPaymentEditMethod')?.value || null,
+      payment_reference_number: document.getElementById('historyPaymentEditReference')?.value || null,
+      split_cash_amount: Number(document.getElementById('historyPaymentEditSplitCash')?.value || 0),
+      split_non_cash_amount: Number(document.getElementById('historyPaymentEditSplitFirstAmount')?.value || 0),
+      split_non_cash_method: document.getElementById('historyPaymentEditSplitFirstMethod')?.value || null,
+      split_non_cash_reference_number: document.getElementById('historyPaymentEditSplitFirstReference')?.value || null,
+      split_second_non_cash_amount: Number(document.getElementById('historyPaymentEditSplitSecondAmount')?.value || 0),
+      split_second_non_cash_method: document.getElementById('historyPaymentEditSplitSecondMethod')?.value || null,
+      split_second_non_cash_reference_number: document.getElementById('historyPaymentEditSplitSecondReference')?.value || null,
+    };
+
+    const methodNeedsReference = (method) => {
+      const normalizedMethod = String(method || '').trim().toLowerCase();
+      return normalizedMethod !== '' && normalizedMethod !== 'cash' && normalizedMethod !== 'tunai';
+    };
+
+    if (mode === 'split') {
+      if (payload.split_non_cash_amount > 0 && methodNeedsReference(payload.split_non_cash_method) && !String(payload.split_non_cash_reference_number || '').trim()) {
+        if (error) {
+          error.textContent = 'Nomor referensi non-cash pertama untuk split bill wajib diisi.';
+          error.classList.remove('hidden');
+        }
+        return;
+      }
+
+      if (payload.split_second_non_cash_amount > 0 && methodNeedsReference(payload.split_second_non_cash_method) && !String(payload.split_second_non_cash_reference_number || '').trim()) {
+        if (error) {
+          error.textContent = 'Nomor referensi non-cash kedua untuk split bill wajib diisi.';
+          error.classList.remove('hidden');
+        }
+        return;
+      }
+    }
+
+    if (mode !== 'split') {
+      payload.split_cash_amount = 0;
+      payload.split_non_cash_amount = 0;
+      payload.split_non_cash_method = null;
+      payload.split_non_cash_reference_number = null;
+      payload.split_second_non_cash_amount = 0;
+      payload.split_second_non_cash_method = null;
+      payload.split_second_non_cash_reference_number = null;
+    }
+
+    try {
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Menyimpan...';
+      }
+
+      if (error) {
+        error.textContent = '';
+        error.classList.add('hidden');
+      }
+
+      const response = await fetch(data.update_payment_url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Gagal memperbarui payment.');
+      }
+
+      window.location.reload();
+    } catch (e) {
+      if (error) {
+        error.textContent = e.message || 'Gagal memperbarui payment.';
+        error.classList.remove('hidden');
+      }
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Simpan Payment';
+      }
+    }
   }
 
   document.querySelectorAll('#bookingTableBody .booking-row').forEach((row) => {

@@ -930,6 +930,172 @@ class TableReservationController extends Controller
         return back()->with('success', 'Re-sync Accurate berhasil.');
     }
 
+    public function updateHistoryPayment(Request $request, TableReservation $booking)
+    {
+        $validated = $request->validate([
+            'payment_mode' => 'required|in:normal,split',
+            'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit,qris,transfer',
+            'payment_reference_number' => 'nullable|string|max:100',
+            'split_cash_amount' => 'nullable|numeric|min:0',
+            'split_non_cash_amount' => 'nullable|numeric|min:0',
+            'split_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
+            'split_non_cash_reference_number' => 'nullable|string|max:100',
+            'split_second_non_cash_amount' => 'nullable|numeric|min:0',
+            'split_second_non_cash_method' => 'nullable|in:debit,kredit,qris,transfer,ewallet,lainnya',
+            'split_second_non_cash_reference_number' => 'nullable|string|max:100',
+        ]);
+
+        $booking->loadMissing('tableSession.billing');
+        $billing = $booking->tableSession?->billing;
+
+        if (! $billing) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Billing tidak ditemukan.',
+            ], 404);
+        }
+
+        if ($billing->billing_status !== 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment hanya bisa diedit untuk billing yang sudah dibayar.',
+            ], 422);
+        }
+
+        try {
+            $paymentMode = (string) $validated['payment_mode'];
+            $paymentMethod = null;
+            $paymentReferenceNumber = null;
+            $splitCashAmount = null;
+            $splitDebitAmount = null;
+            $splitNonCashMethod = null;
+            $splitNonCashReferenceNumber = null;
+            $splitSecondNonCashAmount = null;
+            $splitSecondNonCashMethod = null;
+            $splitSecondNonCashReferenceNumber = null;
+
+            if ($paymentMode === 'normal') {
+                $paymentMethod = (string) $validated['payment_method'];
+                $paymentReferenceNumber = $paymentMethod === 'cash'
+                    ? null
+                    : ((string) ($validated['payment_reference_number'] ?? ''));
+
+                if ($paymentMethod !== 'cash' && blank($paymentReferenceNumber)) {
+                    throw ValidationException::withMessages([
+                        'payment_reference_number' => 'Nomor referensi pembayaran non-cash wajib diisi.',
+                    ]);
+                }
+            }
+
+            if ($paymentMode === 'split') {
+                $splitCashAmount = (float) ($validated['split_cash_amount'] ?? 0);
+                $splitDebitAmount = (float) ($validated['split_non_cash_amount'] ?? 0);
+                $splitNonCashMethod = $validated['split_non_cash_method'] ?? null;
+                $splitNonCashReferenceNumber = $validated['split_non_cash_reference_number'] ?? null;
+                $splitSecondNonCashAmount = (float) ($validated['split_second_non_cash_amount'] ?? 0);
+                $splitSecondNonCashMethod = $validated['split_second_non_cash_method'] ?? null;
+                $splitSecondNonCashReferenceNumber = $validated['split_second_non_cash_reference_number'] ?? null;
+
+                $requiresReferenceNumber = static function (?string $method): bool {
+                    $normalizedMethod = strtolower(trim((string) $method));
+
+                    return $normalizedMethod !== '' && ! in_array($normalizedMethod, ['cash', 'tunai'], true);
+                };
+
+                $grandTotal = round((float) $billing->grand_total, 2);
+                $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 2);
+
+                $activeNonCashCount = collect([
+                    ['amount' => $splitDebitAmount, 'method' => $splitNonCashMethod, 'reference' => $splitNonCashReferenceNumber],
+                    ['amount' => $splitSecondNonCashAmount, 'method' => $splitSecondNonCashMethod, 'reference' => $splitSecondNonCashReferenceNumber],
+                ])->filter(fn (array $entry): bool => (float) $entry['amount'] > 0)->count();
+
+                $hasCash = $splitCashAmount > 0;
+
+                if (! $hasCash && $activeNonCashCount < 2) {
+                    throw ValidationException::withMessages([
+                        'split_total' => 'Untuk split non-cash + non-cash, isi dua nominal non-cash lebih dari 0.',
+                    ]);
+                }
+
+                if ($hasCash && $activeNonCashCount < 1) {
+                    throw ValidationException::withMessages([
+                        'split_total' => 'Untuk split cash + non-cash, minimal satu nominal non-cash harus lebih dari 0.',
+                    ]);
+                }
+
+                if ($activeNonCashCount === 0) {
+                    throw ValidationException::withMessages([
+                        'split_total' => 'Split bill memerlukan minimal satu pembayaran non-cash.',
+                    ]);
+                }
+
+                if (abs($splitTotal - $grandTotal) > 0.01) {
+                    throw ValidationException::withMessages([
+                        'split_total' => 'Total pembayaran split harus sama dengan grand total.',
+                    ]);
+                }
+
+                if ($splitDebitAmount > 0 && blank($splitNonCashMethod)) {
+                    throw ValidationException::withMessages([
+                        'split_non_cash_method' => 'Metode non-cash pertama untuk split bill wajib dipilih.',
+                    ]);
+                }
+
+                if ($splitDebitAmount > 0 && $requiresReferenceNumber($splitNonCashMethod) && blank($splitNonCashReferenceNumber)) {
+                    throw ValidationException::withMessages([
+                        'split_non_cash_reference_number' => 'Nomor referensi non-cash pertama untuk split bill wajib diisi.',
+                    ]);
+                }
+
+                if ($splitSecondNonCashAmount > 0 && blank($splitSecondNonCashMethod)) {
+                    throw ValidationException::withMessages([
+                        'split_second_non_cash_method' => 'Metode non-cash kedua untuk split bill wajib dipilih.',
+                    ]);
+                }
+
+                if ($splitSecondNonCashAmount > 0 && $requiresReferenceNumber($splitSecondNonCashMethod) && blank($splitSecondNonCashReferenceNumber)) {
+                    throw ValidationException::withMessages([
+                        'split_second_non_cash_reference_number' => 'Nomor referensi non-cash kedua untuk split bill wajib diisi.',
+                    ]);
+                }
+            }
+
+            $billing->update([
+                'payment_mode' => $paymentMode,
+                'payment_method' => $paymentMethod,
+                'payment_reference_number' => $paymentReferenceNumber,
+                'split_cash_amount' => $splitCashAmount,
+                'split_debit_amount' => $splitDebitAmount,
+                'split_non_cash_method' => $splitNonCashMethod,
+                'split_non_cash_reference_number' => $splitNonCashReferenceNumber,
+                'split_second_non_cash_amount' => $splitSecondNonCashAmount,
+                'split_second_non_cash_method' => $splitSecondNonCashMethod,
+                'split_second_non_cash_reference_number' => $splitSecondNonCashReferenceNumber,
+            ]);
+
+            try {
+                $this->dashboardSyncService->sync();
+            } catch (\Throwable $e) {
+                Log::warning('Dashboard sync failed after history payment update', [
+                    'booking_id' => $booking->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment berhasil diperbarui.',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Data payment tidak valid.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
+    }
+
     protected function calculateBookingMinimumCharge(float $baseMinimumCharge, mixed $reservationDate): float
     {
         $activeEvent = $this->resolveActiveEventForDate($reservationDate);

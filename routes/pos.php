@@ -22,4 +22,5 @@ Route::get('pos/orders/{order}/receipt', [PosController::class, 'orderReceipt'])
 
 // Printer integration
 Route::post('pos/print-receipt/{order?}', [PosController::class, 'printReceipt'])->name('pos.print-receipt');
+Route::post('pos/print-walk-in-draft-receipt', [PosController::class, 'printWalkInDraftReceipt'])->name('pos.print-walk-in-draft-receipt');
 Route::post('pos/test-print', [PosController::class, 'testPrint'])->name('pos.test-print');

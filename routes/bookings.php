@@ -13,5 +13,6 @@ Route::post('bookings/{booking}/print-running-receipt', [TableReservationControl
 Route::post('bookings/{booking}/reprint-receipt', [TableReservationController::class, 'reprintReceipt'])->name('bookings.reprintReceipt');
 Route::post('bookings/{booking}/re-sync-accurate', [TableReservationController::class, 'reSyncAccurate'])->name('bookings.reSyncAccurate');
 Route::post('bookings/{booking}/close-billing', [TableReservationController::class, 'closeBilling'])->name('bookings.closeBilling');
+Route::patch('bookings/{booking}/history-payment', [TableReservationController::class, 'updateHistoryPayment'])->name('bookings.updateHistoryPayment');
 Route::post('bookings/{booking}/assign-waiter', [TableReservationController::class, 'assignWaiter'])->name('bookings.assignWaiter');
 Route::get('bookings/{booking}/receipt', [TableReservationController::class, 'receipt'])->name('bookings.receipt');

@@ -654,6 +654,7 @@
       closeStatusModal();
       closeBookingInfoModal();
       if (typeof closeHistoryBookingDetailModal === 'function') closeHistoryBookingDetailModal();
+      if (typeof closeHistoryPaymentEditModal === 'function') closeHistoryPaymentEditModal();
       closeMoveTableModal();
       closeStatusConfirmModal();
       closeMoveOrderModal();
