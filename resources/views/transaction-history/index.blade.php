@@ -24,7 +24,7 @@
     </div>
 
     <!-- Stat Cards -->
-    <div class="grid grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
       <!-- Total Transaksi -->
       <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex items-center gap-4">
         <div class="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
@@ -82,6 +82,26 @@
           <p class="text-xl font-bold text-gray-900">
             Rp {{ number_format($todayRevenue / 1000000, 1, '.', '') }}jt
           </p>
+        </div>
+      </div>
+
+      <!-- Total DP Booking Hari Ini -->
+      <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex items-center gap-4"
+           style="background: linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%);">
+        <div class="w-12 h-12 bg-cyan-600 rounded-xl flex items-center justify-center shrink-0">
+          <svg class="w-6 h-6 text-white"
+               fill="none"
+               stroke="currentColor"
+               viewBox="0 0 24 24">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-xs text-cyan-700 mb-0.5">Total DP Hari Ini <span class="font-normal">(booking)</span></p>
+          <p class="text-2xl font-bold text-gray-900">Rp {{ number_format($todayBookingDownPayment, 0, ',', '.') }}</p>
         </div>
       </div>
 
@@ -169,7 +189,6 @@
             <tbody class="divide-y divide-gray-100">
               @foreach ($orders as $order)
                 @php
-                  // Use order_number directly (already has prefix)
                   $displayId = $order->order_number;
                   $isBooking = $order->tableSession?->reservation !== null;
                   $tableName = $order->tableSession?->table?->table_number;
@@ -263,13 +282,33 @@
                      class="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">Prev</a>
                 @endif
 
-                @foreach ($orders->getUrlRange(max(1, $orders->currentPage() - 2), min($orders->lastPage(), $orders->currentPage() + 2)) as $page => $url)
-                  @if ($page === $orders->currentPage())
+                @php
+                  $historyCurrentPage = (int) $orders->currentPage();
+                  $historyLastPage = (int) $orders->lastPage();
+                  $historyVisiblePages = collect([1, $historyCurrentPage - 1, $historyCurrentPage, $historyCurrentPage + 1, $historyLastPage])
+                      ->filter(fn($page) => $page >= 1 && $page <= $historyLastPage)
+                      ->unique()
+                      ->sort()
+                      ->values();
+
+                  $historyPreviousVisiblePage = null;
+                @endphp
+
+                @foreach ($historyVisiblePages as $page)
+                  @if ($historyPreviousVisiblePage !== null && $page - $historyPreviousVisiblePage > 1)
+                    <span class="pagination-ellipsis inline-flex items-center justify-center w-9 h-9 text-gray-400 select-none">...</span>
+                  @endif
+
+                  @if ($page === $historyCurrentPage)
                     <span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-800 text-white font-semibold">{{ $page }}</span>
                   @else
-                    <a href="{{ $url }}"
+                    <a href="{{ $orders->url($page) }}"
                        class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">{{ $page }}</a>
                   @endif
+
+                  @php
+                    $historyPreviousVisiblePage = $page;
+                  @endphp
                 @endforeach
 
                 @if ($orders->hasMorePages())
@@ -283,6 +322,30 @@
           </div>
         @endif
       @endif
+    </div>
+
+    <div x-show="showErrorModal"
+         x-transition.opacity
+         style="display: none;"
+         class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4"
+         @click.self="closeErrorModal()">
+      <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 class="text-base font-semibold text-gray-900">Error Message</h3>
+          <button type="button"
+                  @click="closeErrorModal()"
+                  class="text-gray-400 hover:text-gray-600 transition">✕</button>
+        </div>
+        <div class="px-5 py-4">
+          <p class="text-sm text-red-600 whitespace-pre-wrap break-words"
+             x-text="selectedErrorMessage || '-' "></p>
+        </div>
+        <div class="px-5 py-4 border-t border-gray-100 flex justify-end">
+          <button type="button"
+                  @click="closeErrorModal()"
+                  class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Tutup</button>
+        </div>
+      </div>
     </div>
 
     <!-- Order Detail Modal (Row Click) -->
@@ -323,6 +386,11 @@
                  x-text="selectedDetailOrder?.displayId"></p>
             </div>
             <div>
+              <p class="text-xs text-gray-400 mb-0.5">Waktu</p>
+              <p class="font-semibold text-gray-800"
+                 x-text="selectedDetailOrder?.time"></p>
+            </div>
+            <div>
               <p class="text-xs text-gray-400 mb-0.5">Pelanggan</p>
               <p class="font-semibold text-gray-800"
                  x-text="selectedDetailOrder?.customer"></p>
@@ -331,11 +399,6 @@
               <p class="text-xs text-gray-400 mb-0.5">Meja</p>
               <p class="font-semibold text-gray-800"
                  x-text="selectedDetailOrder?.table"></p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-400 mb-0.5">Waktu</p>
-              <p class="font-semibold text-gray-800"
-                 x-text="selectedDetailOrder?.time"></p>
             </div>
           </div>
 
@@ -369,25 +432,6 @@
             </template>
           </div>
 
-          <div class="space-y-2">
-            <template x-if="(selectedDetailOrder?.taxTotal ?? 0) > 0">
-              <div class="flex items-center justify-between">
-                <p class="text-sm text-gray-500">PB1</p>
-                <p class="text-sm font-semibold text-gray-700"
-                   x-text="selectedDetailOrder?.taxTotalFormatted"></p>
-              </div>
-            </template>
-
-            <template x-if="(selectedDetailOrder?.serviceChargeTotal ?? 0) > 0">
-              <div class="flex items-center justify-between">
-                <p class="text-sm text-gray-500">Service Charge</p>
-                <p class="text-sm font-semibold text-gray-700"
-                   x-text="selectedDetailOrder?.serviceChargeTotalFormatted"></p>
-              </div>
-            </template>
-
-          </div>
-
           <div class="flex items-center justify-between">
             <p class="text-sm text-gray-500">Total</p>
             <p class="text-base font-bold text-gray-900"
@@ -395,6 +439,10 @@
           </div>
 
           <div class="flex gap-3">
+            <button @click="openPrintFromDetail()"
+                    class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition">
+              Print Ulang
+            </button>
             <button @click="closeOrderDetailModal()"
                     class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
               Tutup
@@ -403,6 +451,8 @@
         </div>
       </div>
     </div>
+
+
 
     <!-- Print Modal -->
     <div x-show="showPrintModal"
@@ -632,12 +682,33 @@
       return {
         showPrintModal: false,
         showOrderDetailModal: false,
+        showPaymentEditModal: false,
+        showErrorModal: false,
         selectedOrder: null,
         selectedDetailOrder: null,
+        selectedErrorMessage: '',
         printing: false,
         toastMessage: '',
         toastSuccess: false,
         toastTimer: null,
+        paymentEditError: '',
+        paymentEditSaving: false,
+        paymentEditSubtitle: '-',
+        paymentEditForm: {
+          payment_mode: 'normal',
+          payment_method: 'cash',
+          payment_reference_number: '',
+          split_cash_amount: 0,
+          split_cash_display: 'Rp 0',
+          split_non_cash_amount: 0,
+          split_non_cash_display: 'Rp 0',
+          split_non_cash_method: '',
+          split_non_cash_reference_number: '',
+          split_second_non_cash_amount: 0,
+          split_second_non_cash_display: 'Rp 0',
+          split_second_non_cash_method: '',
+          split_second_non_cash_reference_number: '',
+        },
 
         availableLocations: @json($printerLocations),
         hasAnyActivePrinter: @json($hasAnyActivePrinter),
@@ -678,9 +749,47 @@
           this.showOrderDetailModal = true;
         },
 
+        openPaymentEditModalById(orderId) {
+          const payload = transactionHistoryOrderDetailPayloads[String(orderId)] ?? transactionHistoryOrderDetailPayloads[orderId] ?? null;
+
+          if (!payload) {
+            return;
+          }
+
+          this.selectedDetailOrder = payload;
+          this.showOrderDetailModal = false;
+          this.preparePaymentEditModal();
+          this.showPaymentEditModal = true;
+        },
+
+        openPaymentEditModal() {
+          if (!this.selectedDetailOrder) {
+            return;
+          }
+
+          this.showOrderDetailModal = false;
+          this.preparePaymentEditModal();
+          this.showPaymentEditModal = true;
+        },
+
         closeOrderDetailModal() {
           this.showOrderDetailModal = false;
           this.selectedDetailOrder = null;
+        },
+
+        closePaymentEditModal() {
+          this.showPaymentEditModal = false;
+          this.paymentEditError = '';
+        },
+
+        openErrorModal(message) {
+          this.selectedErrorMessage = String(message || '');
+          this.showErrorModal = true;
+        },
+
+        closeErrorModal() {
+          this.showErrorModal = false;
+          this.selectedErrorMessage = '';
         },
 
         openPrintFromDetail() {
@@ -710,6 +819,160 @@
           this.toastMessage = '';
           this.pendingPrinterId = null;
           this.pendingPrinterName = null;
+        },
+
+        formatCurrency(value) {
+          return `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+        },
+
+        parseCurrency(value) {
+          const digits = String(value ?? '').replace(/[^0-9]/g, '');
+
+          return digits ? Number(digits) : 0;
+        },
+
+        paymentEditBilling() {
+          return this.selectedDetailOrder?.billing ?? null;
+        },
+
+        preparePaymentEditModal() {
+          const billing = this.paymentEditBilling();
+
+          this.paymentEditSubtitle = this.selectedDetailOrder?.customer && this.selectedDetailOrder?.table ?
+            `${this.selectedDetailOrder.customer} — ${this.selectedDetailOrder.table}` :
+            this.selectedDetailOrder?.displayId ?? '-';
+
+          this.paymentEditForm.payment_mode = billing?.paymentMode ?? 'normal';
+          this.paymentEditForm.payment_method = billing?.paymentMethod ?? 'cash';
+          this.paymentEditForm.payment_reference_number = billing?.paymentReferenceNumber ?? '';
+          this.paymentEditForm.split_cash_amount = Number(billing?.splitCashAmount ?? 0);
+          this.paymentEditForm.split_cash_display = this.formatCurrency(this.paymentEditForm.split_cash_amount);
+          this.paymentEditForm.split_non_cash_amount = Number(billing?.splitNonCashAmount ?? 0);
+          this.paymentEditForm.split_non_cash_display = this.formatCurrency(this.paymentEditForm.split_non_cash_amount);
+          this.paymentEditForm.split_non_cash_method = billing?.splitNonCashMethod ?? '';
+          this.paymentEditForm.split_non_cash_reference_number = billing?.splitNonCashReferenceNumber ?? '';
+          this.paymentEditForm.split_second_non_cash_amount = Number(billing?.splitSecondNonCashAmount ?? 0);
+          this.paymentEditForm.split_second_non_cash_display = this.formatCurrency(this.paymentEditForm.split_second_non_cash_amount);
+          this.paymentEditForm.split_second_non_cash_method = billing?.splitSecondNonCashMethod ?? '';
+          this.paymentEditForm.split_second_non_cash_reference_number = billing?.splitSecondNonCashReferenceNumber ?? '';
+
+          this.paymentEditError = '';
+        },
+
+        togglePaymentEditFields() {
+          if (this.paymentEditForm.payment_mode === 'split' && this.paymentEditForm.split_cash_amount === 0 && this.paymentEditForm.split_non_cash_amount === 0 && this.paymentEditForm.split_second_non_cash_amount === 0) {
+            const grandTotal = Number(this.paymentEditBilling()?.grandTotal ?? 0);
+            this.paymentEditForm.split_cash_amount = 0;
+            this.paymentEditForm.split_cash_display = this.formatCurrency(0);
+            this.paymentEditForm.split_non_cash_amount = grandTotal;
+            this.paymentEditForm.split_non_cash_display = this.formatCurrency(grandTotal);
+            this.paymentEditForm.split_second_non_cash_amount = 0;
+            this.paymentEditForm.split_second_non_cash_display = this.formatCurrency(0);
+          }
+        },
+
+        onPaymentSplitInput(which, event) {
+          const grandTotal = Number(this.paymentEditBilling()?.grandTotal ?? 0);
+          const value = this.parseCurrency(event?.target?.value);
+
+          if (which === 'cash') {
+            const cash = Math.min(Math.max(value, 0), grandTotal);
+            this.paymentEditForm.split_cash_amount = cash;
+            this.paymentEditForm.split_cash_display = this.formatCurrency(cash);
+            this.paymentEditForm.split_non_cash_amount = Math.max(grandTotal - cash, 0);
+            this.paymentEditForm.split_non_cash_display = this.formatCurrency(this.paymentEditForm.split_non_cash_amount);
+            this.paymentEditForm.split_second_non_cash_amount = 0;
+            this.paymentEditForm.split_second_non_cash_display = this.formatCurrency(0);
+          }
+
+          if (which === 'first') {
+            const first = Math.min(Math.max(value, 0), grandTotal);
+            this.paymentEditForm.split_non_cash_amount = first;
+            this.paymentEditForm.split_non_cash_display = this.formatCurrency(first);
+            this.paymentEditForm.split_second_non_cash_amount = Math.max(grandTotal - this.paymentEditForm.split_cash_amount - first, 0);
+            this.paymentEditForm.split_second_non_cash_display = this.formatCurrency(this.paymentEditForm.split_second_non_cash_amount);
+          }
+
+          if (which === 'second') {
+            const second = Math.min(Math.max(value, 0), grandTotal);
+            this.paymentEditForm.split_second_non_cash_amount = second;
+            this.paymentEditForm.split_second_non_cash_display = this.formatCurrency(second);
+            this.paymentEditForm.split_cash_amount = 0;
+            this.paymentEditForm.split_cash_display = this.formatCurrency(0);
+            this.paymentEditForm.split_non_cash_amount = Math.max(grandTotal - second, 0);
+            this.paymentEditForm.split_non_cash_display = this.formatCurrency(this.paymentEditForm.split_non_cash_amount);
+          }
+        },
+
+        paymentMethodNeedsReference(method) {
+          const normalized = String(method || '').trim().toLowerCase();
+
+          return normalized !== '' && !['cash', 'tunai'].includes(normalized);
+        },
+
+        async submitPaymentEdit() {
+          const billing = this.paymentEditBilling();
+
+          if (!billing?.updatePaymentUrl) {
+            return;
+          }
+
+          const payload = {
+            payment_mode: this.paymentEditForm.payment_mode,
+            payment_method: this.paymentEditForm.payment_method,
+            payment_reference_number: this.paymentEditForm.payment_reference_number,
+            split_cash_amount: Number(this.paymentEditForm.split_cash_amount ?? 0),
+            split_non_cash_amount: Number(this.paymentEditForm.split_non_cash_amount ?? 0),
+            split_non_cash_method: this.paymentEditForm.split_non_cash_method,
+            split_non_cash_reference_number: this.paymentEditForm.split_non_cash_reference_number,
+            split_second_non_cash_amount: Number(this.paymentEditForm.split_second_non_cash_amount ?? 0),
+            split_second_non_cash_method: this.paymentEditForm.split_second_non_cash_method,
+            split_second_non_cash_reference_number: this.paymentEditForm.split_second_non_cash_reference_number,
+          };
+
+          if (payload.payment_mode === 'normal' && payload.payment_method !== 'cash' && !String(payload.payment_reference_number || '').trim()) {
+            this.paymentEditError = 'Nomor referensi pembayaran non-cash wajib diisi.';
+            return;
+          }
+
+          if (payload.payment_mode === 'split') {
+            if (payload.split_non_cash_amount > 0 && this.paymentMethodNeedsReference(payload.split_non_cash_method) && !String(payload.split_non_cash_reference_number || '').trim()) {
+              this.paymentEditError = 'Nomor referensi non-cash pertama untuk split bill wajib diisi.';
+              return;
+            }
+
+            if (payload.split_second_non_cash_amount > 0 && this.paymentMethodNeedsReference(payload.split_second_non_cash_method) && !String(payload.split_second_non_cash_reference_number || '').trim()) {
+              this.paymentEditError = 'Nomor referensi non-cash kedua untuk split bill wajib diisi.';
+              return;
+            }
+          }
+
+          this.paymentEditSaving = true;
+          this.paymentEditError = '';
+
+          try {
+            const response = await fetch(billing.updatePaymentUrl, {
+              method: 'POST',
+              headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(payload),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+              throw new Error(result.message || 'Gagal memperbarui payment.');
+            }
+
+            window.location.reload();
+          } catch (error) {
+            this.paymentEditError = error?.message || 'Gagal memperbarui payment.';
+          } finally {
+            this.paymentEditSaving = false;
+          }
         },
 
         normalizePrinterType(printer) {

@@ -71,6 +71,11 @@ class Order extends Model
         return $this->hasOne(BarOrder::class);
     }
 
+    public function billing()
+    {
+        return $this->hasOne(Billing::class);
+    }
+
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
