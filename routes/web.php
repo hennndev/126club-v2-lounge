@@ -159,6 +159,8 @@ Route::middleware('auth')->group(function () {
         // Transaction History
         Route::get('transaction-history', [TransactionHistoryController::class, 'index'])->name('transaction-history.index');
         Route::post('transaction-history/{order}/print', [TransactionHistoryController::class, 'print'])->name('transaction-history.print');
+        Route::post('transaction-history/{order}/payment', [TransactionHistoryController::class, 'updatePayment'])->name('transaction-history.update-payment');
+        Route::post('transaction-history/{order}/re-sync-accurate', [TransactionHistoryController::class, 'reSyncAccurate'])->name('transaction-history.reSyncAccurate');
 
         // End-day Recap
         Route::get('recap', [RecapController::class, 'index'])->name('recap.index');
