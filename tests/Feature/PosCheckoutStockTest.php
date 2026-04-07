@@ -107,6 +107,8 @@ test('booking checkout decrements inventory stock', function () {
         ->assertSuccessful()
         ->assertJsonPath('success', true);
 
+    expect((string) $response->json('order_number'))->toMatch('/^ORD-\d{8}-\d{4}$/');
+
     $orderItem = OrderItem::query()->latest('id')->first();
 
     expect($inventoryItem->fresh()->stock_quantity)->toBe(7)

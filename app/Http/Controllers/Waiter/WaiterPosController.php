@@ -204,12 +204,7 @@ class WaiterPosController extends Controller
 
         DB::beginTransaction();
         try {
-            $orderNumber = 'ORD-'.date('Ymd').'-'.str_pad(
-                Order::whereDate('created_at', today())->count() + 1,
-                4,
-                '0',
-                STR_PAD_LEFT
-            );
+            $orderNumber = $this->generateDailyOrderNumber();
 
             $order = Order::create([
                 'table_session_id' => $tableSession->id,
@@ -690,5 +685,18 @@ class WaiterPosController extends Controller
         }
 
         return $linePossiblePortions ?? 0;
+    }
+
+    protected function generateDailyOrderNumber(): string
+    {
+        $date = today()->toDateString();
+
+        return Cache::lock("pos:order-number:booking:{$date}", 10)->block(5, function (): string {
+            $sequence = Order::query()
+                ->whereDate('created_at', today())
+                ->count() + 1;
+
+            return sprintf('ORD-%s-%04d', today()->format('Ymd'), $sequence);
+        });
     }
 }

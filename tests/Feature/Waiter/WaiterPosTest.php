@@ -162,7 +162,7 @@ test('waiter checkout creates order for their own session and clears cart', func
         ],
     ];
 
-    actingAs($waiter)
+    $response = actingAs($waiter)
         ->withSession([
             'accurate_database' => 'test',
             WaiterPosController::CART_KEY => $cartData,
@@ -170,6 +170,8 @@ test('waiter checkout creates order for their own session and clears cart', func
         ->post(route('waiter.pos.checkout'), ['session_id' => $session->id])
         ->assertOk()
         ->assertJsonPath('success', true);
+
+    expect((string) $response->json('order_number'))->toMatch('/^ORD-\d{8}-\d{4}$/');
 
     expect(Order::where('table_session_id', $session->id)->exists())->toBeTrue();
 });
