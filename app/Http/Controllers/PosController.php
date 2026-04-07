@@ -25,6 +25,7 @@ use App\Models\UserProfile;
 use App\Services\AccurateService;
 use App\Services\DashboardSyncService;
 use App\Services\PrinterService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -553,22 +554,20 @@ class PosController extends Controller
                 }
 
                 // Generate order number
-                $orderNumber = $this->generateDailyOrderNumber('ORD', 'booking');
-
-                $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
-
-                // Create Order
-                $order = Order::create([
+                $order = $this->createOrderWithRetry([
                     'table_session_id' => $tableSession->id,
                     'created_by' => Auth::id(),
-                    'order_number' => $orderNumber,
                     'status' => 'pending',
                     'items_total' => 0,
                     'discount_amount' => 0,
                     'total' => 0,
                     'ordered_at' => now(),
                     'notes' => null,
-                ]);
+                ], 'ORD', 'booking');
+
+                $orderNumber = (string) $order->order_number;
+
+                $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
 
                 $itemsTotal = 0;
                 $serviceChargeBase = 0;
@@ -846,11 +845,10 @@ class PosController extends Controller
                     }
                 }
 
-                $order = Order::create([
+                $order = $this->createOrderWithRetry([
                     'table_session_id' => null,
                     'customer_user_id' => $customerUser?->id,
                     'created_by' => Auth::id(),
-                    'order_number' => $orderNumber,
                     'status' => 'pending',
                     'items_total' => 0,
                     'discount_amount' => 0,
@@ -859,7 +857,9 @@ class PosController extends Controller
                     'payment_method' => $paymentMethod,
                     'payment_mode' => $paymentMode,
                     'payment_reference_number' => $paymentReferenceNumber,
-                ]);
+                ], 'WALKIN', 'walk-in');
+
+                $orderNumber = (string) $order->order_number;
 
                 $itemsTotal = 0;
                 $serviceChargeBase = 0;
@@ -963,8 +963,7 @@ class PosController extends Controller
                     'total' => $totals['grand_total'],
                 ]);
 
-                $transactionCode = $this->generateWalkInTransactionCode();
-                Billing::create([
+                $transactionCode = $this->createWalkInBillingWithRetry([
                     'table_session_id' => null,
                     'order_id' => $order->id,
                     'is_walk_in' => true,
@@ -980,7 +979,6 @@ class PosController extends Controller
                     'grand_total' => (float) $totals['grand_total'],
                     'paid_amount' => (float) $totals['grand_total'],
                     'billing_status' => 'paid',
-                    'transaction_code' => $transactionCode,
                     'payment_method' => $paymentMethod,
                     'payment_reference_number' => $paymentReferenceNumber,
                     'payment_mode' => $paymentMode,
@@ -1049,7 +1047,7 @@ class PosController extends Controller
                 'message' => $e->validator->errors()->first() ?: 'Data checkout tidak valid.',
                 'errors' => $e->errors(),
             ], 422);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
 
             return response()->json([
@@ -1517,32 +1515,90 @@ class PosController extends Controller
     protected function generateDailyOrderNumber(string $prefix, string $scope): string
     {
         $date = today()->toDateString();
+        $sequence = Order::query()
+            ->whereDate('created_at', $date)
+            ->when($scope === 'walk-in', fn ($query) => $query->whereNull('table_session_id'))
+            ->count() + 1;
 
-        return Cache::lock("pos:order-number:{$scope}:{$date}", 10)->block(5, function () use ($prefix, $scope, $date): string {
-            $orderQuery = Order::query()->whereDate('created_at', $date);
-
-            if ($scope === 'walk-in') {
-                $orderQuery->whereNull('table_session_id');
-            }
-
-            $sequence = $orderQuery->count() + 1;
-
-            return sprintf('%s-%s-%04d', $prefix, today()->format('Ymd'), $sequence);
-        });
+        return sprintf('%s-%s-%04d', $prefix, today()->format('Ymd'), $sequence);
     }
 
-    protected function generateWalkInTransactionCode(): string
+    protected function generateWalkInTransactionCode(int $offset = 0): string
+    {
+        $sequence = Billing::query()
+            ->where('is_walk_in', true)
+            ->whereDate('created_at', today())
+            ->count() + 1 + $offset;
+
+        return 'WALKIN-'.str_pad((string) $sequence, 6, '0', STR_PAD_LEFT);
+    }
+
+    protected function createOrderWithRetry(array $attributes, string $prefix, string $scope): Order
+    {
+        $offset = 0;
+        $maxAttempts = 5;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $attributes['order_number'] = $this->generateDailyOrderNumberWithOffset($prefix, $scope, $offset);
+
+            try {
+                return Order::create($attributes);
+            } catch (QueryException $exception) {
+                if (! $this->isDuplicateEntryException($exception) || $attempt === $maxAttempts) {
+                    throw $exception;
+                }
+
+                $offset += 2;
+            }
+        }
+
+        throw new \RuntimeException('Gagal membuat order number unik.');
+    }
+
+    protected function createWalkInBillingWithRetry(array $attributes): string
+    {
+        $offset = 0;
+        $maxAttempts = 5;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $transactionCode = $this->generateWalkInTransactionCode($offset);
+            $attributes['transaction_code'] = $transactionCode;
+
+            try {
+                Billing::create($attributes);
+
+                return $transactionCode;
+            } catch (QueryException $exception) {
+                if (! $this->isDuplicateEntryException($exception) || $attempt === $maxAttempts) {
+                    throw $exception;
+                }
+
+                $offset += 2;
+            }
+        }
+
+        throw new \RuntimeException('Gagal membuat kode transaksi walk-in unik.');
+    }
+
+    protected function generateDailyOrderNumberWithOffset(string $prefix, string $scope, int $offset = 0): string
     {
         $date = today()->toDateString();
+        $sequence = Order::query()
+            ->whereDate('created_at', $date)
+            ->when($scope === 'walk-in', fn ($query) => $query->whereNull('table_session_id'))
+            ->count() + 1 + $offset;
 
-        return Cache::lock("pos:billing-transaction:walk-in:{$date}", 10)->block(5, function (): string {
-            $sequence = Billing::query()
-                ->where('is_walk_in', true)
-                ->whereDate('created_at', today())
-                ->count() + 1;
+        return sprintf('%s-%s-%04d', $prefix, today()->format('Ymd'), $sequence);
+    }
 
-            return 'WALKIN-'.str_pad((string) $sequence, 6, '0', STR_PAD_LEFT);
-        });
+    protected function isDuplicateEntryException(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? '');
+        $message = strtolower($exception->getMessage());
+
+        return in_array($sqlState, ['23000', '23505'], true)
+            || str_contains($message, 'duplicate entry')
+            || str_contains($message, 'unique constraint');
     }
 
     public function printWalkInDraftReceipt(Request $request): JsonResponse
