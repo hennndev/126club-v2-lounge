@@ -17,11 +17,11 @@ use App\Models\Printer;
 use App\Models\TableSession;
 use App\Services\AccurateService;
 use App\Services\PrinterService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -204,12 +204,9 @@ class WaiterPosController extends Controller
 
         DB::beginTransaction();
         try {
-            $orderNumber = $this->generateDailyOrderNumber();
-
-            $order = Order::create([
+            $order = $this->createOrderWithRetry([
                 'table_session_id' => $tableSession->id,
                 'created_by' => Auth::id(),
-                'order_number' => $orderNumber,
                 'status' => 'pending',
                 'items_total' => 0,
                 'discount_amount' => 0,
@@ -217,6 +214,8 @@ class WaiterPosController extends Controller
                 'ordered_at' => now(),
                 'notes' => null,
             ]);
+
+            $orderNumber = (string) $order->order_number;
 
             $itemsTotal = 0;
             $generalSettings = GeneralSetting::instance();
@@ -290,7 +289,7 @@ class WaiterPosController extends Controller
             DB::commit();
 
             return response()->json(['success' => true, 'order_number' => $orderNumber]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
 
             return response()->json(['success' => false, 'message' => 'Terjadi kesalahan: '.$e->getMessage()], 500);
@@ -687,16 +686,45 @@ class WaiterPosController extends Controller
         return $linePossiblePortions ?? 0;
     }
 
-    protected function generateDailyOrderNumber(): string
+    protected function generateDailyOrderNumber(int $offset = 0): string
     {
         $date = today()->toDateString();
+        $sequence = Order::query()
+            ->whereDate('created_at', $date)
+            ->count() + 1 + $offset;
 
-        return Cache::lock("pos:order-number:booking:{$date}", 10)->block(5, function (): string {
-            $sequence = Order::query()
-                ->whereDate('created_at', today())
-                ->count() + 1;
+        return sprintf('ORD-%s-%04d', today()->format('Ymd'), $sequence);
+    }
 
-            return sprintf('ORD-%s-%04d', today()->format('Ymd'), $sequence);
-        });
+    protected function createOrderWithRetry(array $attributes): Order
+    {
+        $offset = 0;
+        $maxAttempts = 5;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $attributes['order_number'] = $this->generateDailyOrderNumber($offset);
+
+            try {
+                return Order::create($attributes);
+            } catch (QueryException $exception) {
+                if (! $this->isDuplicateEntryException($exception) || $attempt === $maxAttempts) {
+                    throw $exception;
+                }
+
+                $offset += 2;
+            }
+        }
+
+        throw new \RuntimeException('Gagal membuat order number unik.');
+    }
+
+    protected function isDuplicateEntryException(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? '');
+        $message = strtolower($exception->getMessage());
+
+        return in_array($sqlState, ['23000', '23505'], true)
+            || str_contains($message, 'duplicate entry')
+            || str_contains($message, 'unique constraint');
     }
 }
