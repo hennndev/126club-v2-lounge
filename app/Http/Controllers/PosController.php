@@ -553,12 +553,7 @@ class PosController extends Controller
                 }
 
                 // Generate order number
-                $orderNumber = 'ORD-'.date('Ymd').'-'.str_pad(
-                    Order::whereDate('created_at', today())->count() + 1,
-                    4,
-                    '0',
-                    STR_PAD_LEFT
-                );
+                $orderNumber = $this->generateDailyOrderNumber('ORD', 'booking');
 
                 $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
 
@@ -727,14 +722,7 @@ class PosController extends Controller
                 // Resolve CustomerUser for kitchen/bar checker
                 $customerUser = CustomerUser::where('user_id', $customerId)->first();
 
-                $orderNumber = 'WALKIN-'.date('Ymd').'-'.str_pad(
-                    Order::whereDate('created_at', today())
-                        ->where('table_session_id', null)
-                        ->count() + 1,
-                    4,
-                    '0',
-                    STR_PAD_LEFT
-                );
+                $orderNumber = $this->generateDailyOrderNumber('WALKIN', 'walk-in');
 
                 $paymentMode = $validated['payment_mode'] ?? 'normal';
                 $discountType = $validated['discount_type'] ?? 'none';
@@ -975,12 +963,7 @@ class PosController extends Controller
                     'total' => $totals['grand_total'],
                 ]);
 
-                $walkInSequence = Billing::query()
-                    ->where('is_walk_in', true)
-                    ->whereDate('created_at', today())
-                    ->count() + 1;
-
-                $transactionCode = 'WALKIN-'.str_pad((string) $walkInSequence, 6, '0', STR_PAD_LEFT);
+                $transactionCode = $this->generateWalkInTransactionCode();
                 Billing::create([
                     'table_session_id' => null,
                     'order_id' => $order->id,
@@ -1529,6 +1512,37 @@ class PosController extends Controller
                 'message' => 'Failed to print receipt: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    protected function generateDailyOrderNumber(string $prefix, string $scope): string
+    {
+        $date = today()->toDateString();
+
+        return Cache::lock("pos:order-number:{$scope}:{$date}", 10)->block(5, function () use ($prefix, $scope, $date): string {
+            $orderQuery = Order::query()->whereDate('created_at', $date);
+
+            if ($scope === 'walk-in') {
+                $orderQuery->whereNull('table_session_id');
+            }
+
+            $sequence = $orderQuery->count() + 1;
+
+            return sprintf('%s-%s-%04d', $prefix, today()->format('Ymd'), $sequence);
+        });
+    }
+
+    protected function generateWalkInTransactionCode(): string
+    {
+        $date = today()->toDateString();
+
+        return Cache::lock("pos:billing-transaction:walk-in:{$date}", 10)->block(5, function (): string {
+            $sequence = Billing::query()
+                ->where('is_walk_in', true)
+                ->whereDate('created_at', today())
+                ->count() + 1;
+
+            return 'WALKIN-'.str_pad((string) $sequence, 6, '0', STR_PAD_LEFT);
+        });
     }
 
     public function printWalkInDraftReceipt(Request $request): JsonResponse
