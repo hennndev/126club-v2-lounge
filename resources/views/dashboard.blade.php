@@ -173,6 +173,7 @@
         <div class="p-4 bg-purple-50 border border-purple-200 rounded-lg">
           <p class="text-sm font-medium text-purple-700">Total LD</p>
           <p class="text-2xl font-bold text-purple-800 mt-1">Rp {{ number_format($dashboardTotalLd, 0, ',', '.') }}</p>
+          <p class="text-xs font-medium text-purple-600 mt-2">Qty {{ number_format($dashboardTotalLdQuantity ?? 0, 0, ',', '.') }}</p>
         </div>
 
         <div class="p-4 bg-rose-50 border border-rose-200 rounded-lg">

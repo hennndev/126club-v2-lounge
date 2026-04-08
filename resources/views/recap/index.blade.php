@@ -122,6 +122,7 @@
             <div class="p-4 border border-gray-200 rounded-lg bg-purple-50">
               <p class="text-sm font-medium text-purple-700">Total LD</p>
               <p class="text-2xl font-bold text-purple-800 mt-1">Rp {{ number_format($dashboardPreview['total_ld'] ?? 0, 0, ',', '.') }}</p>
+              <p class="text-xs font-medium text-purple-600 mt-2">Qty {{ number_format($dashboardPreview['total_ld_quantity'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
@@ -409,6 +410,7 @@
                     'total_breakage' => 'Rp ' . number_format($history->total_breakage ?? 0, 0, ',', '.'),
                     'total_room' => 'Rp ' . number_format($history->total_room ?? 0, 0, ',', '.'),
                     'total_ld' => 'Rp ' . number_format($history->total_ld ?? 0, 0, ',', '.'),
+                    'total_ld_quantity' => number_format($history->total_ld_quantity ?? 0, 0, ',', '.'),
                     'total_penjualan_rokok' => number_format($history->total_penjualan_rokok, 0, ',', '.'),
                     'total_tax' => 'Rp ' . number_format($history->total_tax, 0, ',', '.'),
                     'total_service_charge' => 'Rp ' . number_format($history->total_service_charge, 0, ',', '.'),
@@ -561,6 +563,8 @@
                   <p class="text-sm font-medium text-gray-500">Total LD</p>
                   <p class="text-2xl font-bold text-purple-700 mt-1"
                      x-text="selectedHistory?.total_ld ?? 'Rp 0'"></p>
+                  <p class="text-xs font-medium text-purple-600 mt-2"
+                     x-text="'Qty ' + (selectedHistory?.total_ld_quantity ?? '0')"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">

@@ -142,6 +142,7 @@ test('admin can open recap page', function () {
         'total_breakage' => 95000,
         'total_room' => 106000,
         'total_ld' => 117000,
+        'total_ld_quantity' => 12,
         'total_penjualan_rokok' => 42,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
@@ -181,6 +182,7 @@ test('admin can open recap page', function () {
         ->assertSeeText('Total Breakage')
         ->assertSeeText('Total Room')
         ->assertSeeText('Total LD')
+        ->assertSeeText('Qty 12')
         ->assertSeeText('Rp 51.000')
         ->assertSeeText('Rp 62.000')
         ->assertSeeText('Rp 73.000')
@@ -285,6 +287,7 @@ test('recap close preview page shows printable a4 summary', function () {
             'total_qris' => 110000,
             'total_kitchen_items' => 2,
             'total_bar_items' => 0,
+            'total_ld_quantity' => 8,
             'total_transactions' => 10,
             'last_synced_at' => now(),
         ]
@@ -303,6 +306,7 @@ test('recap close preview page shows printable a4 summary', function () {
         ->assertSeeText('Save PDF')
         ->assertSeeText('Item Keluar Kitchen')
         ->assertSeeText('Item Keluar Bar')
+        ->assertSeeText('Qty 8')
         ->assertSeeText('Tutup End Day')
         ->assertSeeText('Preview Item Recap')
         ->assertSeeText('INFO ROKOK')
@@ -356,6 +360,7 @@ test('recap close preview print endpoint triggers server print and returns log p
             'total_qris' => 110000,
             'total_kitchen_items' => 2,
             'total_bar_items' => 1,
+            'total_ld_quantity' => 8,
             'total_transactions' => 10,
             'last_synced_at' => now(),
         ]

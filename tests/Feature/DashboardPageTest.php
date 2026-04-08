@@ -27,6 +27,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         'total_breakage' => 95000,
         'total_room' => 106000,
         'total_ld' => 117000,
+        'total_ld_quantity' => 12,
         'total_penjualan_rokok' => 4200,
         'total_tax' => 15000,
         'total_service_charge' => 12000,
@@ -53,6 +54,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Total Breakage')
         ->assertSeeText('Total Room')
         ->assertSeeText('Total LD')
+        ->assertSeeText('Qty 12')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('Total Pajak')
         ->assertSeeText('Total Service Charge')

@@ -149,3 +149,47 @@ it('prints walk-in billing simulation with discount row after subtotal', functio
         ->and($discountPos > $subTotalPos)->toBeTrue()
         ->and($remainingPos > $discountPos)->toBeTrue();
 });
+
+it('prints end day recap with LD quantity row', function () {
+    $printer = Printer::make([
+        'name' => 'End Day Test',
+        'location' => 'cashier',
+        'connection_type' => 'log',
+        'width' => 42,
+    ]);
+
+    $recapData = [
+        'selectedStartDatetime' => '16/04/2026 09:00',
+        'selectedEndDatetime' => '17/04/2026 09:00',
+        'cashierCount' => 2,
+        'cashierRevenue' => 150000,
+        'totalTax' => 15000,
+        'totalServiceCharge' => 10000,
+        'totalDiscount' => 0,
+        'totalDownPayment' => 0,
+        'paymentMethodTotals' => [
+            'cash' => 150000,
+            'transfer' => 0,
+            'debit' => 0,
+            'kredit' => 0,
+            'qris' => 0,
+        ],
+        'dashboardPreview' => [
+            'total_kitchen_items' => 3,
+            'total_bar_items' => 4,
+            'total_ld_quantity' => 7,
+        ],
+        'kitchenQtyTotal' => 3,
+        'barQtyTotal' => 4,
+        'rokokItems' => [],
+        'cashierTransactions' => [],
+    ];
+
+    $result = (new PrinterService)->printEndDayRecap($recapData, $printer);
+
+    $log = file_get_contents(storage_path('logs/printer.log'));
+
+    expect($result)->toBeTrue()
+        ->and($log)->toContain('Total LD Qty')
+        ->and($log)->toContain('7');
+});
