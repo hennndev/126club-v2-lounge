@@ -338,7 +338,7 @@ test('dashboard sync aggregates category main totals from related order items', 
             'inventory_item_id' => $inventoryItem->id,
             'item_name' => $inventoryItem->name,
             'item_code' => $inventoryItem->code,
-            'quantity' => 1,
+            'quantity' => $itemCategory['key'] === 'LD' ? 4 : 1,
             'price' => (float) $itemCategory['subtotal'],
             'subtotal' => (float) $itemCategory['subtotal'],
             'status' => 'served',
@@ -379,7 +379,8 @@ test('dashboard sync aggregates category main totals from related order items', 
         ->and((float) $dashboard->total_cigarette)->toBe(40000.0)
         ->and((float) $dashboard->total_breakage)->toBe(50000.0)
         ->and((float) $dashboard->total_room)->toBe(60000.0)
-        ->and((float) $dashboard->total_ld)->toBe(70000.0);
+        ->and((float) $dashboard->total_ld)->toBe(70000.0)
+        ->and((int) $dashboard->total_ld_quantity)->toBe(4);
 });
 
 test('dashboard sync aggregates total dp from paid booking reservations', function () {

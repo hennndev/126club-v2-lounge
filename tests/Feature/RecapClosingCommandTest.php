@@ -27,6 +27,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
             'total_breakage' => 15000,
             'total_room' => 16000,
             'total_ld' => 17000,
+            'total_ld_quantity' => 6,
             'total_penjualan_rokok' => 35000,
             'total_tax' => 15000,
             'total_service_charge' => 10000,
@@ -61,6 +62,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and((float) $history->total_breakage)->toBe(15000.0)
         ->and((float) $history->total_room)->toBe(16000.0)
         ->and((float) $history->total_ld)->toBe(17000.0)
+        ->and((int) $history->total_ld_quantity)->toBe(6)
         ->and((float) $history->total_penjualan_rokok)->toBe(35000.0)
         ->and((float) $history->total_tax)->toBe(15000.0)
         ->and((float) $history->total_service_charge)->toBe(10000.0)
@@ -80,6 +82,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and((float) $dashboard->total_breakage)->toBe(0.0)
         ->and((float) $dashboard->total_room)->toBe(0.0)
         ->and((float) $dashboard->total_ld)->toBe(0.0)
+        ->and((int) $dashboard->total_ld_quantity)->toBe(0)
         ->and((float) $dashboard->total_penjualan_rokok)->toBe(0.0)
         ->and((float) $dashboard->total_tax)->toBe(0.0)
         ->and((float) $dashboard->total_service_charge)->toBe(0.0)
@@ -112,6 +115,7 @@ test('recap close command skips when recap for the same day already exists', fun
             'total_qris' => 0,
             'total_kitchen_items' => 3,
             'total_bar_items' => 2,
+            'total_ld_quantity' => 3,
             'total_transactions' => 3,
             'last_synced_at' => now('Asia/Jakarta'),
         ]
@@ -142,6 +146,7 @@ test('recap close command skips when recap for the same day already exists', fun
         ->and(DB::table('recap_history_kitchen')->count())->toBe(0)
         ->and(DB::table('recap_history_bar')->count())->toBe(0)
         ->and((float) $dashboard->total_amount)->toBe(99000.0)
+        ->and((int) $dashboard->total_ld_quantity)->toBe(3)
         ->and((int) $dashboard->total_kitchen_items)->toBe(3)
         ->and((int) $dashboard->total_bar_items)->toBe(2)
         ->and((int) $dashboard->total_transactions)->toBe(3);

@@ -78,6 +78,7 @@ class DashboardController extends Controller
         $dashboardTotalBreakage = (float) ($dashboardAggregate?->total_breakage ?? 0);
         $dashboardTotalRoom = (float) ($dashboardAggregate?->total_room ?? 0);
         $dashboardTotalLd = (float) ($dashboardAggregate?->total_ld ?? 0);
+        $dashboardTotalLdQuantity = (int) ($dashboardAggregate?->total_ld_quantity ?? 0);
         $dashboardTotalPenjualanRokok = (int) ($dashboardAggregate?->total_penjualan_rokok ?? 0);
         $dashboardTotalTax = (float) ($dashboardAggregate?->total_tax ?? 0);
         $dashboardTotalServiceCharge = (float) ($dashboardAggregate?->total_service_charge ?? 0);
@@ -109,6 +110,7 @@ class DashboardController extends Controller
             'dashboardTotalBreakage',
             'dashboardTotalRoom',
             'dashboardTotalLd',
+            'dashboardTotalLdQuantity',
             'dashboardTotalPenjualanRokok',
             'dashboardTotalTax',
             'dashboardTotalServiceCharge',

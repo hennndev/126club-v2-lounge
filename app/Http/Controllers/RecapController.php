@@ -344,6 +344,7 @@ class RecapController extends Controller
 
         $dashboardAggregate = Dashboard::query()->find(1);
         $dashboardTotalDp = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_dp ?? 0);
+        $dashboardTotalLdQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_ld_quantity ?? 0);
         $resolvedTotalDp = $isSelectedEndDayClosed
             ? 0.0
             : ($dashboardTotalDp > 0 ? $dashboardTotalDp : $liveTotalDownPayment);
@@ -434,6 +435,7 @@ class RecapController extends Controller
             'totalBreakage' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_breakage ?? 0),
             'totalRoom' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_room ?? 0),
             'totalLd' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_ld ?? 0),
+            'totalLdQuantity' => $dashboardTotalLdQuantity,
             'totalTax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
             'totalServiceCharge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
             'totalDiscount' => $totalDiscount,
@@ -453,6 +455,7 @@ class RecapController extends Controller
                 'total_breakage' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_breakage ?? 0),
                 'total_room' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_room ?? 0),
                 'total_ld' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_ld ?? 0),
+                'total_ld_quantity' => $dashboardTotalLdQuantity,
                 'total_penjualan_rokok' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_penjualan_rokok ?? 0),
                 'total_tax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
                 'total_service_charge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
@@ -623,6 +626,7 @@ class RecapController extends Controller
                     'total_breakage' => 0.0,
                     'total_room' => 0.0,
                     'total_ld' => 0.0,
+                    'total_ld_quantity' => 0,
                     'total_penjualan_rokok' => 0.0,
                     'total_kitchen_items' => 0,
                     'total_bar_items' => 0,
@@ -707,6 +711,7 @@ class RecapController extends Controller
             ['Total Breakage', (float) ($recapData['dashboardPreview']['total_breakage'] ?? 0)],
             ['Total Room', (float) ($recapData['dashboardPreview']['total_room'] ?? 0)],
             ['Total LD', (float) ($recapData['dashboardPreview']['total_ld'] ?? 0)],
+            ['Total LD Qty', (int) ($recapData['dashboardPreview']['total_ld_quantity'] ?? 0)],
             ['Total Pajak', $recapData['totalTax']],
             ['Total Service Charge', $recapData['totalServiceCharge']],
             ['Total DP (Booking)', (float) ($recapData['dashboardPreview']['total_down_payment'] ?? 0)],
@@ -780,6 +785,7 @@ class RecapController extends Controller
             ['Total Breakage', (float) ($recapHistory->total_breakage ?? 0)],
             ['Total Room', (float) ($recapHistory->total_room ?? 0)],
             ['Total LD', (float) ($recapHistory->total_ld ?? 0)],
+            ['Total LD Qty', (int) ($recapHistory->total_ld_quantity ?? 0)],
             ['Total Penjualan Rokok', (float) $recapHistory->total_penjualan_rokok],
             ['Total Pajak', (float) $recapHistory->total_tax],
             ['Total Service Charge', (float) $recapHistory->total_service_charge],

@@ -178,6 +178,10 @@
           <span class="label">Total LD</span>
           <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_ld'] ?? 0), 0, ',', '.') }}</span>
         </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="label">Total LD Qty</span>
+          <span class="value">Qty {{ number_format((int) ($dashboardPreview['total_ld_quantity'] ?? 0), 0, ',', '.') }}</span>
+        </div>
       </section>
 
       <section class="mt-3 border-b border-dashed border-gray-300 pb-2">

@@ -1204,6 +1204,7 @@ class PrinterService
         $dashboardPreview = (array) ($recapData['dashboardPreview'] ?? []);
         $kitchenItemsOut = (int) ($dashboardPreview['total_kitchen_items'] ?? $recapData['kitchenQtyTotal'] ?? 0);
         $barItemsOut = (int) ($dashboardPreview['total_bar_items'] ?? $recapData['barQtyTotal'] ?? 0);
+        $ldQuantity = (int) ($dashboardPreview['total_ld_quantity'] ?? $recapData['totalLdQuantity'] ?? 0);
 
         $lines = [
             'REKAP END DAY',
@@ -1217,6 +1218,7 @@ class PrinterService
             $this->formatClosedBillingPair('Total Service', 'Rp '.number_format((float) ($recapData['totalServiceCharge'] ?? 0), 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Item Keluar Kitchen', number_format($kitchenItemsOut, 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Item Keluar Bar', number_format($barItemsOut, 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Total LD Qty', number_format($ldQuantity, 0, ',', '.'), $width),
             $separator,
             'RINGKASAN PEMBAYARAN',
             $this->formatClosedBillingPair('Tunai', 'Rp '.number_format((float) ($paymentMethodTotals['cash'] ?? 0), 0, ',', '.'), $width),
