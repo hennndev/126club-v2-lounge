@@ -231,6 +231,73 @@ test('dashboard sync includes walk-in split orders with null payment method', fu
         ->and((int) $dashboard->total_transactions)->toBe(1);
 });
 
+test('dashboard sync uses paid_at instead of updated_at for paid billing window', function () {
+    Carbon::setTestNow(Carbon::parse('2026-04-11 12:00:00', 'Asia/Jakarta'));
+
+    try {
+        $admin = adminUser();
+        createDashboardKitchenAndBarItems($admin->id, 1, 1);
+
+        $staleBilling = Billing::create([
+            'table_session_id' => null,
+            'order_id' => null,
+            'is_walk_in' => true,
+            'is_booking' => false,
+            'minimum_charge' => 0,
+            'orders_total' => 500000,
+            'subtotal' => 500000,
+            'tax' => 0,
+            'tax_percentage' => 0,
+            'service_charge' => 0,
+            'service_charge_percentage' => 0,
+            'discount_amount' => 0,
+            'grand_total' => 500000,
+            'paid_amount' => 500000,
+            'billing_status' => 'paid',
+            'paid_at' => Carbon::parse('2026-04-10 08:00:00', 'Asia/Jakarta'),
+            'payment_method' => 'cash',
+            'payment_mode' => 'normal',
+        ]);
+
+        DB::table('billings')
+            ->where('id', $staleBilling->id)
+            ->update([
+                'updated_at' => Carbon::parse('2026-04-11 10:00:00', 'Asia/Jakarta')->toDateTimeString(),
+            ]);
+
+        Billing::create([
+            'table_session_id' => null,
+            'order_id' => null,
+            'is_walk_in' => true,
+            'is_booking' => false,
+            'minimum_charge' => 0,
+            'orders_total' => 120000,
+            'subtotal' => 120000,
+            'tax' => 0,
+            'tax_percentage' => 0,
+            'service_charge' => 0,
+            'service_charge_percentage' => 0,
+            'discount_amount' => 0,
+            'grand_total' => 120000,
+            'paid_amount' => 120000,
+            'billing_status' => 'paid',
+            'paid_at' => Carbon::parse('2026-04-11 10:30:00', 'Asia/Jakarta'),
+            'payment_method' => 'cash',
+            'payment_mode' => 'normal',
+        ]);
+
+        (new DashboardSyncService)->sync();
+
+        $dashboard = Dashboard::query()->findOrFail(1);
+
+        expect((float) $dashboard->total_cash)->toBe(120000.0)
+            ->and((float) $dashboard->total_amount)->toBe(120000.0)
+            ->and((int) $dashboard->total_transactions)->toBe(1);
+    } finally {
+        Carbon::setTestNow();
+    }
+});
+
 test('dashboard sync does not double count split second non-cash amount when first non-cash is zero', function () {
     $admin = adminUser();
 

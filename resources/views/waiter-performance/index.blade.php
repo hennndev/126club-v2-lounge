@@ -103,6 +103,10 @@
              name="mode"
              id="modeInput"
              value="{{ $mode }}">
+      <input type="hidden"
+             name="history_per_page"
+             id="historyPerPageInput"
+             value="{{ (int) request('history_per_page', 10) }}">
 
       @if ($mode === 'individual')
         <!-- Waiter Selector -->
@@ -393,6 +397,351 @@
               @endif
             </div>
           </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-5 mt-5">
+            <div class="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="font-bold text-slate-800">Riwayat Harian (09:00 - 09:00)</h3>
+                <p class="text-xs text-slate-500 mt-0.5">Performa berdasarkan window operasional end day</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <label for="history_per_page"
+                       class="text-xs text-slate-500">Rows</label>
+                <select id="history_per_page"
+                        onchange="document.getElementById('historyPerPageInput').value=this.value; document.getElementById('modeInput').value='individual'; document.getElementById('filterForm').submit();"
+                        class="text-sm border border-slate-300 rounded-lg px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  @foreach ([1, 5, 10, 20, 50] as $perPageOption)
+                    <option value="{{ $perPageOption }}"
+                            {{ (int) request('history_per_page', 10) === $perPageOption ? 'selected' : '' }}>
+                      {{ $perPageOption }}
+                    </option>
+                  @endforeach
+                </select>
+              </div>
+            </div>
+
+            @if (count($dailyHistory ?? []) === 0)
+              <div class="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">
+                Belum ada data history untuk waiter ini.
+              </div>
+            @else
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-slate-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">End Day</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Window</th>
+                      <th class="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Transaksi</th>
+                      <th class="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Revenue Sesi</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100"
+                         x-data="{ openHistory: null }">
+                    @foreach ($dailyHistory as $history)
+                      <tr @click="openHistory = openHistory === {{ $loop->index }} ? null : {{ $loop->index }}"
+                          class="hover:bg-slate-50 transition-colors cursor-pointer">
+                        <td class="px-4 py-3 font-medium text-slate-800">{{ $history->end_day }}</td>
+                        <td class="px-4 py-3 text-slate-600">
+                          {{ $history->window_start->format('d M H:i') }} - {{ $history->window_end->format('d M H:i') }}
+                        </td>
+                        <td class="px-4 py-3 text-right text-slate-700">{{ number_format($history->total_transactions) }}</td>
+                        <td class="px-4 py-3 text-right font-semibold text-slate-800">
+                          Rp {{ number_format($history->session_revenue, 0, ',', '.') }}
+                          <span class="inline-flex ml-2 text-slate-400">
+                            <svg class="w-4 h-4 transition-transform"
+                                 fill="none"
+                                 stroke="currentColor"
+                                 viewBox="0 0 24 24"
+                                 :class="openHistory === {{ $loop->index }} ? 'rotate-180' : ''">
+                              <path stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </span>
+                        </td>
+                      </tr>
+                      <tr x-show="openHistory === {{ $loop->index }}"
+                          x-cloak
+                          class="bg-slate-50/70">
+                        <td colspan="6"
+                            class="px-4 py-4">
+                          <div class="rounded-lg border border-slate-200 bg-white p-4"
+                               x-data="{ openOrder: null }">
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Detail Order (Klik per Order)</p>
+
+                            @if (($history->orders ?? collect())->isEmpty())
+                              <p class="text-sm text-slate-400">Tidak ada order pada window ini.</p>
+                            @else
+                              <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                  <thead class="bg-slate-50">
+                                    <tr>
+                                      <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Order</th>
+                                      <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th>
+                                      <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Meja</th>
+                                      <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Waktu</th>
+                                      <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody class="divide-y divide-slate-100">
+                                    @foreach ($history->orders as $order)
+                                      @php
+                                        $historySearchKey = $order->transaction_code ?: $order->order_number ?? 'ORD-' . $order->id;
+                                        $historyBookingUrl = route('admin.bookings.index', [
+                                            'tab' => 'history',
+                                            'search' => $historySearchKey,
+                                            'session_id' => $order->table_session_id,
+                                        ]);
+                                      @endphp
+                                      <tr @click="openOrder = openOrder === {{ $loop->index }} ? null : {{ $loop->index }}"
+                                          class="cursor-pointer hover:bg-slate-50 transition-colors">
+                                        <td class="px-3 py-2 text-slate-800 font-medium">
+                                          <a href="{{ $historyBookingUrl }}"
+                                             @click.stop
+                                             class="hover:text-blue-600 hover:underline transition-colors">
+                                            {{ $order->order_number ?? '#' . $order->id }}
+                                          </a>
+                                        </td>
+                                        <td class="px-3 py-2 text-slate-700">{{ $order->customer_name ?? 'Tamu' }}</td>
+                                        <td class="px-3 py-2 text-slate-700">{{ $order->table_number ?? '-' }}</td>
+                                        <td class="px-3 py-2 text-slate-700">{{ $order->ordered_at->format('d M Y H:i') }}</td>
+                                        <td class="px-3 py-2 text-right text-slate-800 font-semibold">
+                                          Rp {{ number_format($order->grand_total, 0, ',', '.') }}
+                                          <span class="inline-flex ml-2 text-slate-400">
+                                            <svg class="w-4 h-4 transition-transform"
+                                                 fill="none"
+                                                 stroke="currentColor"
+                                                 viewBox="0 0 24 24"
+                                                 :class="openOrder === {{ $loop->index }} ? 'rotate-180' : ''">
+                                              <path stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                          </span>
+                                        </td>
+                                      </tr>
+                                      <tr x-show="openOrder === {{ $loop->index }}"
+                                          x-cloak
+                                          class="bg-slate-50/60">
+                                        <td colspan="5"
+                                            class="px-3 py-3">
+                                          <div class="rounded-lg border border-slate-200 bg-white p-3"
+                                               x-data="{ detailTab: 'billing' }">
+                                            <div class="flex items-center justify-between gap-3 mb-3">
+                                              <div class="flex items-center gap-2">
+                                                <p class="text-xs text-slate-500">Reference</p>
+                                                <p class="font-medium text-slate-800">{{ $order->reference_source }}</p>
+
+                                                @if ($order->is_booking)
+                                                  <span class="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[11px] font-semibold">BOOKING</span>
+                                                  <span class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] font-semibold">BILLING</span>
+                                                @elseif ($order->is_walk_in)
+                                                  <span class="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[11px] font-semibold">WALK-IN</span>
+                                                  <span class="inline-flex items-center rounded-full bg-slate-100 text-slate-700 px-2 py-0.5 text-[11px] font-semibold">RIWAYAT TRANSAKSI</span>
+                                                @endif
+                                              </div>
+
+                                              @if ($order->is_booking)
+                                                <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden">
+                                                  <button type="button"
+                                                          @click="detailTab = 'billing'"
+                                                          :class="detailTab === 'billing' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'"
+                                                          class="px-3 py-1.5 text-xs font-medium transition-colors">
+                                                    Hasil Billing
+                                                  </button>
+                                                  <button type="button"
+                                                          @click="detailTab = 'split'"
+                                                          :class="detailTab === 'split' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'"
+                                                          class="px-3 py-1.5 text-xs font-medium border-l border-slate-200 transition-colors">
+                                                    Pecahan Transaksi
+                                                  </button>
+                                                </div>
+                                              @endif
+                                            </div>
+
+                                            <div x-show="detailTab === 'billing'"
+                                                 class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm mb-3">
+                                              <div>
+                                                <p class="text-xs text-slate-500">Subtotal</p>
+                                                <p class="font-medium text-slate-800">Rp {{ number_format($order->subtotal, 0, ',', '.') }}</p>
+                                              </div>
+                                              <div>
+                                                <p class="text-xs text-slate-500">Diskon</p>
+                                                <p class="font-medium text-slate-800">Rp {{ number_format($order->discount_amount, 0, ',', '.') }}</p>
+                                              </div>
+                                              @if ($order->down_payment_amount > 0)
+                                                <div>
+                                                  <p class="text-xs text-slate-500">DP</p>
+                                                  <p class="font-medium text-slate-800">Rp {{ number_format($order->down_payment_amount, 0, ',', '.') }}</p>
+                                                </div>
+                                              @endif
+                                              <div>
+                                                <p class="text-xs text-slate-500">PPN</p>
+                                                <p class="font-medium text-slate-800">Rp {{ number_format($order->tax, 0, ',', '.') }} @if ($order->tax_percentage > 0)
+                                                    <span class="text-slate-500">({{ rtrim(rtrim(number_format($order->tax_percentage, 2, '.', ''), '0'), '.') }}%)</span>
+                                                  @endif
+                                                </p>
+                                              </div>
+                                              <div>
+                                                <p class="text-xs text-slate-500">Service Charge</p>
+                                                <p class="font-medium text-slate-800">Rp {{ number_format($order->service_charge, 0, ',', '.') }} @if ($order->service_charge_percentage > 0)
+                                                    <span class="text-slate-500">({{ rtrim(rtrim(number_format($order->service_charge_percentage, 2, '.', ''), '0'), '.') }}%)</span>
+                                                  @endif
+                                                </p>
+                                              </div>
+                                              <div>
+                                                <p class="text-xs text-slate-500">Payment Method</p>
+                                                <p class="font-medium text-slate-800">{{ strtoupper((string) ($order->payment_method ?? '-')) }}</p>
+                                              </div>
+                                              <div>
+                                                <p class="text-xs text-slate-500">Payment Mode</p>
+                                                <p class="font-medium text-slate-800">{{ strtoupper((string) ($order->payment_mode ?? 'normal')) }}</p>
+                                              </div>
+                                              <div>
+                                                <p class="text-xs text-slate-500">Reference Number</p>
+                                                <p class="font-medium text-slate-800">{{ $order->payment_reference_number ?: '-' }}</p>
+                                              </div>
+                                              <div>
+                                                <p class="text-xs text-slate-500">Order Number</p>
+                                                <p class="font-medium text-slate-800">{{ $order->order_number ?? '#' . $order->id }}</p>
+                                              </div>
+                                              <div>
+                                                <p class="text-xs text-slate-500">Grand Total</p>
+                                                <p class="font-semibold text-slate-800">Rp {{ number_format($order->grand_total, 0, ',', '.') }}</p>
+                                              </div>
+                                              <div>
+                                                <p class="text-xs text-slate-500">Paid Amount</p>
+                                                <p class="font-semibold text-slate-800">Rp {{ number_format($order->paid_amount, 0, ',', '.') }}</p>
+                                              </div>
+                                            </div>
+
+                                            <div x-show="detailTab === 'split'"
+                                                 x-cloak
+                                                 class="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                                              @if (($order->payment_mode ?? 'normal') === 'split')
+                                                <div class="space-y-2">
+                                                  @if ($order->split_cash_amount > 0)
+                                                    <div class="flex items-center justify-between gap-3">
+                                                      <span class="text-slate-600">Cash</span>
+                                                      <span class="font-medium text-slate-800">Rp {{ number_format($order->split_cash_amount, 0, ',', '.') }}</span>
+                                                    </div>
+                                                  @endif
+
+                                                  @if ($order->split_debit_amount > 0)
+                                                    <div class="flex items-center justify-between gap-3">
+                                                      <span class="text-slate-600">{{ strtoupper((string) ($order->split_non_cash_method ?: 'non-cash')) }}</span>
+                                                      <span class="font-medium text-slate-800">Rp {{ number_format($order->split_debit_amount, 0, ',', '.') }}</span>
+                                                    </div>
+                                                    @if (!empty($order->split_non_cash_reference_number))
+                                                      <p class="text-xs text-slate-500">Ref 1: {{ $order->split_non_cash_reference_number }}</p>
+                                                    @endif
+                                                  @endif
+
+                                                  @if ($order->split_second_non_cash_amount > 0)
+                                                    <div class="flex items-center justify-between gap-3">
+                                                      <span class="text-slate-600">{{ strtoupper((string) ($order->split_second_non_cash_method ?: 'non-cash 2')) }}</span>
+                                                      <span class="font-medium text-slate-800">Rp {{ number_format($order->split_second_non_cash_amount, 0, ',', '.') }}</span>
+                                                    </div>
+                                                    @if (!empty($order->split_second_non_cash_reference_number))
+                                                      <p class="text-xs text-slate-500">Ref 2: {{ $order->split_second_non_cash_reference_number }}</p>
+                                                    @endif
+                                                  @endif
+
+                                                  <div class="pt-1 mt-2 border-t border-slate-200 flex items-center justify-between gap-3">
+                                                    <span class="text-slate-600">Total Paid</span>
+                                                    <span class="font-semibold text-slate-800">Rp {{ number_format($order->paid_amount, 0, ',', '.') }}</span>
+                                                  </div>
+                                                </div>
+                                              @else
+                                                <div class="space-y-1">
+                                                  <p class="text-slate-600">Tidak ada pecahan transaksi (payment mode normal).</p>
+                                                  <p class="text-xs text-slate-500">Method: {{ strtoupper((string) ($order->payment_method ?? '-')) }}</p>
+                                                  @if (!empty($order->payment_reference_number))
+                                                    <p class="text-xs text-slate-500">Reference: {{ $order->payment_reference_number }}</p>
+                                                  @endif
+                                                </div>
+                                              @endif
+                                            </div>
+
+                                            @if (($order->items ?? collect())->isEmpty())
+                                              <p class="text-xs text-slate-400">Tidak ada item aktif pada order ini.</p>
+                                            @else
+                                              <div class="overflow-x-auto">
+                                                <table class="w-full text-xs">
+                                                  <thead class="bg-slate-50">
+                                                    <tr>
+                                                      <th class="px-2 py-1.5 text-left font-semibold text-slate-500 uppercase tracking-wider">Item</th>
+                                                      <th class="px-2 py-1.5 text-right font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
+                                                      <th class="px-2 py-1.5 text-right font-semibold text-slate-500 uppercase tracking-wider">Subtotal</th>
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody class="divide-y divide-slate-100">
+                                                    @foreach ($order->items as $item)
+                                                      <tr>
+                                                        <td class="px-2 py-1.5 text-slate-700">{{ $item->item_name }}</td>
+                                                        <td class="px-2 py-1.5 text-right text-slate-700">{{ number_format((int) $item->quantity) }}</td>
+                                                        <td class="px-2 py-1.5 text-right text-slate-800">Rp {{ number_format((float) $item->subtotal, 0, ',', '.') }}</td>
+                                                      </tr>
+                                                    @endforeach
+                                                  </tbody>
+                                                </table>
+                                              </div>
+                                            @endif
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    @endforeach
+                                  </tbody>
+                                </table>
+                              </div>
+                            @endif
+                          </div>
+                        </td>
+                      </tr>
+                    @endforeach
+                  </tbody>
+                </table>
+              </div>
+
+              @if (method_exists($dailyHistory, 'links'))
+                <div class="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <p class="text-xs text-slate-500">
+                    Menampilkan {{ $dailyHistory->firstItem() ?? 0 }}-{{ $dailyHistory->lastItem() ?? 0 }} dari {{ $dailyHistory->total() }} hari
+                  </p>
+                  @if ($dailyHistory->hasPages())
+                    <nav class="inline-flex items-center gap-1"
+                         role="navigation"
+                         aria-label="Pagination">
+                      @if ($dailyHistory->onFirstPage())
+                        <span class="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed">Prev</span>
+                      @else
+                        <a href="{{ $dailyHistory->previousPageUrl() }}"
+                           class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Prev</a>
+                      @endif
+
+                      @foreach ($dailyHistory->getUrlRange(max(1, $dailyHistory->currentPage() - 1), min($dailyHistory->lastPage(), $dailyHistory->currentPage() + 1)) as $page => $url)
+                        @if ($page == $dailyHistory->currentPage())
+                          <span class="px-3 py-1.5 text-sm rounded-lg border border-blue-600 bg-blue-600 text-white">{{ $page }}</span>
+                        @else
+                          <a href="{{ $url }}"
+                             class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">{{ $page }}</a>
+                        @endif
+                      @endforeach
+
+                      @if ($dailyHistory->hasMorePages())
+                        <a href="{{ $dailyHistory->nextPageUrl() }}"
+                           class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Next</a>
+                      @else
+                        <span class="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed">Next</span>
+                      @endif
+                    </nav>
+                  @endif
+                </div>
+              @endif
+            @endif
+          </div>
         @elseif ($waiters->isEmpty())
           <div class="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400">
             <svg class="w-12 h-12 mx-auto mb-3 opacity-30"
@@ -410,11 +759,26 @@
       @else
         <!-- All Waiters Table -->
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div class="p-5 border-b border-slate-100">
-            <h3 class="font-bold text-slate-800">Performa Semua Waiter</h3>
-            <p class="text-sm text-slate-500 mt-0.5">
-              {{ $period === 'today' ? 'Hari Ini' : ($period === 'week' ? 'Minggu Ini' : 'Bulan Ini') }}
-            </p>
+          <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+              <h3 class="font-bold text-slate-800">Performa Semua Waiter</h3>
+              <p class="text-sm text-slate-500 mt-0.5">
+                {{ $period === 'today' ? 'Hari Ini' : ($period === 'week' ? 'Minggu Ini' : 'Bulan Ini') }}
+              </p>
+            </div>
+            <div>
+              <label class="text-xs text-slate-500 block mb-1">Rows per page</label>
+              <select name="all_waiters_per_page"
+                      onchange="this.form.submit()"
+                      class="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                @foreach ([5, 10, 20, 50] as $perPageOption)
+                  <option value="{{ $perPageOption }}"
+                          {{ (int) request('all_waiters_per_page', 20) === $perPageOption ? 'selected' : '' }}>
+                    {{ $perPageOption }}
+                  </option>
+                @endforeach
+              </select>
+            </div>
           </div>
 
           @if ($allWaitersStats->isEmpty())
@@ -437,16 +801,19 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                   @foreach ($allWaitersStats as $i => $ws)
+                    @php
+                      $rankNumber = method_exists($allWaitersStats, 'firstItem') ? ($allWaitersStats->firstItem() ?? 1) + $i : $i + 1;
+                    @endphp
                     <tr class="hover:bg-slate-50 transition-colors">
                       <td class="px-5 py-4">
-                        @if ($i === 0)
+                        @if ($rankNumber === 1)
                           <span class="text-base">🥇</span>
-                        @elseif ($i === 1)
+                        @elseif ($rankNumber === 2)
                           <span class="text-base">🥈</span>
-                        @elseif ($i === 2)
+                        @elseif ($rankNumber === 3)
                           <span class="text-base">🥉</span>
                         @else
-                          <span class="text-slate-500 font-medium">{{ $i + 1 }}</span>
+                          <span class="text-slate-500 font-medium">{{ $rankNumber }}</span>
                         @endif
                       </td>
                       <td class="px-5 py-4">
@@ -474,6 +841,42 @@
                 </tbody>
               </table>
             </div>
+
+            @if (method_exists($allWaitersStats, 'links'))
+              <div class="mt-4 px-5 pb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p class="text-xs text-slate-500">
+                  Menampilkan {{ $allWaitersStats->firstItem() ?? 0 }}-{{ $allWaitersStats->lastItem() ?? 0 }} dari {{ $allWaitersStats->total() }} waiter
+                </p>
+                @if ($allWaitersStats->hasPages())
+                  <nav class="inline-flex items-center gap-1"
+                       role="navigation"
+                       aria-label="Pagination">
+                    @if ($allWaitersStats->onFirstPage())
+                      <span class="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed">Prev</span>
+                    @else
+                      <a href="{{ $allWaitersStats->previousPageUrl() }}"
+                         class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Prev</a>
+                    @endif
+
+                    @foreach ($allWaitersStats->getUrlRange(max(1, $allWaitersStats->currentPage() - 1), min($allWaitersStats->lastPage(), $allWaitersStats->currentPage() + 1)) as $page => $url)
+                      @if ($page == $allWaitersStats->currentPage())
+                        <span class="px-3 py-1.5 text-sm rounded-lg border border-blue-600 bg-blue-600 text-white">{{ $page }}</span>
+                      @else
+                        <a href="{{ $url }}"
+                           class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">{{ $page }}</a>
+                      @endif
+                    @endforeach
+
+                    @if ($allWaitersStats->hasMorePages())
+                      <a href="{{ $allWaitersStats->nextPageUrl() }}"
+                         class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50">Next</a>
+                    @else
+                      <span class="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed">Next</span>
+                    @endif
+                  </nav>
+                @endif
+              </div>
+            @endif
           @endif
         </div>
       @endif

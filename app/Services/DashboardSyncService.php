@@ -61,13 +61,32 @@ class DashboardSyncService
 
         $paidBillings = Billing::query()
             ->where('billing_status', 'paid')
-            ->where('updated_at', '>=', $windowStart)
-            ->where('updated_at', '<', $windowEnd)
+            ->where(function ($query) use ($windowStart, $windowEnd): void {
+                $query->where(function ($paidAtQuery) use ($windowStart, $windowEnd): void {
+                    $paidAtQuery->whereNotNull('paid_at')
+                        ->where('paid_at', '>=', $windowStart)
+                        ->where('paid_at', '<', $windowEnd);
+                })->orWhere(function ($fallbackQuery) use ($windowStart, $windowEnd): void {
+                    $fallbackQuery->whereNull('paid_at')
+                        ->where('updated_at', '>=', $windowStart)
+                        ->where('updated_at', '<', $windowEnd);
+                });
+            })
             ->where(function ($query) {
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
             })
-            ->when($lastCloseAt, fn ($query) => $query->where('updated_at', '>', $lastCloseAt))
+            ->when($lastCloseAt, function ($query) use ($lastCloseAt): void {
+                $query->where(function ($lastCloseQuery) use ($lastCloseAt): void {
+                    $lastCloseQuery->where(function ($paidAtQuery) use ($lastCloseAt): void {
+                        $paidAtQuery->whereNotNull('paid_at')
+                            ->where('paid_at', '>', $lastCloseAt);
+                    })->orWhere(function ($fallbackQuery) use ($lastCloseAt): void {
+                        $fallbackQuery->whereNull('paid_at')
+                            ->where('updated_at', '>', $lastCloseAt);
+                    });
+                });
+            })
             ->get();
 
         $bookingSessionIds = $paidBillings

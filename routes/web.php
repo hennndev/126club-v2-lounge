@@ -39,14 +39,16 @@ Route::middleware('auth')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/redirect-after-login', function () {
         $user = Auth::user();
-        if ($user->type === 'internal') {
-            // Waiter/Server role goes to the mobile waiter app
-            if ($user->hasRole('Waiter/Server')) {
-                return redirect()->route('waiter.scanner');
-            }
+        if (($user->type ?? 'internal') === 'internal') {
+            $configuredRoleRoute = $user->roles()
+                ->whereNotNull('default_redirect_route')
+                ->where('default_redirect_route', '!=', '')
+                ->pluck('default_redirect_route')
+                ->first(fn (string $routeName): bool => Route::has($routeName));
 
             // Determine default route based on role
-            $defaultRoute = match (true) {
+            $fallbackRoute = match (true) {
+                $user->hasRole('Waiter/Server') => 'waiter.scanner',
                 $user->hasRole('DJ') => 'admin.song-requests.index',
                 $user->hasRole('Kitchen') => 'admin.kitchen.index',
                 $user->hasRole('Bar') => 'admin.bar.index',
@@ -54,16 +56,18 @@ Route::middleware('auth')->group(function () {
                 default => 'admin.dashboard',
             };
 
+            $targetRoute = $configuredRoleRoute ?: $fallbackRoute;
+
             // If static API token is configured, no OAuth flow needed
             if (config('accurate.api_token')) {
-                return redirect()->route($defaultRoute);
+                return redirect()->route($targetRoute);
             }
 
-            if (! session()->has('accurate_access_token')) {
+            if (str_starts_with($targetRoute, 'admin.') && ! session()->has('accurate_access_token')) {
                 return redirect()->route('accurate.auth');
             }
 
-            return redirect()->route($defaultRoute);
+            return redirect()->route($targetRoute);
         }
 
         return redirect('/login');

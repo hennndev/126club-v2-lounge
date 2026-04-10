@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -14,6 +17,17 @@ class WaiterPerformanceController extends Controller
         $period = $request->get('period', 'today');
         $mode = $request->get('mode', 'individual');
         $waiterId = $request->get('waiter_id');
+        $historyPerPage = (int) $request->get('history_per_page', 10);
+        $allWaitersPerPage = (int) $request->get('all_waiters_per_page', 20);
+        if (! in_array($historyPerPage, [1, 5, 10, 20, 50], true)) {
+            $historyPerPage = 10;
+        }
+        if ($allWaitersPerPage < 5) {
+            $allWaitersPerPage = 5;
+        }
+        if (! in_array($allWaitersPerPage, [5, 10, 20, 50], true)) {
+            $allWaitersPerPage = 20;
+        }
 
         $dateRange = $this->getDateRange($period);
 
@@ -26,6 +40,7 @@ class WaiterPerformanceController extends Controller
         $stats = null;
         $topProducts = collect();
         $recentSessions = collect();
+        $dailyHistory = collect();
         $allWaitersStats = collect();
         $rank = null;
 
@@ -135,6 +150,12 @@ class WaiterPerformanceController extends Controller
                     ->orderByDesc('table_sessions.checked_in_at')
                     ->limit(10)
                     ->get();
+
+                $dailyHistory = $this->paginateDailyHistory(
+                    $this->buildDailyHistory($selectedWaiter, 60),
+                    $historyPerPage,
+                    $request
+                );
             }
         } else {
             // All waiters comparison
@@ -167,30 +188,250 @@ class WaiterPerformanceController extends Controller
                     'avgPerCustomer' => $customersHandled > 0 ? $sessionRevenue / $customersHandled : 0,
                 ]);
             }
-            $allWaitersStats = $allWaitersStats->sortByDesc('sessionRevenue')->values();
+            $allWaitersStats = $this->paginateAllWaitersStats(
+                $allWaitersStats->sortByDesc('sessionRevenue')->values(),
+                $allWaitersPerPage,
+                $request
+            );
         }
 
         return view('waiter-performance.index', compact(
             'period', 'mode', 'waiters', 'selectedWaiter', 'stats',
-            'topProducts', 'recentSessions', 'allWaitersStats', 'rank', 'dateRange'
+            'topProducts', 'recentSessions', 'dailyHistory', 'allWaitersStats', 'rank', 'dateRange'
         ));
     }
 
     private function getDateRange(string $period): array
     {
+        if ($period === 'today') {
+            [$start, $end] = $this->currentOperationalWindow();
+
+            return [
+                'start' => $start->toDateTimeString(),
+                'end' => $end->toDateTimeString(),
+            ];
+        }
+
         return match ($period) {
             'week' => [
                 'start' => now()->startOfWeek()->toDateTimeString(),
                 'end' => now()->endOfWeek()->toDateTimeString(),
             ],
-            'month' => [
+            default => [
                 'start' => now()->startOfMonth()->toDateTimeString(),
                 'end' => now()->endOfMonth()->toDateTimeString(),
             ],
-            default => [
-                'start' => now()->startOfDay()->toDateTimeString(),
-                'end' => now()->endOfDay()->toDateTimeString(),
-            ],
         };
+    }
+
+    private function currentOperationalWindow(): array
+    {
+        $now = now('Asia/Jakarta');
+        $anchor = $now->copy()->setTime(9, 0, 0);
+
+        if ($now->lt($anchor)) {
+            $start = $anchor->copy()->subDay();
+
+            return [$start, $anchor->copy()->subSecond()];
+        }
+
+        return [$anchor, $anchor->copy()->addDay()->subSecond()];
+    }
+
+    private function buildDailyHistory(User $waiter, int $days = 14): Collection
+    {
+        $timezone = 'Asia/Jakarta';
+        $now = now($timezone);
+        $todayAnchor = $now->copy()->setTime(9, 0, 0);
+        $latestEndDay = $now->lt($todayAnchor)
+            ? $todayAnchor->copy()->subDay()->toDateString()
+            : $todayAnchor->toDateString();
+
+        $history = collect();
+
+        for ($offset = 0; $offset < $days; $offset++) {
+            $endDay = Carbon::parse($latestEndDay, $timezone)->subDays($offset);
+            $startAt = $endDay->copy()->setTime(9, 0, 0);
+            $endAt = $startAt->copy()->addDay()->subSecond();
+
+            $ordersBase = DB::table('orders')
+                ->join('table_sessions', 'orders.table_session_id', '=', 'table_sessions.id')
+                ->where('table_sessions.waiter_id', $waiter->id)
+                ->where('orders.status', '!=', 'cancelled')
+                ->whereBetween('orders.created_at', [$startAt, $endAt]);
+
+            $totalTransactions = (clone $ordersBase)->count();
+
+            $customersHandled = DB::table('table_sessions')
+                ->where('waiter_id', $waiter->id)
+                ->whereBetween('checked_in_at', [$startAt, $endAt])
+                ->count();
+
+            $sessionRevenue = DB::table('billings')
+                ->join('table_sessions', 'billings.table_session_id', '=', 'table_sessions.id')
+                ->where('table_sessions.waiter_id', $waiter->id)
+                ->where('billings.billing_status', 'paid')
+                ->whereBetween('table_sessions.checked_in_at', [$startAt, $endAt])
+                ->sum('billings.grand_total');
+
+            $orderRows = DB::table('orders')
+                ->join('table_sessions', 'orders.table_session_id', '=', 'table_sessions.id')
+                ->leftJoin('users', 'table_sessions.customer_id', '=', 'users.id')
+                ->leftJoin('tables', 'table_sessions.table_id', '=', 'tables.id')
+                ->leftJoin('table_reservations', 'table_reservations.id', '=', 'table_sessions.table_reservation_id')
+                ->leftJoin('billings', 'billings.table_session_id', '=', 'table_sessions.id')
+                ->where('table_sessions.waiter_id', $waiter->id)
+                ->where('orders.status', '!=', 'cancelled')
+                ->whereBetween('orders.created_at', [$startAt, $endAt])
+                ->select(
+                    'orders.id',
+                    'orders.order_number',
+                    'orders.table_session_id',
+                    'orders.created_at as ordered_at',
+                    'orders.discount_amount as order_discount_amount',
+                    'orders.total as order_total',
+                    'users.name as customer_name',
+                    'tables.table_number',
+                    'table_reservations.down_payment_amount',
+                    'billings.id as billing_id',
+                    'billings.is_booking',
+                    'billings.is_walk_in',
+                    'billings.orders_total',
+                    'billings.subtotal',
+                    'billings.payment_method',
+                    'billings.payment_mode',
+                    'billings.payment_reference_number',
+                    'billings.discount_amount',
+                    'billings.tax',
+                    'billings.tax_percentage',
+                    'billings.service_charge',
+                    'billings.service_charge_percentage',
+                    'billings.paid_amount',
+                    'billings.transaction_code',
+                    'billings.split_cash_amount',
+                    'billings.split_debit_amount',
+                    'billings.split_non_cash_method',
+                    'billings.split_non_cash_reference_number',
+                    'billings.split_second_non_cash_amount',
+                    'billings.split_second_non_cash_method',
+                    'billings.split_second_non_cash_reference_number',
+                    'billings.grand_total'
+                )
+                ->orderByDesc('orders.created_at')
+                ->get();
+
+            $orderItemsByOrder = collect();
+            if ($orderRows->isNotEmpty()) {
+                $orderItemsByOrder = DB::table('order_items')
+                    ->whereIn('order_id', $orderRows->pluck('id'))
+                    ->where('status', '!=', 'cancelled')
+                    ->select('order_id', 'item_name', 'quantity', 'subtotal', 'discount_amount', 'tax_amount', 'service_charge_amount')
+                    ->orderBy('order_id')
+                    ->orderBy('item_name')
+                    ->get()
+                    ->groupBy('order_id');
+            }
+
+            $detailOrders = $orderRows->map(function ($order) use ($orderItemsByOrder) {
+                $orderItems = ($orderItemsByOrder->get($order->id, collect()))->values();
+                $itemSubtotalTotal = (float) $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0));
+                $itemDiscountTotal = (float) $orderItems->sum(fn ($item) => (float) ($item->discount_amount ?? 0));
+                $itemTaxTotal = (float) $orderItems->sum(fn ($item) => (float) ($item->tax_amount ?? 0));
+                $itemServiceChargeTotal = (float) $orderItems->sum(fn ($item) => (float) ($item->service_charge_amount ?? 0));
+
+                $hasBilling = ! is_null($order->billing_id);
+
+                $referenceSource = 'Riwayat Transaksi';
+                if ($hasBilling && (bool) ($order->is_booking ?? false)) {
+                    $referenceSource = 'Billing';
+                }
+
+                return (object) [
+                    'id' => (int) $order->id,
+                    'order_number' => $order->order_number,
+                    'table_session_id' => (int) $order->table_session_id,
+                    'ordered_at' => Carbon::parse($order->ordered_at, 'Asia/Jakarta'),
+                    'order_total' => (float) ($order->order_total ?? 0),
+                    'is_booking' => (bool) ($order->is_booking ?? false),
+                    'is_walk_in' => (bool) ($order->is_walk_in ?? false),
+                    'reference_source' => $referenceSource,
+                    'customer_name' => $order->customer_name,
+                    'table_number' => $order->table_number,
+                    'payment_method' => $order->payment_method,
+                    'payment_mode' => $order->payment_mode,
+                    'payment_reference_number' => $order->payment_reference_number,
+                    'orders_total' => $itemSubtotalTotal > 0 ? $itemSubtotalTotal : (float) ($order->orders_total ?? $order->order_total ?? 0),
+                    'subtotal' => $itemSubtotalTotal > 0 ? $itemSubtotalTotal : (float) ($order->subtotal ?? $order->order_total ?? 0),
+                    'discount_amount' => $itemDiscountTotal,
+                    'down_payment_amount' => (float) ($order->down_payment_amount ?? 0),
+                    'tax' => $itemTaxTotal,
+                    'tax_percentage' => (float) ($order->tax_percentage ?? 0),
+                    'service_charge' => $itemServiceChargeTotal,
+                    'service_charge_percentage' => (float) ($order->service_charge_percentage ?? 0),
+                    'grand_total' => (float) ($order->grand_total ?? $order->order_total ?? 0),
+                    'paid_amount' => (float) ($order->paid_amount ?? $order->order_total ?? 0),
+                    'transaction_code' => $order->transaction_code ?? null,
+                    'split_cash_amount' => (float) ($order->split_cash_amount ?? 0),
+                    'split_debit_amount' => (float) ($order->split_debit_amount ?? 0),
+                    'split_non_cash_method' => $order->split_non_cash_method,
+                    'split_non_cash_reference_number' => $order->split_non_cash_reference_number,
+                    'split_second_non_cash_amount' => (float) ($order->split_second_non_cash_amount ?? 0),
+                    'split_second_non_cash_method' => $order->split_second_non_cash_method,
+                    'split_second_non_cash_reference_number' => $order->split_second_non_cash_reference_number,
+                    'items' => $orderItems,
+                ];
+            })->values();
+
+            if ($totalTransactions === 0 && $customersHandled === 0 && (float) $sessionRevenue === 0.0) {
+                continue;
+            }
+
+            $history->push((object) [
+                'end_day' => $endDay->toDateString(),
+                'window_start' => $startAt,
+                'window_end' => $endAt,
+                'customers_handled' => (int) $customersHandled,
+                'total_transactions' => (int) $totalTransactions,
+                'session_revenue' => (float) $sessionRevenue,
+                'avg_per_customer' => $customersHandled > 0 ? (float) $sessionRevenue / $customersHandled : 0.0,
+                'orders' => $detailOrders,
+            ]);
+        }
+
+        return $history->values();
+    }
+
+    private function paginateDailyHistory(Collection $history, int $perPage, Request $request): LengthAwarePaginator
+    {
+        $page = max((int) $request->get('page', 1), 1);
+        $items = $history->forPage($page, $perPage)->values();
+
+        return new LengthAwarePaginator(
+            $items,
+            $history->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
+    }
+
+    private function paginateAllWaitersStats(Collection $stats, int $perPage, Request $request): LengthAwarePaginator
+    {
+        $page = max((int) $request->get('page', 1), 1);
+        $items = $stats->forPage($page, $perPage)->values();
+
+        return new LengthAwarePaginator(
+            $items,
+            $stats->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
     }
 }

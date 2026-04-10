@@ -493,7 +493,15 @@ class RecapController extends Controller
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
             })
-            ->whereBetween('updated_at', [$startAt, $endAt])
+            ->where(function ($query) use ($startAt, $endAt): void {
+                $query->where(function ($paidAtQuery) use ($startAt, $endAt): void {
+                    $paidAtQuery->whereNotNull('paid_at')
+                        ->whereBetween('paid_at', [$startAt, $endAt]);
+                })->orWhere(function ($fallbackQuery) use ($startAt, $endAt): void {
+                    $fallbackQuery->whereNull('paid_at')
+                        ->whereBetween('updated_at', [$startAt, $endAt]);
+                });
+            })
             ->get();
 
         foreach ($paidBillings as $billing) {

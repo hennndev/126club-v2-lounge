@@ -22,6 +22,7 @@ class Billing extends Model
         'grand_total',
         'paid_amount',
         'billing_status',
+        'paid_at',
         'transaction_code',
         'payment_method',
         'payment_reference_number',
@@ -56,6 +57,7 @@ class Billing extends Model
         'split_second_non_cash_amount' => 'decimal:2',
         'is_walk_in' => 'boolean',
         'is_booking' => 'boolean',
+        'paid_at' => 'datetime',
     ];
 
     public function tableSession()

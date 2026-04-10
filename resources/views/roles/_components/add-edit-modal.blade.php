@@ -51,6 +51,20 @@
                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"></textarea>
         </div>
 
+        <div>
+          <label for="default_redirect_route"
+                 class="block text-sm font-medium text-gray-700 mb-2">Default Redirect Halaman</label>
+          <select name="default_redirect_route"
+                  id="default_redirect_route"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+            <option value="">Tidak diatur (ikuti default sistem)</option>
+            @foreach ($redirectOptions as $routeName => $routeLabel)
+              <option value="{{ $routeName }}">{{ $routeLabel }}</option>
+            @endforeach
+          </select>
+          <p class="text-xs text-gray-500 mt-1">User yang sudah login dan membuka halaman login akan diarahkan ke halaman ini sesuai role.</p>
+        </div>
+
         <!-- Permissions -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-3">Permissions</label>

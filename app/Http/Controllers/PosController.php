@@ -979,6 +979,7 @@ class PosController extends Controller
                     'grand_total' => (float) $totals['grand_total'],
                     'paid_amount' => (float) $totals['grand_total'],
                     'billing_status' => 'paid',
+                    'paid_at' => now('Asia/Jakarta'),
                     'payment_method' => $paymentMethod,
                     'payment_reference_number' => $paymentReferenceNumber,
                     'payment_mode' => $paymentMode,
