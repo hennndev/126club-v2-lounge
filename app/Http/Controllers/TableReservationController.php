@@ -52,8 +52,24 @@ class TableReservationController extends Controller
                     })
                     ->orWhereHas('table', function ($tableQuery) use ($search) {
                         $tableQuery->where('table_number', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('tableSession.billing', function ($billingQuery) use ($search) {
+                        $billingQuery->where('transaction_code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('tableSession.orders', function ($orderQuery) use ($search) {
+                        $orderQuery->where('order_number', 'like', "%{$search}%");
                     });
             });
+        }
+
+        if ($request->filled('session_id')) {
+            $sessionId = (int) $request->input('session_id');
+
+            if ($sessionId > 0) {
+                $query->whereHas('tableSession', function ($tableSessionQuery) use ($sessionId) {
+                    $tableSessionQuery->where('id', $sessionId);
+                });
+            }
         }
 
         if ($request->filled('status')) {
@@ -770,6 +786,7 @@ class TableReservationController extends Controller
                     'grand_total' => (float) $totals['grand_total'],
                     'paid_amount' => (float) $totals['grand_total'],
                     'billing_status' => 'paid',
+                    'paid_at' => now('Asia/Jakarta'),
                     'transaction_code' => $transactionCode,
                     'payment_method' => $paymentMethod,
                     'payment_reference_number' => $paymentReferenceNumber,

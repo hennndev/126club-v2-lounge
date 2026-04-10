@@ -154,6 +154,7 @@
           <thead class="bg-gray-50">
             <tr>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role Name</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Default Redirect</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Permissions</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Users</th>
@@ -170,6 +171,9 @@
                     <div class="font-medium text-gray-900">{{ $role->name }}</div>
                     <div class="text-xs text-gray-500">ID: ROLE-{{ strtoupper(substr($role->name, 0, 3)) }}</div>
                   </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="text-sm text-gray-900">{{ $redirectOptions[$role->default_redirect_route] ?? '-' }}</div>
                 </td>
                 <td class="px-6 py-4">
                   <div class="text-sm text-gray-900">
@@ -230,7 +234,7 @@
               </tr>
             @empty
               <tr>
-                <td colspan="6"
+                <td colspan="7"
                     class="px-6 py-8 text-center text-gray-500">
                   Tidak ada data role
                 </td>
@@ -273,6 +277,7 @@
         document.getElementById('roleForm').reset();
         document.getElementById('formMethod').value = 'POST';
         document.getElementById('roleForm').action = '{{ route('admin.roles.store') }}';
+        document.getElementById('default_redirect_route').value = '';
         document.querySelectorAll('input[name="permissions[]"]').forEach(cb => cb.checked = false);
         document.getElementById('roleModal').classList.remove('hidden');
       }
@@ -283,6 +288,7 @@
         document.getElementById('formMethod').value = 'PUT';
         document.getElementById('roleForm').action = `/admin/roles/${role.id}`;
         document.getElementById('name').value = role.name;
+        document.getElementById('default_redirect_route').value = role.default_redirect_route ?? '';
 
         // Uncheck all permissions first
         document.querySelectorAll('input[name="permissions[]"]').forEach(cb => cb.checked = false);
