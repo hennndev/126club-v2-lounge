@@ -175,6 +175,10 @@
           <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_room'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
+          <span class="label">Total Staff Meal</span>
+          <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_staff_meal'] ?? 0), 0, ',', '.') }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
           <span class="label">Total LD</span>
           <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_ld'] ?? 0), 0, ',', '.') }}</span>
         </div>
@@ -211,6 +215,7 @@
         </div>
       </section>
 
+      {{--
       <section class="mt-3">
         <h2 class="text-[11px] font-semibold text-gray-900">DAFTAR TRANSAKSI</h2>
         <div class="mt-1.5 space-y-2">
@@ -257,6 +262,7 @@
           @endforelse
         </div>
       </section>
+      --}}
 
       <p class="mt-3 border-t border-dashed border-gray-300 pt-2 text-center text-[10px] text-gray-500">--- END OF REPORT ---</p>
     </div>

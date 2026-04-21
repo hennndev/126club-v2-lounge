@@ -119,6 +119,11 @@
               <p class="text-2xl font-bold text-blue-800 mt-1">Rp {{ number_format($dashboardPreview['total_room'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
+            <div class="p-4 border border-gray-200 rounded-lg bg-cyan-50">
+              <p class="text-sm font-medium text-cyan-700">Total Staff Meal</p>
+              <p class="text-2xl font-bold text-cyan-800 mt-1">Rp {{ number_format($dashboardPreview['total_staff_meal'] ?? 0, 0, ',', '.') }}</p>
+            </div>
+
             <div class="p-4 border border-gray-200 rounded-lg bg-purple-50">
               <p class="text-sm font-medium text-purple-700">Total LD</p>
               <p class="text-2xl font-bold text-purple-800 mt-1">Rp {{ number_format($dashboardPreview['total_ld'] ?? 0, 0, ',', '.') }}</p>

@@ -27,6 +27,7 @@ class DashboardSyncService
             'total_cigarette' => 0.0,
             'total_breakage' => 0.0,
             'total_room' => 0.0,
+            'total_staff_meal' => 0.0,
             'total_ld' => 0.0,
             'total_ld_quantity' => 0,
             'total_penjualan_rokok' => 0.0,
@@ -158,6 +159,7 @@ class DashboardSyncService
         $totals['total_cigarette'] = (float) ($categoryMainAmountMap['cigarette'] ?? 0);
         $totals['total_breakage'] = (float) ($categoryMainAmountMap['breakage'] ?? 0);
         $totals['total_room'] = (float) ($categoryMainAmountMap['room'] ?? 0);
+        $totals['total_staff_meal'] = (float) ($categoryMainAmountMap['staff_meal'] ?? 0);
         $totals['total_ld'] = (float) ($categoryMainAmountMap['ld'] ?? 0);
         $totals['total_ld_quantity'] = (int) ($categoryMainQuantityMap['ld'] ?? 0);
 

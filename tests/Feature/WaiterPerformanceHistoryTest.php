@@ -377,3 +377,101 @@ test('waiter performance all mode supports pagination with minimum 5 rows per pa
         ->assertSee('name="all_waiters_per_page"', false)
         ->assertSee('page=2', false);
 });
+
+test('waiter performance can be filtered by selected date', function () {
+    Carbon::setTestNow(Carbon::create(2026, 4, 13, 12, 0, 0, 'Asia/Jakarta'));
+
+    $admin = adminUser();
+    $waiter = waiterPerformanceWaiter();
+
+    createWaiterHistoryEntry(
+        $waiter,
+        $admin,
+        'Customer Date Match',
+        Carbon::create(2026, 4, 11, 10, 0, 0, 'Asia/Jakarta'),
+        'Date Match Item',
+        120000
+    );
+
+    createWaiterHistoryEntry(
+        $waiter,
+        $admin,
+        'Customer Date Other',
+        Carbon::create(2026, 4, 12, 10, 0, 0, 'Asia/Jakarta'),
+        'Date Other Item',
+        90000
+    );
+
+    actingAs($admin)
+        ->get(route('admin.waiter-performance.index', [
+            'mode' => 'individual',
+            'period' => 'month',
+            'date' => '2026-04-11',
+            'waiter_id' => $waiter->id,
+        ]))
+        ->assertSuccessful()
+        ->assertSeeText('11 April 2026')
+        ->assertSeeText('Date Match Item')
+        ->assertDontSeeText('Date Other Item');
+});
+
+test('waiter performance monthly history route lists selected month records with default 31 days', function () {
+    Carbon::setTestNow(Carbon::create(2026, 4, 20, 12, 0, 0, 'Asia/Jakarta'));
+
+    $admin = adminUser();
+    $waiter = waiterPerformanceWaiter();
+
+    createWaiterHistoryEntry(
+        $waiter,
+        $admin,
+        'Customer April',
+        Carbon::create(2026, 4, 11, 10, 0, 0, 'Asia/Jakarta'),
+        'April Item',
+        100000
+    );
+
+    createWaiterHistoryEntry(
+        $waiter,
+        $admin,
+        'Customer March',
+        Carbon::create(2026, 3, 25, 10, 0, 0, 'Asia/Jakarta'),
+        'March Item',
+        90000
+    );
+
+    actingAs($admin)
+        ->get(route('admin.waiter-performance.monthly-history', [
+            'waiter' => $waiter->id,
+            'month' => '2026-04',
+        ]))
+        ->assertSuccessful()
+        ->assertSeeText('Riwayat Bulanan Waiter')
+        ->assertSeeText('April 2026')
+        ->assertSeeText('2026-04-11')
+        ->assertDontSeeText('2026-03-25')
+        ->assertSeeText('100.000')
+        ->assertSeeText('Detail Order (Klik per Order)')
+        ->assertSeeText('Customer April')
+        ->assertSeeText('April Item')
+        ->assertSee('x-data="{ openHistory: null }"', false)
+        ->assertSee('x-show="openHistory === 0"', false);
+});
+
+test('waiter performance monthly pull button submits to monthly history route', function () {
+    Carbon::setTestNow(Carbon::create(2026, 4, 21, 12, 0, 0, 'Asia/Jakarta'));
+
+    $admin = adminUser();
+    $waiter = waiterPerformanceWaiter();
+
+    actingAs($admin)
+        ->get(route('admin.waiter-performance.index', [
+            'mode' => 'individual',
+            'period' => 'month',
+            'waiter_id' => $waiter->id,
+        ]))
+        ->assertSuccessful()
+        ->assertSee(
+            'formaction="'.route('admin.waiter-performance.monthly-history', ['waiter' => $waiter->id]).'"',
+            false
+        );
+});

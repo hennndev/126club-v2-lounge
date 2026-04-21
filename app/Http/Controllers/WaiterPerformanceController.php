@@ -17,6 +17,7 @@ class WaiterPerformanceController extends Controller
         $period = $request->get('period', 'today');
         $mode = $request->get('mode', 'individual');
         $waiterId = $request->get('waiter_id');
+        $selectedDate = $request->filled('date') ? (string) $request->string('date') : null;
         $historyPerPage = (int) $request->get('history_per_page', 10);
         $allWaitersPerPage = (int) $request->get('all_waiters_per_page', 20);
         if (! in_array($historyPerPage, [1, 5, 10, 20, 50], true)) {
@@ -29,7 +30,8 @@ class WaiterPerformanceController extends Controller
             $allWaitersPerPage = 20;
         }
 
-        $dateRange = $this->getDateRange($period);
+        $dateRange = $this->getDateRange($period, $selectedDate);
+        $periodLabel = $this->resolvePeriodLabel($period, $selectedDate);
 
         $waiters = User::whereHas('roles', fn ($q) => $q->where('name', 'Waiter/Server'))
             ->whereHas('internalUser', fn ($q) => $q->where('is_active', true))
@@ -151,8 +153,20 @@ class WaiterPerformanceController extends Controller
                     ->limit(10)
                     ->get();
 
+                $historyDays = 60;
+                $historyAnchorDate = null;
+
+                if ($selectedDate !== null) {
+                    try {
+                        $historyDays = 1;
+                        $historyAnchorDate = Carbon::parse($selectedDate, 'Asia/Jakarta');
+                    } catch (\Throwable) {
+                        // ignore invalid date and fallback to rolling history
+                    }
+                }
+
                 $dailyHistory = $this->paginateDailyHistory(
-                    $this->buildDailyHistory($selectedWaiter, 60),
+                    $this->buildDailyHistory($selectedWaiter, $historyDays, $historyAnchorDate),
                     $historyPerPage,
                     $request
                 );
@@ -197,12 +211,72 @@ class WaiterPerformanceController extends Controller
 
         return view('waiter-performance.index', compact(
             'period', 'mode', 'waiters', 'selectedWaiter', 'stats',
-            'topProducts', 'recentSessions', 'dailyHistory', 'allWaitersStats', 'rank', 'dateRange'
+            'topProducts', 'recentSessions', 'dailyHistory', 'allWaitersStats', 'rank', 'dateRange', 'selectedDate', 'periodLabel'
         ));
     }
 
-    private function getDateRange(string $period): array
+    public function monthlyHistory(Request $request, User $waiter): View
     {
+        $timezone = 'Asia/Jakarta';
+        $monthInput = trim((string) $request->string('month', now($timezone)->format('Y-m')));
+        $days = (int) $request->integer('days', 31);
+
+        if ($days < 1) {
+            $days = 1;
+        }
+
+        if ($days > 31) {
+            $days = 31;
+        }
+
+        try {
+            $monthStart = Carbon::createFromFormat('Y-m', $monthInput, $timezone)->startOfMonth();
+        } catch (\Throwable) {
+            $monthStart = now($timezone)->startOfMonth();
+        }
+
+        $monthEnd = $monthStart->copy()->endOfMonth();
+        $monthlyHistory = $this->buildDailyHistory($waiter, $days, $monthEnd)
+            ->filter(function ($history) use ($monthStart, $monthEnd): bool {
+                return $history->end_day >= $monthStart->toDateString()
+                    && $history->end_day <= $monthEnd->toDateString();
+            })
+            ->values();
+
+        $summary = [
+            'days' => $monthlyHistory->count(),
+            'transactions' => (int) $monthlyHistory->sum('total_transactions'),
+            'customers' => (int) $monthlyHistory->sum('customers_handled'),
+            'revenue' => (float) $monthlyHistory->sum('session_revenue'),
+        ];
+
+        return view('waiter-performance.monthly-history', [
+            'waiter' => $waiter,
+            'monthInput' => $monthStart->format('Y-m'),
+            'monthLabel' => $monthStart->translatedFormat('F Y'),
+            'days' => $days,
+            'monthlyHistory' => $monthlyHistory,
+            'summary' => $summary,
+        ]);
+    }
+
+    private function getDateRange(string $period, ?string $selectedDate = null): array
+    {
+        if ($selectedDate !== null) {
+            try {
+                $endDay = Carbon::parse($selectedDate, 'Asia/Jakarta');
+                $start = $endDay->copy()->setTime(9, 0, 0);
+                $end = $start->copy()->addDay()->subSecond();
+
+                return [
+                    'start' => $start->toDateTimeString(),
+                    'end' => $end->toDateTimeString(),
+                ];
+            } catch (\Throwable) {
+                // ignore invalid date and fallback to period
+            }
+        }
+
         if ($period === 'today') {
             [$start, $end] = $this->currentOperationalWindow();
 
@@ -224,6 +298,23 @@ class WaiterPerformanceController extends Controller
         };
     }
 
+    private function resolvePeriodLabel(string $period, ?string $selectedDate = null): string
+    {
+        if ($selectedDate !== null) {
+            try {
+                return Carbon::parse($selectedDate, 'Asia/Jakarta')->translatedFormat('d F Y');
+            } catch (\Throwable) {
+                // ignore invalid date and fallback to period label
+            }
+        }
+
+        return match ($period) {
+            'today' => 'Hari Ini',
+            'week' => 'Minggu Ini',
+            default => 'Bulan Ini',
+        };
+    }
+
     private function currentOperationalWindow(): array
     {
         $now = now('Asia/Jakarta');
@@ -238,19 +329,21 @@ class WaiterPerformanceController extends Controller
         return [$anchor, $anchor->copy()->addDay()->subSecond()];
     }
 
-    private function buildDailyHistory(User $waiter, int $days = 14): Collection
+    private function buildDailyHistory(User $waiter, int $days = 14, ?Carbon $latestEndDay = null): Collection
     {
         $timezone = 'Asia/Jakarta';
-        $now = now($timezone);
-        $todayAnchor = $now->copy()->setTime(9, 0, 0);
-        $latestEndDay = $now->lt($todayAnchor)
-            ? $todayAnchor->copy()->subDay()->toDateString()
-            : $todayAnchor->toDateString();
+        if ($latestEndDay === null) {
+            $now = now($timezone);
+            $todayAnchor = $now->copy()->setTime(9, 0, 0);
+            $latestEndDay = $now->lt($todayAnchor)
+                ? $todayAnchor->copy()->subDay()
+                : $todayAnchor;
+        }
 
         $history = collect();
 
         for ($offset = 0; $offset < $days; $offset++) {
-            $endDay = Carbon::parse($latestEndDay, $timezone)->subDays($offset);
+            $endDay = $latestEndDay->copy()->timezone($timezone)->subDays($offset);
             $startAt = $endDay->copy()->setTime(9, 0, 0);
             $endAt = $startAt->copy()->addDay()->subSecond();
 
@@ -435,3 +528,4 @@ class WaiterPerformanceController extends Controller
         );
     }
 }
+// DEBUG

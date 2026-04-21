@@ -26,6 +26,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
             'total_cigarette' => 14000,
             'total_breakage' => 15000,
             'total_room' => 16000,
+            'total_staff_meal' => 16500,
             'total_ld' => 17000,
             'total_ld_quantity' => 6,
             'total_penjualan_rokok' => 35000,
@@ -61,6 +62,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and((float) $history->total_cigarette)->toBe(14000.0)
         ->and((float) $history->total_breakage)->toBe(15000.0)
         ->and((float) $history->total_room)->toBe(16000.0)
+        ->and((float) $history->total_staff_meal)->toBe(16500.0)
         ->and((float) $history->total_ld)->toBe(17000.0)
         ->and((int) $history->total_ld_quantity)->toBe(6)
         ->and((float) $history->total_penjualan_rokok)->toBe(35000.0)
@@ -81,6 +83,7 @@ test('recap close command snapshots dashboard totals into recap history and rese
         ->and((float) $dashboard->total_cigarette)->toBe(0.0)
         ->and((float) $dashboard->total_breakage)->toBe(0.0)
         ->and((float) $dashboard->total_room)->toBe(0.0)
+        ->and((float) $dashboard->total_staff_meal)->toBe(0.0)
         ->and((float) $dashboard->total_ld)->toBe(0.0)
         ->and((int) $dashboard->total_ld_quantity)->toBe(0)
         ->and((float) $dashboard->total_penjualan_rokok)->toBe(0.0)
