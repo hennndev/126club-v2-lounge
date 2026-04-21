@@ -146,6 +146,7 @@
             <option value="cigarette">Cigarette</option>
             <option value="breakage">Breakage</option>
             <option value="room">Room</option>
+            <option value="staff_meal">Staff Meal</option>
             <option value="LD">LD</option>
           </select>
         </div>
@@ -475,6 +476,7 @@
               <option value="cigarette">Cigarette</option>
               <option value="breakage">Breakage</option>
               <option value="room">Room</option>
+              <option value="staff_meal">Staff Meal</option>
               <option value="LD">LD</option>
             </select>
             <button type="button"

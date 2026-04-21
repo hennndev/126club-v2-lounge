@@ -177,6 +177,7 @@ Route::middleware('auth')->group(function () {
 
         // Waiter Performance
         Route::get('waiter-performance', [WaiterPerformanceController::class, 'index'])->name('waiter-performance.index');
+        Route::get('waiter-performance/{waiter}/monthly-history', [WaiterPerformanceController::class, 'monthlyHistory'])->name('waiter-performance.monthly-history');
 
         // Settings
         Route::get('settings', function () {

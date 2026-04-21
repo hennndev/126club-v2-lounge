@@ -363,6 +363,29 @@ test('close billing trigger includes adjusted minimum charge from event', functi
         ->assertSee('Min Rp 110');
 });
 
+test('all tab booking card shows who made the booking', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'reserved']);
+    $customer = User::factory()->create(['name' => 'Budi Booker']);
+
+    TableReservation::create([
+        'booking_code' => rand(1000, 9999),
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'booking_name' => 'Birthday Table',
+        'reservation_date' => now()->toDateString(),
+        'reservation_time' => '20:00',
+        'status' => 'confirmed',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'all']))
+        ->assertOk()
+        ->assertSee('Birthday Table')
+        ->assertSee('Dibooking oleh: Budi Booker');
+});
+
 test('completing a booking sets table status back to available', function () {
     $admin = adminUser();
     $area = makeArea();
@@ -439,10 +462,11 @@ test('pending tab shows pending bookings and is accessible', function () {
     $table = makeTable($area);
     $customer = makeBookingCustomer();
 
-    TableReservation::create([
+    $pendingBooking = TableReservation::create([
         'booking_code' => rand(1000, 9999),
         'table_id' => $table->id,
         'customer_id' => $customer->id,
+        'booking_name' => 'Pending Booking Name',
         'reservation_date' => now()->addDays(2)->toDateString(),
         'reservation_time' => '20:00',
         'status' => 'pending',
@@ -454,7 +478,13 @@ test('pending tab shows pending bookings and is accessible', function () {
         ->assertViewIs('bookings.index')
         ->assertViewHas('tab', 'pending')
         ->assertViewHas('conflictingPendingKeys')
-        ->assertViewHas('blockedPendingKeys');
+        ->assertViewHas('blockedPendingKeys')
+        ->assertSeeText('Nama Booking')
+        ->assertSeeText('Nama Customer')
+        ->assertSeeText('Reservation ID')
+        ->assertSeeText('Pending Booking Name')
+        ->assertSeeText($customer->name)
+        ->assertSeeText('#'.$pendingBooking->id);
 });
 
 test('reserved table keeps active booking mapping for confirmed booking even if reservation date is past', function () {

@@ -55,6 +55,7 @@ class RecapClosingService
                 'total_cigarette' => (float) $dashboard->total_cigarette,
                 'total_breakage' => (float) $dashboard->total_breakage,
                 'total_room' => (float) $dashboard->total_room,
+                'total_staff_meal' => (float) $dashboard->total_staff_meal,
                 'total_ld' => (float) $dashboard->total_ld,
                 'total_ld_quantity' => (int) $dashboard->total_ld_quantity,
                 'total_penjualan_rokok' => (float) $dashboard->total_penjualan_rokok,
@@ -91,6 +92,7 @@ class RecapClosingService
             || (float) $dashboard->total_cigarette > 0
             || (float) $dashboard->total_breakage > 0
             || (float) $dashboard->total_room > 0
+            || (float) $dashboard->total_staff_meal > 0
             || (float) $dashboard->total_ld > 0
             || (int) $dashboard->total_ld_quantity > 0
             || (float) $dashboard->total_penjualan_rokok > 0
@@ -120,6 +122,7 @@ class RecapClosingService
             'total_cigarette' => 0,
             'total_breakage' => 0,
             'total_room' => 0,
+            'total_staff_meal' => 0,
             'total_ld' => 0,
             'total_ld_quantity' => 0,
             'total_penjualan_rokok' => 0,

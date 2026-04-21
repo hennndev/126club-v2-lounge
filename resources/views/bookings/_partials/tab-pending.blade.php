@@ -108,6 +108,7 @@
           <tr class="bg-gray-50 border-b border-gray-200">
             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-600">Nama Booking</th>
             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-600">Nama Customer</th>
+            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-600">Reservation ID</th>
             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-600">Meja</th>
             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-600">Tanggal & Waktu</th>
             <th class="px-4 py-3 text-left text-sm font-semibold text-gray-600">Catatan</th>
@@ -146,6 +147,11 @@
                 @if ($phone)
                   <div class="text-sm text-gray-400 mt-0.5">{{ $phone }}</div>
                 @endif
+              </td>
+
+              {{-- Reservation ID --}}
+              <td class="px-4 py-4 whitespace-nowrap">
+                <div class="text-base font-semibold text-gray-900">#{{ $booking->id }}</div>
               </td>
 
               {{-- Meja --}}

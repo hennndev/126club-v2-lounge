@@ -177,6 +177,7 @@ it('prints end day recap with LD quantity row', function () {
         'dashboardPreview' => [
             'total_kitchen_items' => 3,
             'total_bar_items' => 4,
+            'total_staff_meal' => 25000,
             'total_ld_quantity' => 7,
         ],
         'kitchenQtyTotal' => 3,
@@ -190,6 +191,8 @@ it('prints end day recap with LD quantity row', function () {
     $log = file_get_contents(storage_path('logs/printer.log'));
 
     expect($result)->toBeTrue()
+        ->and($log)->toContain('Total Staff Meal')
+        ->and($log)->toContain('25.000')
         ->and($log)->toContain('Total LD Qty')
         ->and($log)->toContain('7');
 });

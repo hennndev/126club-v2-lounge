@@ -39,7 +39,7 @@
           </svg>
           <div>
             <p class="text-xs text-slate-500">Periode</p>
-            <p class="text-sm font-semibold text-slate-800">{{ now()->translatedFormat('d F Y') }}</p>
+            <p class="text-sm font-semibold text-slate-800">{{ $periodLabel }}</p>
           </div>
         </div>
 
@@ -99,6 +99,7 @@
           Semua Waiter
         </button>
       </div>
+
       <input type="hidden"
              name="mode"
              id="modeInput"
@@ -405,6 +406,19 @@
                 <p class="text-xs text-slate-500 mt-0.5">Performa berdasarkan window operasional end day</p>
               </div>
               <div class="flex items-center gap-2">
+                <label for="monthlyMonth"
+                       class="text-xs text-slate-500">Bulan</label>
+                <input id="monthlyMonth"
+                       type="month"
+                       name="month"
+                       value="{{ request('month', now('Asia/Jakarta')->format('Y-m')) }}"
+                       class="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button type="submit"
+                        formaction="{{ route('admin.waiter-performance.monthly-history', ['waiter' => $selectedWaiter->id]) }}"
+                        formmethod="GET"
+                        class="text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors">
+                  Tarik Per Bulan
+                </button>
                 <label for="history_per_page"
                        class="text-xs text-slate-500">Rows</label>
                 <select id="history_per_page"
@@ -763,7 +777,7 @@
             <div>
               <h3 class="font-bold text-slate-800">Performa Semua Waiter</h3>
               <p class="text-sm text-slate-500 mt-0.5">
-                {{ $period === 'today' ? 'Hari Ini' : ($period === 'week' ? 'Minggu Ini' : 'Bulan Ini') }}
+                {{ $periodLabel }}
               </p>
             </div>
             <div>
@@ -831,7 +845,7 @@
                       <td class="px-5 py-4 text-right text-slate-700">Rp {{ number_format($ws->avgPerCustomer, 0, ',', '.') }}</td>
                       <td class="px-5 py-4 text-right font-semibold text-slate-800">Rp {{ number_format($ws->sessionRevenue, 0, ',', '.') }}</td>
                       <td class="px-5 py-4 text-center">
-                        <a href="{{ route('admin.waiter-performance.index', ['mode' => 'individual', 'period' => $period, 'waiter_id' => $ws->user->id]) }}"
+                        <a href="{{ route('admin.waiter-performance.index', ['mode' => 'individual', 'period' => $period, 'waiter_id' => $ws->user->id, 'history_per_page' => request('history_per_page', 10)]) }}"
                            class="text-xs text-blue-600 hover:text-blue-800 font-medium">
                           Lihat →
                         </a>

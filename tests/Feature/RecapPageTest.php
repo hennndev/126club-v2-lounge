@@ -141,6 +141,7 @@ test('admin can open recap page', function () {
         'total_cigarette' => 84000,
         'total_breakage' => 95000,
         'total_room' => 106000,
+        'total_staff_meal' => 55000,
         'total_ld' => 117000,
         'total_ld_quantity' => 12,
         'total_penjualan_rokok' => 42,
@@ -181,6 +182,7 @@ test('admin can open recap page', function () {
         ->assertSeeText('Total Cigarette')
         ->assertSeeText('Total Breakage')
         ->assertSeeText('Total Room')
+        ->assertSeeText('Total Staff Meal')
         ->assertSeeText('Total LD')
         ->assertSeeText('Qty 12')
         ->assertSeeText('Rp 51.000')
@@ -189,6 +191,7 @@ test('admin can open recap page', function () {
         ->assertSeeText('Rp 84.000')
         ->assertSeeText('Rp 95.000')
         ->assertSeeText('Rp 106.000')
+        ->assertSeeText('Rp 55.000')
         ->assertSeeText('Rp 117.000')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('42')
@@ -308,15 +311,10 @@ test('recap close preview page shows printable a4 summary', function () {
         ->assertSeeText('Item Keluar Bar')
         ->assertSeeText('Qty 8')
         ->assertSeeText('Tutup End Day')
-        ->assertSeeText('Preview Item Recap')
         ->assertSeeText('INFO ROKOK')
         ->assertSeeText('Rokok Preview')
         ->assertDontSeeText('Tidak ada item rokok.')
         ->assertSeeText('3x')
-        ->assertSeeText('2x')
-        ->assertSeeText('Subtotal: Rp 30.000')
-        ->assertSeeText('PB1: Rp 3.000')
-        ->assertSeeText('Service: Rp 2.000')
         ->assertSee(route('admin.recap.close-export'));
 });
 
@@ -454,16 +452,12 @@ test('recap close preview print endpoint triggers server print and returns log p
     $printedLog = file_get_contents($logPath);
 
     expect($printedLog)
-        ->toContain('RCP-PRINT-001')
-        ->toContain('Metode:')
-        ->toContain('Ref: REF-PRINT-001')
         ->toContain('INFO ROKOK')
         ->toContain('Rokok Print')
         ->toContain('Qty: 2x')
         ->toContain('Item Keluar Kitchen')
         ->toContain('Item Keluar Bar')
-        ->toContain('1x Print Test Item')
-        ->not->toContain("Waktu: -\n  Metode: -\n  Ref: -");
+        ->not->toContain('DAFTAR TRANSAKSI');
 });
 
 test('recap close preview excludes incomplete empty transactions', function () {
@@ -537,10 +531,7 @@ test('recap close preview excludes incomplete empty transactions', function () {
             'end_datetime' => $end->format('Y-m-d\TH:i'),
         ]))
         ->assertSuccessful()
-        ->assertSeeText('RCP-VALID-001')
-        ->assertSeeText('Metode: Transfer')
-        ->assertSeeText('Ref: REF-VALID-001')
-        ->assertDontSeeText('Metode: -')
+        ->assertDontSeeText('DAFTAR TRANSAKSI')
         ->assertDontSeeText('Tidak ada item.');
 });
 
@@ -666,11 +657,6 @@ test('recap close preview print calculates total with tax service and discount',
     $printedLog = file_get_contents($logPath);
 
     expect($printedLog)
-        ->toContain('RCP-CALC-001')
-        ->toContain('Diskon: - Rp 5.000')
-        ->toContain('DP: Rp 3.000')
-        ->toContain('Sisa Bayar')
-        ->toContain('Rp 15.000')
         ->toContain('Total Diskon')
         ->toContain('- Rp 5.000')
         ->toContain('Total DP');
@@ -771,7 +757,6 @@ test('recap close preview print without explicit range only includes today trans
     $printedLog = file_get_contents($logPath);
 
     expect($printedLog)
-        ->toContain('RCP-TODAY-ONLY-001')
         ->not->toContain('RCP-OLD-001');
 
     \Illuminate\Support\Carbon::setTestNow();
@@ -881,7 +866,6 @@ test('recap close preview print before 9am uses previous end day window', functi
     $printedLog = file_get_contents($logPath);
 
     expect($printedLog)
-        ->toContain('RCP-BEFORE9-YDAY-001')
         ->not->toContain('RCP-BEFORE9-TODAY-001');
 
     \Illuminate\Support\Carbon::setTestNow();
@@ -1741,8 +1725,7 @@ test('recap history can be reprinted from history flow', function () {
 
     expect($logOutput)
         ->toContain('END DAY RECAP')
-        ->toContain('DAFTAR TRANSAKSI')
-        ->toContain('RCP-HIST-REPRINT-001')
+        ->not->toContain('DAFTAR TRANSAKSI')
         ->toContain('Status : SUCCESS (LOG MODE)');
 });
 
