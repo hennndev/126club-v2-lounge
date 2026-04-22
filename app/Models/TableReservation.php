@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TableReservation extends Model
 {
@@ -11,6 +12,7 @@ class TableReservation extends Model
         'booking_name',
         'table_id',
         'customer_id',
+        'created_by',
         'reservation_date',
         'reservation_time',
         'status',
@@ -34,6 +36,11 @@ class TableReservation extends Model
     public function customer()
     {
         return $this->belongsTo(User::class, 'customer_id');
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function tableSession()

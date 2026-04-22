@@ -122,6 +122,9 @@
               $isConflict = in_array($slotKey, $conflictingPendingKeys);
               $isBlocked = in_array($slotKey, $blockedPendingKeys);
               $customerName = $booking->booking_name ?? ($booking->customer?->name ?? '-');
+              $createdByName = $booking->creator?->name ?? '-';
+              $createdByType = $booking->creator?->customerUser ? 'Customer' : ($booking->creator?->id ? 'User' : '-');
+              $createdByText = $booking->creator ? $createdByName . ' (' . $createdByType . ')' : '—';
               $areaName = $booking->table?->area?->name ?? '';
               $areaBadge = match (true) {
                   str_contains(strtolower($areaName), 'room') || str_contains(strtolower($areaName), 'vip') => 'bg-purple-100 text-purple-700',
@@ -136,6 +139,7 @@
               {{-- Nama Booking --}}
               <td class="px-4 py-4">
                 <div class="text-base font-semibold text-gray-900">{{ $booking->booking_name ?? '-' }}</div>
+                <div class="text-xs text-gray-400 mt-0.5">Dibuat oleh: {{ $createdByText }}</div>
               </td>
 
               {{-- Nama Customer --}}
