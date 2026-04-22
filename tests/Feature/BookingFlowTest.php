@@ -2,6 +2,7 @@
 
 use App\Models\Area;
 use App\Models\Billing;
+use App\Models\CustomerUser;
 use App\Models\Event;
 use App\Models\InventoryItem;
 use App\Models\Order;
@@ -11,6 +12,7 @@ use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
 use App\Models\User;
+use App\Models\UserProfile;
 use App\Services\PrinterService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Mockery\MockInterface;
@@ -369,11 +371,79 @@ test('all tab booking card shows who made the booking', function () {
     $table = makeTable($area, ['status' => 'reserved']);
     $customer = User::factory()->create(['name' => 'Budi Booker']);
 
-    TableReservation::create([
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.store'), [
+            'table_id' => $table->id,
+            'customer_id' => $customer->id,
+            'booking_name' => 'Birthday Table',
+            'reservation_date' => now()->toDateString(),
+            'reservation_time' => '20:00',
+        ])
+        ->assertRedirect(route('admin.bookings.index'));
+
+    $booking = TableReservation::latest('id')->first();
+
+    expect((int) $booking?->created_by)->toBe((int) $admin->id);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.bookings.updateStatus', $booking), ['status' => 'confirmed'])
+        ->assertRedirect(route('admin.bookings.index'));
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'all']))
+        ->assertOk()
+        ->assertSee('Birthday Table')
+        ->assertSee('Dibuat oleh: '.$admin->name.' (User)');
+});
+
+test('all tab pending bookings section shows who made the booking', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area);
+    $customer = makeBookingCustomer();
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.store'), [
+            'table_id' => $table->id,
+            'customer_id' => $customer->id,
+            'booking_name' => 'Pending All Tab Booking',
+            'reservation_date' => now()->addDay()->toDateString(),
+            'reservation_time' => '18:00',
+        ])
+        ->assertRedirect(route('admin.bookings.index'));
+
+    $this->actingAs($admin)
+        ->get(route('admin.bookings.index', ['tab' => 'all']))
+        ->assertOk()
+        ->assertSee('Pending All Tab Booking')
+        ->assertSee('Dibuat oleh: '.$admin->name.' (User)');
+});
+
+test('booking info modal shows creator source for customer bookings', function () {
+    $admin = adminUser();
+    $area = makeArea();
+    $table = makeTable($area, ['status' => 'reserved']);
+    $customer = makeBookingCustomer();
+
+    $creator = User::factory()->create(['name' => 'Customer Creator']);
+    $creatorProfile = UserProfile::create([
+        'user_id' => $creator->id,
+    ]);
+    CustomerUser::create([
+        'user_id' => $creator->id,
+        'user_profile_id' => $creatorProfile->id,
+        'customer_code' => 'CUST-'.uniqid(),
+        'accurate_id' => random_int(1000, 9999),
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    $booking = TableReservation::create([
         'booking_code' => rand(1000, 9999),
         'table_id' => $table->id,
         'customer_id' => $customer->id,
-        'booking_name' => 'Birthday Table',
+        'created_by' => $creator->id,
+        'booking_name' => 'Customer Made Booking',
         'reservation_date' => now()->toDateString(),
         'reservation_time' => '20:00',
         'status' => 'confirmed',
@@ -382,8 +452,7 @@ test('all tab booking card shows who made the booking', function () {
     $this->actingAs($admin)
         ->get(route('admin.bookings.index', ['tab' => 'all']))
         ->assertOk()
-        ->assertSee('Birthday Table')
-        ->assertSee('Dibooking oleh: Budi Booker');
+        ->assertSee('Dibuat oleh: Customer Creator (Customer)');
 });
 
 test('completing a booking sets table status back to available', function () {
@@ -461,11 +530,13 @@ test('pending tab shows pending bookings and is accessible', function () {
     $area = makeArea();
     $table = makeTable($area);
     $customer = makeBookingCustomer();
+    $creator = User::factory()->create(['name' => 'Pending Booker']);
 
     $pendingBooking = TableReservation::create([
         'booking_code' => rand(1000, 9999),
         'table_id' => $table->id,
         'customer_id' => $customer->id,
+        'created_by' => $creator->id,
         'booking_name' => 'Pending Booking Name',
         'reservation_date' => now()->addDays(2)->toDateString(),
         'reservation_time' => '20:00',
@@ -484,6 +555,7 @@ test('pending tab shows pending bookings and is accessible', function () {
         ->assertSeeText('Reservation ID')
         ->assertSeeText('Pending Booking Name')
         ->assertSeeText($customer->name)
+        ->assertSeeText('Dibuat oleh: Pending Booker (User)')
         ->assertSeeText('#'.$pendingBooking->id);
 });
 

@@ -34,6 +34,11 @@
              class="text-sm font-semibold text-gray-900 mt-0.5">—</p>
         </div>
         <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Dibuat Oleh</p>
+          <p id="biModalCreatedBy"
+             class="text-sm font-semibold text-gray-900 mt-0.5">—</p>
+        </div>
+        <div>
           <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">No. HP</p>
           <p id="biModalPhone"
              class="text-sm text-gray-700 mt-0.5">—</p>

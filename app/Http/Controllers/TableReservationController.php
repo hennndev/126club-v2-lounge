@@ -37,7 +37,7 @@ class TableReservationController extends Controller
     {
         $this->reconcileTableStatuses();
 
-        $query = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser', 'tableSession.billing']);
+        $query = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser', 'creator.customerUser', 'tableSession.billing']);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -96,7 +96,7 @@ class TableReservationController extends Controller
                 $query->where('reservation_date', '<=', $request->date_to);
             }
         } elseif ($tab === 'history') {
-            $query->with('tableSession.orders.items');
+            $query->with(['tableSession.orders.items', 'creator.customerUser']);
             $query->whereIn('status', ['completed', 'cancelled', 'rejected', 'force_closed']);
 
             if ($request->filled('date_from')) {
@@ -130,7 +130,7 @@ class TableReservationController extends Controller
         $checkedInTablesCount = $tables->where('status', 'occupied')->count();
 
         // Latest checked-in/confirmed booking per table (ensures reserved cards always map to booking data)
-        $activeBookingsByTable = TableReservation::with(['customer.profile', 'customer.customerUser', 'tableSession.billing', 'tableSession.orders.items'])
+        $activeBookingsByTable = TableReservation::with(['customer.profile', 'customer.customerUser', 'creator.customerUser', 'tableSession.billing', 'tableSession.orders.items'])
             ->whereIn('status', ['checked_in', 'confirmed'])
             ->whereNotNull('table_id')
             ->orderByRaw("CASE WHEN status = 'checked_in' THEN 0 ELSE 1 END")
@@ -206,7 +206,7 @@ class TableReservationController extends Controller
             ]];
         });
 
-        $todayPendingBookings = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser'])
+        $todayPendingBookings = TableReservation::with(['table.area', 'customer.profile', 'customer.customerUser', 'creator.customerUser'])
             ->where('status', 'pending')
             ->orderBy('reservation_date')
             ->orderBy('reservation_time')
@@ -266,6 +266,8 @@ class TableReservationController extends Controller
                         'name' => $b->customer->name,
                         'email' => $b->customer->email,
                     ] : null,
+                    'created_by_name' => $b->creator?->name,
+                    'created_by_type' => $b->creator?->customerUser ? 'Customer' : ($b->creator?->id ? 'User' : null),
                     'table' => $b->table ? [
                         'table_number' => $b->table->table_number,
                     ] : null,
@@ -325,6 +327,8 @@ class TableReservationController extends Controller
             : 0;
 
         unset($validated['has_down_payment']);
+
+        $validated['created_by'] = auth()->id();
 
         $hasActiveSession = TableSession::query()
             ->where('customer_id', $validated['customer_id'])

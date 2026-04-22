@@ -9,6 +9,8 @@
               'booking_name' => $b->booking_name,
               'customer_name' => $b->customer?->name,
               'customer_phone' => $b->customer?->profile?->phone,
+              'created_by_name' => $b->creator?->name,
+              'created_by_type' => $b->creator?->customerUser ? 'Customer' : ($b->creator?->id ? 'User' : null),
               'table_number' => $b->table?->table_number,
               'area_name' => $b->table?->area?->name,
               'reservation_date' => $b->reservation_date,
@@ -135,7 +137,9 @@
       $bookingEventAdjustment = $tableBooking ? $activeBookingEventAdjustments[$tableBooking->id] ?? null : null;
       $displayMinimumCharge = (float) ($bookingEventAdjustment['adjusted_minimum_charge'] ?? ($table->minimum_charge ?? 0));
       $bookingTitle = $tableBooking?->booking_name ?? ($tableBooking?->customer?->name ?? '-');
-      $bookedByName = $tableBooking?->customer?->name ?? '-';
+      $bookedByName = $tableBooking?->creator?->name ?? '-';
+      $bookedByType = $tableBooking?->creator?->customerUser ? 'Customer' : ($tableBooking?->creator?->id ? 'User' : '-');
+      $createdByText = $tableBooking?->creator ? $bookedByName . ' (' . $bookedByType . ')' : '—';
     @endphp
     <div x-show="selectedCategory === null || selectedCategory === {{ $table->area_id }}"
          class="rounded-xl p-4 border transition-all cursor-pointer hover:shadow-md
@@ -180,7 +184,7 @@
           $checkerCheckedItems = $checkerItems->where('status', 'served')->count();
         @endphp
         <p class="text-sm font-semibold text-slate-800 truncate">{{ $bookingTitle }}</p>
-        <p class="text-xs text-slate-500 mt-0.5 truncate">Dibooking oleh: {{ $bookedByName }}</p>
+        <p class="text-xs text-slate-500 mt-0.5 truncate">Dibuat oleh: {{ $createdByText }}</p>
         @if ($billing && in_array($billing->billing_status, ['draft', 'finalized']))
           @if ($ordersForEligibility >= (float) ($billing->minimum_charge ?? 0))
             <button type="button"
@@ -208,7 +212,7 @@
         @endif
       @elseif ($isBooked && $tableBooking)
         <p class="text-sm font-semibold text-slate-800 truncate">{{ $bookingTitle }}</p>
-        <p class="text-xs text-slate-500 mt-0.5 truncate">Dibooking oleh: {{ $bookedByName }}</p>
+        <p class="text-xs text-slate-500 mt-0.5 truncate">Dibuat oleh: {{ $createdByText }}</p>
         <div class="mt-2 grid grid-cols-3 gap-2">
           <form method="POST"
                 action="{{ route('admin.bookings.updateStatus', $tableBooking) }}"
@@ -259,10 +263,16 @@
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       @foreach ($todayPendingBookings as $pendingBooking)
+        @php
+          $pendingCreatedByName = $pendingBooking->creator?->name ?? '-';
+          $pendingCreatedByType = $pendingBooking->creator?->customerUser ? 'Customer' : ($pendingBooking->creator?->id ? 'User' : '-');
+          $pendingCreatedByText = $pendingBooking->creator ? $pendingCreatedByName . ' (' . $pendingCreatedByType . ')' : '—';
+        @endphp
         <div class="bg-white border border-yellow-200 rounded-xl p-4 flex items-center justify-between gap-3">
           <div class="min-w-0">
             <p class="text-sm text-gray-500">Nama Booking</p>
             <p class="text-sm font-semibold text-gray-900 truncate">{{ $pendingBooking->booking_name ?? '-' }}</p>
+            <p class="text-xs text-gray-400 mt-0.5">Dibuat oleh: {{ $pendingCreatedByText }}</p>
             <p class="text-xs text-gray-500 mt-1">Nama</p>
             <p class="text-xs text-gray-700 truncate">{{ $pendingBooking->customer?->name ?? '-' }}</p>
             <p class="text-xs text-gray-500 mt-1">Reservation ID</p>

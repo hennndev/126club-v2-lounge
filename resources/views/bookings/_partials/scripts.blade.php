@@ -166,6 +166,9 @@
 
     document.getElementById('biModalBookingName').textContent = booking.booking_name || '—';
     document.getElementById('biModalCustomerName').textContent = booking.customer_name || '—';
+    document.getElementById('biModalCreatedBy').textContent = booking.created_by_name ?
+      `${booking.created_by_name} (${booking.created_by_type || '—'})` :
+      '—';
     document.getElementById('biModalPhone').textContent = booking.customer_phone || '—';
     document.getElementById('biModalTable').textContent = [booking.table_number, booking.area_name].filter(Boolean).join(' · ') || '—';
 
