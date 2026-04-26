@@ -170,6 +170,11 @@
           <p class="text-2xl font-bold text-blue-800 mt-1">Rp {{ number_format($dashboardTotalRoom, 0, ',', '.') }}</p>
         </div>
 
+        <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <p class="text-sm font-medium text-emerald-700">Total Staff Meal</p>
+          <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardTotalStaffMeal, 0, ',', '.') }}</p>
+        </div>
+
         <div class="p-4 bg-purple-50 border border-purple-200 rounded-lg">
           <p class="text-sm font-medium text-purple-700">Total LD</p>
           <p class="text-2xl font-bold text-purple-800 mt-1">Rp {{ number_format($dashboardTotalLd, 0, ',', '.') }}</p>

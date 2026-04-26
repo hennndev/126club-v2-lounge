@@ -26,6 +26,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         'total_cigarette' => 84000,
         'total_breakage' => 95000,
         'total_room' => 106000,
+        'total_staff_meal' => 118000,
         'total_ld' => 117000,
         'total_ld_quantity' => 12,
         'total_penjualan_rokok' => 4200,
@@ -53,6 +54,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Total Cigarette')
         ->assertSeeText('Total Breakage')
         ->assertSeeText('Total Room')
+        ->assertSeeText('Total Staff Meal')
         ->assertSeeText('Total LD')
         ->assertSeeText('Qty 12')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
@@ -74,6 +76,7 @@ test('dashboard page shows aggregated transaction metrics from dashboard table',
         ->assertSeeText('Rp 95.000')
         ->assertSeeText('Rp 106.000')
         ->assertSeeText('Rp 117.000')
+        ->assertSeeText('Rp 118.000')
         ->assertSeeText('Rp 15.000')
         ->assertSeeText('Rp 12.000')
         ->assertSeeText('Rp 13.000')

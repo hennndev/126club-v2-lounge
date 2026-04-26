@@ -305,6 +305,7 @@ test('recap close preview page shows printable a4 summary', function () {
         ->assertViewIs('recap.close-preview')
         ->assertSeeText('Preview Print Struk - End Day')
         ->assertSeeText('Preview Cetak Struk')
+        ->assertSeeText('Riwayat transaksi')
         ->assertSeeText('Cetak Otomatis')
         ->assertSeeText('Save PDF')
         ->assertSeeText('Item Keluar Kitchen')
@@ -457,7 +458,122 @@ test('recap close preview print endpoint triggers server print and returns log p
         ->toContain('Qty: 2x')
         ->toContain('Item Keluar Kitchen')
         ->toContain('Item Keluar Bar')
-        ->not->toContain('DAFTAR TRANSAKSI');
+        ->toContain('DAFTAR TRANSAKSI')
+        ->toContain('RCP-PRINT-001');
+});
+
+test('recap close preview print can skip transaction history when disabled', function () {
+    $admin = adminUser();
+    $start = now()->startOfDay()->addHours(8);
+    $end = now()->startOfDay()->addHours(23)->addMinutes(59);
+    $logPath = storage_path('logs/printer.log');
+
+    file_put_contents($logPath, '');
+
+    $logPrinter = Printer::create([
+        'name' => 'End Day Log Printer No History',
+        'location' => 'cashier',
+        'printer_type' => 'cashier',
+        'connection_type' => 'log',
+        'port' => 9100,
+        'timeout' => 30,
+        'header' => '126 Club',
+        'footer' => 'Thank you',
+        'width' => 42,
+        'is_default' => false,
+        'is_active' => true,
+    ]);
+
+    \App\Models\GeneralSetting::instance()->update([
+        'end_day_receipt_printer_id' => $logPrinter->id,
+    ]);
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 500000,
+            'total_penjualan_rokok' => 42,
+            'total_tax' => 15000,
+            'total_service_charge' => 12000,
+            'total_cash' => 100000,
+            'total_transfer' => 120000,
+            'total_debit' => 90000,
+            'total_kredit' => 80000,
+            'total_qris' => 110000,
+            'total_kitchen_items' => 2,
+            'total_bar_items' => 1,
+            'total_ld_quantity' => 8,
+            'total_transactions' => 10,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    $order = makeRecapOrder(
+        $admin->id,
+        $start->copy()->addHour(),
+        'RCP-NOHIST-001',
+        [
+            'payment_method' => 'qris',
+            'payment_mode' => 'normal',
+            'payment_reference_number' => 'REF-NOHIST-001',
+            'total' => 15000,
+        ]
+    );
+
+    $inventoryItem = makeRecapInventoryItem(['name' => 'No History Item']);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $inventoryItem->id,
+        'item_name' => $inventoryItem->name,
+        'item_code' => $inventoryItem->code,
+        'quantity' => 1,
+        'price' => 15000,
+        'subtotal' => 15000,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    $tableSession = makeRecapTableSessionWithBilling($admin->id, [
+        'order_id' => $order->id,
+        'is_booking' => true,
+        'minimum_charge' => 20000,
+        'orders_total' => 20000,
+        'subtotal' => 23000,
+        'tax' => 2000,
+        'tax_percentage' => 10,
+        'service_charge' => 1000,
+        'service_charge_percentage' => 5,
+        'discount_amount' => 5000,
+        'grand_total' => 18000,
+        'paid_amount' => 3000,
+        'billing_status' => 'paid',
+        'transaction_code' => 'RCP-NOHIST-BILL-001',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $order->update([
+        'table_session_id' => $tableSession->id,
+    ]);
+
+    actingAs($admin)
+        ->postJson(route('admin.recap.close-preview.print'), [
+            'start_datetime' => $start->format('Y-m-d\TH:i'),
+            'end_datetime' => $end->format('Y-m-d\TH:i'),
+            'include_transaction_history' => false,
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $printedLog = file_get_contents($logPath);
+
+    expect($printedLog)
+        ->not->toContain('DAFTAR TRANSAKSI')
+        ->not->toContain('RCP-NOHIST-001');
 });
 
 test('recap close preview excludes incomplete empty transactions', function () {
@@ -1725,7 +1841,7 @@ test('recap history can be reprinted from history flow', function () {
 
     expect($logOutput)
         ->toContain('END DAY RECAP')
-        ->not->toContain('DAFTAR TRANSAKSI')
+        ->toContain('DAFTAR TRANSAKSI')
         ->toContain('Status : SUCCESS (LOG MODE)');
 });
 

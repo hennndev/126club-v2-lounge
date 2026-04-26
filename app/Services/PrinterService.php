@@ -1059,10 +1059,10 @@ class PrinterService
     /**
      * @param  array<string, mixed>  $recapData
      */
-    public function printEndDayRecap(array $recapData, Printer $printer): bool
+    public function printEndDayRecap(array $recapData, Printer $printer, bool $includeTransactionHistory = true): bool
     {
         $width = max((int) ($printer->width ?: 42), 32);
-        $lines = $this->buildEndDayRecapLines($recapData, $printer, $width);
+        $lines = $this->buildEndDayRecapLines($recapData, $printer, $width, $includeTransactionHistory);
         $dashboardPreview = (array) ($recapData['dashboardPreview'] ?? []);
         $kitchenItemsOut = (int) ($dashboardPreview['total_kitchen_items'] ?? $recapData['kitchenQtyTotal'] ?? 0);
         $barItemsOut = (int) ($dashboardPreview['total_bar_items'] ?? $recapData['barQtyTotal'] ?? 0);
@@ -1133,52 +1133,54 @@ class PrinterService
                 }
             }
 
-            $escpos->text($separator."\n");
-            $escpos->setEmphasis(true);
-            $escpos->text("DAFTAR TRANSAKSI\n");
-            $escpos->setEmphasis(false);
-
-            $cashierTransactions = collect($recapData['cashierTransactions'] ?? []);
-            foreach ($cashierTransactions as $transaction) {
-                $escpos->setEmphasis(true);
-                $escpos->text(((string) ($transaction['order_number'] ?? '-'))."\n");
-                $escpos->setEmphasis(false);
-                $escpos->text('Waktu: '.((string) ($transaction['datetime'] ?? '-'))."\n");
-                $escpos->text('Metode: '.((string) ($transaction['payment_method'] ?? '-'))."\n");
-                $escpos->text('Ref: '.((string) (($transaction['payment_reference_number'] ?? '-') ?: '-'))."\n");
-
-                $items = collect($transaction['items'] ?? []);
-                foreach ($items as $item) {
-                    $escpos->text('  '.((int) ($item['quantity'] ?? 0)).'x '.((string) ($item['name'] ?? '-'))."\n");
-                    $escpos->text('  Subtotal: Rp '.number_format((float) ($item['subtotal'] ?? 0), 0, ',', '.')."\n");
-
-                    if ((float) ($item['tax_amount'] ?? 0) > 0) {
-                        $escpos->text('  PB1: Rp '.number_format((float) $item['tax_amount'], 0, ',', '.')."\n");
-                    }
-
-                    if ((float) ($item['service_charge_amount'] ?? 0) > 0) {
-                        $escpos->text('  Service: Rp '.number_format((float) $item['service_charge_amount'], 0, ',', '.')."\n");
-                    }
-                }
-
-                if ((float) ($transaction['discount_amount'] ?? 0) > 0) {
-                    $escpos->text('  Diskon: - Rp '.number_format((float) $transaction['discount_amount'], 0, ',', '.')."\n");
-                }
-
-                if ((float) ($transaction['down_payment_amount'] ?? 0) > 0) {
-                    $escpos->text('  DP: Rp '.number_format((float) $transaction['down_payment_amount'], 0, ',', '.')."\n");
-                }
-
-                $escpos->text('  '.trim($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format((float) ($transaction['total_bill'] ?? 0), 0, ',', '.'), $width))."\n");
-                $escpos->text('  '.trim($this->formatClosedBillingPair('PB1', 'Rp '.number_format((float) ($transaction['tax_total'] ?? 0), 0, ',', '.'), $width))."\n");
-                $escpos->text('  '.trim($this->formatClosedBillingPair('Service Charge', 'Rp '.number_format((float) ($transaction['service_charge_total'] ?? 0), 0, ',', '.'), $width))."\n");
-                $escpos->text('  '.trim($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format((float) ($transaction['sub_total'] ?? 0), 0, ',', '.'), $width))."\n");
-
-                $escpos->text($this->formatClosedBillingPair('Qty', (string) ($transaction['items_count'] ?? 0), $width)."\n");
-                $escpos->setEmphasis(true);
-                $escpos->text($this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) ($transaction['total'] ?? 0), 0, ',', '.'), $width)."\n");
-                $escpos->setEmphasis(false);
+            if ($includeTransactionHistory) {
                 $escpos->text($separator."\n");
+                $escpos->setEmphasis(true);
+                $escpos->text("DAFTAR TRANSAKSI\n");
+                $escpos->setEmphasis(false);
+
+                $cashierTransactions = collect($recapData['cashierTransactions'] ?? []);
+                foreach ($cashierTransactions as $transaction) {
+                    $escpos->setEmphasis(true);
+                    $escpos->text(((string) ($transaction['order_number'] ?? '-'))."\n");
+                    $escpos->setEmphasis(false);
+                    $escpos->text('Waktu: '.((string) ($transaction['datetime'] ?? '-'))."\n");
+                    $escpos->text('Metode: '.((string) ($transaction['payment_method'] ?? '-'))."\n");
+                    $escpos->text('Ref: '.((string) (($transaction['payment_reference_number'] ?? '-') ?: '-'))."\n");
+
+                    $items = collect($transaction['items'] ?? []);
+                    foreach ($items as $item) {
+                        $escpos->text('  '.((int) ($item['quantity'] ?? 0)).'x '.((string) ($item['name'] ?? '-'))."\n");
+                        $escpos->text('  Subtotal: Rp '.number_format((float) ($item['subtotal'] ?? 0), 0, ',', '.')."\n");
+
+                        if ((float) ($item['tax_amount'] ?? 0) > 0) {
+                            $escpos->text('  PB1: Rp '.number_format((float) $item['tax_amount'], 0, ',', '.')."\n");
+                        }
+
+                        if ((float) ($item['service_charge_amount'] ?? 0) > 0) {
+                            $escpos->text('  Service: Rp '.number_format((float) $item['service_charge_amount'], 0, ',', '.')."\n");
+                        }
+                    }
+
+                    if ((float) ($transaction['discount_amount'] ?? 0) > 0) {
+                        $escpos->text('  Diskon: - Rp '.number_format((float) $transaction['discount_amount'], 0, ',', '.')."\n");
+                    }
+
+                    if ((float) ($transaction['down_payment_amount'] ?? 0) > 0) {
+                        $escpos->text('  DP: Rp '.number_format((float) $transaction['down_payment_amount'], 0, ',', '.')."\n");
+                    }
+
+                    $escpos->text('  '.trim($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format((float) ($transaction['total_bill'] ?? 0), 0, ',', '.'), $width))."\n");
+                    $escpos->text('  '.trim($this->formatClosedBillingPair('PB1', 'Rp '.number_format((float) ($transaction['tax_total'] ?? 0), 0, ',', '.'), $width))."\n");
+                    $escpos->text('  '.trim($this->formatClosedBillingPair('Service Charge', 'Rp '.number_format((float) ($transaction['service_charge_total'] ?? 0), 0, ',', '.'), $width))."\n");
+                    $escpos->text('  '.trim($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format((float) ($transaction['sub_total'] ?? 0), 0, ',', '.'), $width))."\n");
+
+                    $escpos->text($this->formatClosedBillingPair('Qty', (string) ($transaction['items_count'] ?? 0), $width)."\n");
+                    $escpos->setEmphasis(true);
+                    $escpos->text($this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) ($transaction['total'] ?? 0), 0, ',', '.'), $width)."\n");
+                    $escpos->setEmphasis(false);
+                    $escpos->text($separator."\n");
+                }
             }
 
             $escpos->feed(3);
@@ -1197,7 +1199,7 @@ class PrinterService
      * @param  array<string, mixed>  $recapData
      * @return array<int, string>
      */
-    protected function buildEndDayRecapLines(array $recapData, Printer $printer, int $width): array
+    protected function buildEndDayRecapLines(array $recapData, Printer $printer, int $width, bool $includeTransactionHistory = true): array
     {
         $separator = str_repeat('-', $width);
         $paymentMethodTotals = (array) ($recapData['paymentMethodTotals'] ?? []);
@@ -1253,52 +1255,54 @@ class PrinterService
             }
         }
 
-        // $lines[] = $separator;
-        // $lines[] = 'DAFTAR TRANSAKSI';
-        //
-        // $cashierTransactions = collect($recapData['cashierTransactions'] ?? []);
-        //
-        // foreach ($cashierTransactions as $transaction) {
-        //     $transactionData = is_array($transaction) ? $transaction : (array) $transaction;
-        //
-        //     $lines[] = (string) ($transactionData['order_number'] ?? '-');
-        //     $lines[] = 'Waktu: '.((string) ($transactionData['datetime'] ?? '-'));
-        //     $lines[] = 'Metode: '.((string) ($transactionData['payment_method'] ?? '-'));
-        //     $lines[] = 'Ref: '.((string) (($transactionData['payment_reference_number'] ?? '-') ?: '-'));
-        //
-        //     $items = collect($transactionData['items'] ?? []);
-        //     foreach ($items as $item) {
-        //         $itemData = is_array($item) ? $item : (array) $item;
-        //
-        //         $lines[] = '  '.((int) ($itemData['quantity'] ?? 0)).'x '.((string) ($itemData['name'] ?? '-'));
-        //         $lines[] = '  Subtotal: Rp '.number_format((float) ($itemData['subtotal'] ?? 0), 0, ',', '.');
-        //
-        //         if ((float) ($itemData['tax_amount'] ?? 0) > 0) {
-        //             $lines[] = '  PB1: Rp '.number_format((float) $itemData['tax_amount'], 0, ',', '.');
-        //         }
-        //
-        //         if ((float) ($itemData['service_charge_amount'] ?? 0) > 0) {
-        //             $lines[] = '  Service: Rp '.number_format((float) $itemData['service_charge_amount'], 0, ',', '.');
-        //         }
-        //     }
-        //
-        //     if ((float) ($transactionData['discount_amount'] ?? 0) > 0) {
-        //         $lines[] = '  Diskon: - Rp '.number_format((float) $transactionData['discount_amount'], 0, ',', '.');
-        //     }
-        //
-        //     if ((float) ($transactionData['down_payment_amount'] ?? 0) > 0) {
-        //         $lines[] = '  DP: Rp '.number_format((float) $transactionData['down_payment_amount'], 0, ',', '.');
-        //     }
-        //
-        //     $lines[] = '  '.trim($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format((float) ($transactionData['total_bill'] ?? 0), 0, ',', '.'), $width));
-        //     $lines[] = '  '.trim($this->formatClosedBillingPair('PB1', 'Rp '.number_format((float) ($transactionData['tax_total'] ?? 0), 0, ',', '.'), $width));
-        //     $lines[] = '  '.trim($this->formatClosedBillingPair('Service Charge', 'Rp '.number_format((float) ($transactionData['service_charge_total'] ?? 0), 0, ',', '.'), $width));
-        //     $lines[] = '  '.trim($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format((float) ($transactionData['sub_total'] ?? 0), 0, ',', '.'), $width));
-        //
-        //     $lines[] = $this->formatClosedBillingPair('Qty', (string) ($transactionData['items_count'] ?? 0), $width);
-        //     $lines[] = $this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) ($transactionData['total'] ?? 0), 0, ',', '.'), $width);
-        //     $lines[] = $separator;
-        // }
+        if ($includeTransactionHistory) {
+            $lines[] = $separator;
+            $lines[] = 'DAFTAR TRANSAKSI';
+
+            $cashierTransactions = collect($recapData['cashierTransactions'] ?? []);
+
+            foreach ($cashierTransactions as $transaction) {
+                $transactionData = is_array($transaction) ? $transaction : (array) $transaction;
+
+                $lines[] = (string) ($transactionData['order_number'] ?? '-');
+                $lines[] = 'Waktu: '.((string) ($transactionData['datetime'] ?? '-'));
+                $lines[] = 'Metode: '.((string) ($transactionData['payment_method'] ?? '-'));
+                $lines[] = 'Ref: '.((string) (($transactionData['payment_reference_number'] ?? '-') ?: '-'));
+
+                $items = collect($transactionData['items'] ?? []);
+                foreach ($items as $item) {
+                    $itemData = is_array($item) ? $item : (array) $item;
+
+                    $lines[] = '  '.((int) ($itemData['quantity'] ?? 0)).'x '.((string) ($itemData['name'] ?? '-'));
+                    $lines[] = '  Subtotal: Rp '.number_format((float) ($itemData['subtotal'] ?? 0), 0, ',', '.');
+
+                    if ((float) ($itemData['tax_amount'] ?? 0) > 0) {
+                        $lines[] = '  PB1: Rp '.number_format((float) $itemData['tax_amount'], 0, ',', '.');
+                    }
+
+                    if ((float) ($itemData['service_charge_amount'] ?? 0) > 0) {
+                        $lines[] = '  Service: Rp '.number_format((float) $itemData['service_charge_amount'], 0, ',', '.');
+                    }
+                }
+
+                if ((float) ($transactionData['discount_amount'] ?? 0) > 0) {
+                    $lines[] = '  Diskon: - Rp '.number_format((float) $transactionData['discount_amount'], 0, ',', '.');
+                }
+
+                if ((float) ($transactionData['down_payment_amount'] ?? 0) > 0) {
+                    $lines[] = '  DP: Rp '.number_format((float) $transactionData['down_payment_amount'], 0, ',', '.');
+                }
+
+                $lines[] = '  '.trim($this->formatClosedBillingPair('Total Bill', 'Rp '.number_format((float) ($transactionData['total_bill'] ?? 0), 0, ',', '.'), $width));
+                $lines[] = '  '.trim($this->formatClosedBillingPair('PB1', 'Rp '.number_format((float) ($transactionData['tax_total'] ?? 0), 0, ',', '.'), $width));
+                $lines[] = '  '.trim($this->formatClosedBillingPair('Service Charge', 'Rp '.number_format((float) ($transactionData['service_charge_total'] ?? 0), 0, ',', '.'), $width));
+                $lines[] = '  '.trim($this->formatClosedBillingPair('Sub Total', 'Rp '.number_format((float) ($transactionData['sub_total'] ?? 0), 0, ',', '.'), $width));
+
+                $lines[] = $this->formatClosedBillingPair('Qty', (string) ($transactionData['items_count'] ?? 0), $width);
+                $lines[] = $this->formatClosedBillingPair('Sisa Bayar', 'Rp '.number_format((float) ($transactionData['total'] ?? 0), 0, ',', '.'), $width);
+                $lines[] = $separator;
+            }
+        }
 
         return $lines;
     }
