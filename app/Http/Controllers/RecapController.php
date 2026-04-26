@@ -61,6 +61,7 @@ class RecapController extends Controller
             'start_datetime' => ['nullable', 'date'],
             'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
             'reprint' => ['nullable', 'boolean'],
+            'include_transaction_history' => ['nullable', 'boolean'],
             'recap_history_id' => ['nullable', 'integer', 'exists:recap_history,id'],
         ]);
 
@@ -76,6 +77,7 @@ class RecapController extends Controller
         return view('recap.close-preview', array_merge($recapData, [
             'printedAt' => now(),
             'isReprintPreview' => (bool) ($validated['reprint'] ?? false),
+            'includeTransactionHistory' => (bool) ($validated['include_transaction_history'] ?? true),
             'reprintHistoryId' => (int) ($validated['recap_history_id'] ?? 0),
         ]));
     }
@@ -86,6 +88,7 @@ class RecapController extends Controller
             'date' => ['nullable', 'date'],
             'start_datetime' => ['nullable', 'date'],
             'end_datetime' => ['nullable', 'date', 'after_or_equal:start_datetime'],
+            'include_transaction_history' => ['nullable', 'boolean'],
             'recap_history_id' => ['nullable', 'integer', 'exists:recap_history,id'],
         ]);
 
@@ -98,6 +101,8 @@ class RecapController extends Controller
             ? $this->buildRecapDataFromHistory($recapHistory)
             : $this->buildRecapData($startAt, $endAt);
 
+        $includeTransactionHistory = (bool) ($validated['include_transaction_history'] ?? true);
+
         $printer = $this->resolveEndDayPrinter();
 
         if (! $printer) {
@@ -108,7 +113,7 @@ class RecapController extends Controller
         }
 
         try {
-            $printerService->printEndDayRecap($recapData, $printer);
+            $printerService->printEndDayRecap($recapData, $printer, $includeTransactionHistory);
 
             $message = "Print End Day berhasil dikirim ke printer {$printer->name}.";
 

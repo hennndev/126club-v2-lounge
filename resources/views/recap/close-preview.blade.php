@@ -86,6 +86,14 @@
           Kembali
         </a>
 
+        <label class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+          <input type="checkbox"
+                 id="includeTransactionHistory"
+                 class="h-4 w-4 rounded border-gray-300 text-slate-800 focus:ring-slate-500"
+                 checked>
+          <span>Riwayat transaksi</span>
+        </label>
+
         <button type="button"
                 onclick="triggerEndDayPrint()"
                 class="inline-flex items-center justify-center rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900">
@@ -274,10 +282,12 @@
       start_datetime: @json($selectedStartDatetime),
       end_datetime: @json($selectedEndDatetime),
       recap_history_id: @json(($reprintHistoryId ?? 0) > 0 ? (int) $reprintHistoryId : null),
+      include_transaction_history: true,
     };
 
     async function triggerEndDayPrint() {
       const statusEl = document.getElementById('printStatus');
+      const includeTransactionHistory = document.getElementById('includeTransactionHistory')?.checked ?? true;
 
       const showStatus = (message, type = 'info') => {
         const typeClass = type === 'success' ?
@@ -292,6 +302,7 @@
       };
 
       showStatus('Mengirim data End Day ke printer...');
+      recapPrintPayload.include_transaction_history = includeTransactionHistory;
 
       try {
         const response = await fetch(recapPrintEndpoint, {
