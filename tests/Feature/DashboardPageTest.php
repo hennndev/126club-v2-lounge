@@ -145,7 +145,7 @@ test('dashboard sync button triggers today sync and redirects back', function ()
         ->and((int) $dashboard->total_transactions)->toBe(1);
 });
 
-test('dashboard uses 09:00 operational window for totals', function () {
+test('dashboard uses paid_at within the 09:00 operational window for totals', function () {
     $admin = adminUser();
 
     Carbon::setTestNow(Carbon::create(2026, 3, 27, 8, 30, 0, 'Asia/Jakarta'));
@@ -182,6 +182,7 @@ test('dashboard uses 09:00 operational window for totals', function () {
         'payment_mode' => 'normal',
         'is_booking' => true,
         'is_walk_in' => false,
+        'paid_at' => Carbon::create(2026, 3, 26, 10, 0, 0, 'Asia/Jakarta'),
     ]);
 
     $outsideBilling = Billing::query()->create([
@@ -201,13 +202,14 @@ test('dashboard uses 09:00 operational window for totals', function () {
         'payment_mode' => 'normal',
         'is_booking' => true,
         'is_walk_in' => false,
+        'paid_at' => Carbon::create(2026, 3, 26, 8, 0, 0, 'Asia/Jakarta'),
     ]);
 
     DB::table('billings')->where('id', $insideBilling->id)->update([
-        'updated_at' => Carbon::create(2026, 3, 26, 10, 0, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 27, 10, 0, 0, 'Asia/Jakarta'),
     ]);
     DB::table('billings')->where('id', $outsideBilling->id)->update([
-        'updated_at' => Carbon::create(2026, 3, 26, 8, 0, 0, 'Asia/Jakarta'),
+        'updated_at' => Carbon::create(2026, 3, 26, 10, 0, 0, 'Asia/Jakarta'),
     ]);
 
     $kitchenItem = InventoryItem::query()->create([
