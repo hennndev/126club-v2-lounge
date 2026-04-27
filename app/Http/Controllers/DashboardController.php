@@ -28,9 +28,28 @@ class DashboardController extends Controller
                 $query->where('is_booking', true)
                     ->orWhere('is_walk_in', true);
             })
-            ->where('updated_at', '>=', $windowStart)
-            ->where('updated_at', '<', $windowEnd)
-            ->when($lastCloseAt, fn ($query) => $query->where('updated_at', '>', $lastCloseAt));
+            ->where(function ($query) use ($windowStart, $windowEnd) {
+                $query->where(function ($paidAtQuery) use ($windowStart, $windowEnd) {
+                    $paidAtQuery->whereNotNull('paid_at')
+                        ->where('paid_at', '>=', $windowStart)
+                        ->where('paid_at', '<', $windowEnd);
+                })->orWhere(function ($fallbackQuery) use ($windowStart, $windowEnd) {
+                    $fallbackQuery->whereNull('paid_at')
+                        ->where('updated_at', '>=', $windowStart)
+                        ->where('updated_at', '<', $windowEnd);
+                });
+            })
+            ->when($lastCloseAt, function ($query) use ($lastCloseAt) {
+                $query->where(function ($lastCloseQuery) use ($lastCloseAt) {
+                    $lastCloseQuery->where(function ($paidAtQuery) use ($lastCloseAt) {
+                        $paidAtQuery->whereNotNull('paid_at')
+                            ->where('paid_at', '>', $lastCloseAt);
+                    })->orWhere(function ($fallbackQuery) use ($lastCloseAt) {
+                        $fallbackQuery->whereNull('paid_at')
+                            ->where('updated_at', '>', $lastCloseAt);
+                    });
+                });
+            });
 
         $revenueToday = (clone $todayBillings)->sum('grand_total');
         $transactionsToday = (clone $todayBillings)->count();
