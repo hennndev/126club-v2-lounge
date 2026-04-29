@@ -448,8 +448,132 @@ test('dashboard sync aggregates category main totals from related order items', 
         ->and((float) $dashboard->total_breakage)->toBe(50000.0)
         ->and((float) $dashboard->total_room)->toBe(60000.0)
         ->and((float) $dashboard->total_staff_meal)->toBe(80000.0)
+        ->and((int) $dashboard->total_compliment_quantity)->toBe(0)
+        ->and((int) $dashboard->total_foc_quantity)->toBe(0)
         ->and((float) $dashboard->total_ld)->toBe(70000.0)
         ->and((int) $dashboard->total_ld_quantity)->toBe(4);
+});
+
+test('dashboard sync aggregates compliment and foc quantities as counts', function () {
+    $admin = adminUser();
+
+    $area = Area::create([
+        'code' => 'DSH-QTY-AREA-'.uniqid(),
+        'name' => 'Dashboard Qty Area '.uniqid(),
+        'is_active' => true,
+    ]);
+
+    $table = Tabel::create([
+        'area_id' => $area->id,
+        'table_number' => 'DSH-QTY-TBL-'.uniqid(),
+        'qr_code' => 'DSH-QTY-QR-'.uniqid(),
+        'capacity' => 4,
+        'status' => 'available',
+        'is_active' => true,
+    ]);
+
+    $session = TableSession::create([
+        'table_reservation_id' => null,
+        'table_id' => $table->id,
+        'customer_id' => $admin->id,
+        'session_code' => 'DSH-QTY-SES-'.uniqid(),
+        'status' => 'active',
+        'billing_id' => null,
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'DSH-QTY-ORD-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 0,
+        'discount_amount' => 0,
+        'total' => 0,
+        'ordered_at' => now(),
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $complimentItem = InventoryItem::create([
+        'code' => 'DSH-QTY-COMP-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Compliment Item',
+        'category_type' => 'menu-qty',
+        'category_main' => 'compliment',
+        'price' => 0,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'pcs',
+        'is_active' => true,
+    ]);
+
+    $focItem = InventoryItem::create([
+        'code' => 'DSH-QTY-FOC-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'FOC Item',
+        'category_type' => 'menu-qty',
+        'category_main' => 'foc',
+        'price' => 0,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'pcs',
+        'is_active' => true,
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $complimentItem->id,
+        'item_name' => $complimentItem->name,
+        'item_code' => $complimentItem->code,
+        'quantity' => 3,
+        'price' => 0,
+        'subtotal' => 0,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'status' => 'served',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $focItem->id,
+        'item_name' => $focItem->name,
+        'item_code' => $focItem->code,
+        'quantity' => 5,
+        'price' => 0,
+        'subtotal' => 0,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'status' => 'served',
+    ]);
+
+    Billing::create([
+        'table_session_id' => $session->id,
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 0,
+        'paid_amount' => 0,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'is_booking' => true,
+        'is_walk_in' => false,
+    ]);
+
+    (new DashboardSyncService)->sync();
+
+    $dashboard = Dashboard::query()->findOrFail(1);
+
+    expect((int) $dashboard->total_compliment_quantity)->toBe(3)
+        ->and((int) $dashboard->total_foc_quantity)->toBe(5);
 });
 
 test('dashboard sync aggregates total dp from paid booking reservations', function () {
@@ -905,4 +1029,103 @@ test('dashboard sync computes total penjualan rokok from order items category ro
 
     expect((float) $dashboard->total_penjualan_rokok)->toBe(4.0)
         ->and((float) $dashboard->total_amount)->toBe(300000.0);
+});
+
+test('dashboard sync aggregates compliment and foc quantities for walk in transactions', function () {
+    $admin = adminUser();
+
+    $order = Order::create([
+        'table_session_id' => null,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'DSH-WALKIN-QTY-'.uniqid(),
+        'status' => 'completed',
+        'items_total' => 0,
+        'discount_amount' => 0,
+        'total' => 0,
+        'ordered_at' => now(),
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $complimentItem = InventoryItem::create([
+        'code' => 'DSH-WI-COMP-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Walk-In Compliment Item',
+        'category_type' => 'menu-qty',
+        'category_main' => 'compliment',
+        'price' => 0,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'pcs',
+        'is_active' => true,
+    ]);
+
+    $focItem = InventoryItem::create([
+        'code' => 'DSH-WI-FOC-'.uniqid(),
+        'accurate_id' => random_int(100000, 999999),
+        'name' => 'Walk-In FOC Item',
+        'category_type' => 'menu-qty',
+        'category_main' => 'foc',
+        'price' => 0,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'pcs',
+        'is_active' => true,
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $complimentItem->id,
+        'item_name' => $complimentItem->name,
+        'item_code' => $complimentItem->code,
+        'quantity' => 2,
+        'price' => 0,
+        'subtotal' => 0,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'status' => 'served',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $focItem->id,
+        'item_name' => $focItem->name,
+        'item_code' => $focItem->code,
+        'quantity' => 4,
+        'price' => 0,
+        'subtotal' => 0,
+        'discount_amount' => 0,
+        'tax_amount' => 0,
+        'service_charge_amount' => 0,
+        'status' => 'served',
+    ]);
+
+    Billing::create([
+        'table_session_id' => null,
+        'order_id' => $order->id,
+        'is_walk_in' => true,
+        'is_booking' => false,
+        'minimum_charge' => 0,
+        'orders_total' => 0,
+        'subtotal' => 0,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 0,
+        'paid_amount' => 0,
+        'billing_status' => 'paid',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    (new DashboardSyncService)->sync();
+
+    $dashboard = Dashboard::query()->findOrFail(1);
+
+    expect((int) $dashboard->total_compliment_quantity)->toBe(2)
+        ->and((int) $dashboard->total_foc_quantity)->toBe(4);
 });

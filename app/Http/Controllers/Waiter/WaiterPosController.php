@@ -73,7 +73,7 @@ class WaiterPosController extends Controller
             $cart[$productId] = [
                 'id' => $productId,
                 'name' => $displayName,
-                'price' => (float) $inventoryItem->price,
+                'price' => $this->resolveZeroPricedItemAmount($inventoryItem),
                 'quantity' => 1,
                 'preparation_location' => $this->resolvePreparationLocationFromPrinters($inventoryItem) ?? $setting->preparation_location ?? 'direct',
             ];
@@ -232,7 +232,7 @@ class WaiterPosController extends Controller
 
                 $preparationLocation = $this->resolvePreparationLocationFromPrinters($inventoryItem);
 
-                $price = (float) $inventoryItem->price;
+                $price = $this->resolveZeroPricedItemAmount($inventoryItem);
                 $quantity = (int) $cartItem['quantity'];
                 $subtotal = $price * $quantity;
                 $itemsTotal += $subtotal;
@@ -544,19 +544,41 @@ class WaiterPosController extends Controller
         return null;
     }
 
+    protected function resolveZeroPricedItemAmount(InventoryItem $inventoryItem): float
+    {
+        $categoryMain = strtolower(trim((string) $inventoryItem->category_main));
+
+        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
+            return 0.0;
+        }
+
+        return (float) $inventoryItem->price;
+    }
+
     protected function cartResponse(array $cart): JsonResponse
     {
-        $formatted = collect($cart)->mapWithKeys(fn ($item, $key) => [
-            $key => [
-                'id' => $item['id'],
-                'name' => $item['name'],
-                'price' => (float) $item['price'],
-                'qty' => (int) $item['quantity'],
-                'notes' => isset($item['notes']) && trim((string) $item['notes']) !== ''
-                    ? trim((string) $item['notes'])
-                    : null,
-            ],
-        ])->all();
+        $inventoryItems = InventoryItem::query()
+            ->whereIn('id', collect($cart)->map(fn ($item) => (int) str_replace('item_', '', (string) ($item['id'] ?? '0')))->filter()->values())
+            ->get(['id', 'category_main', 'price'])
+            ->keyBy('id');
+
+        $formatted = collect($cart)->mapWithKeys(function ($item, $key) use ($inventoryItems): array {
+            $inventoryItemId = (int) str_replace('item_', '', (string) ($item['id'] ?? '0'));
+            $inventoryItem = $inventoryItems->get($inventoryItemId);
+            $price = $inventoryItem ? $this->resolveZeroPricedItemAmount($inventoryItem) : (float) $item['price'];
+
+            return [
+                $key => [
+                    'id' => $item['id'],
+                    'name' => $item['name'],
+                    'price' => $price,
+                    'qty' => (int) $item['quantity'],
+                    'notes' => isset($item['notes']) && trim((string) $item['notes']) !== ''
+                        ? trim((string) $item['notes'])
+                        : null,
+                ],
+            ];
+        })->all();
 
         return response()->json(['success' => true, 'cart' => $formatted]);
     }

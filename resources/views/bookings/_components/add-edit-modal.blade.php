@@ -165,8 +165,9 @@
           @foreach ($customers as $customer)
             @php
               $hasActiveSession = collect($activeSessionCustomerIds ?? [])->contains($customer->id);
+              $customerCode = $customer->customerUser?->customer_code ? ' [' . $customer->customerUser->customer_code . ']' : '';
             @endphp
-            <option value="{{ $customer->id }}">{{ $customer->name }}{{ $customer->profile?->phone ? ' – ' . $customer->profile->phone : '' }}{{ $hasActiveSession ? ' (Sedang check-in)' : '' }}</option>
+            <option value="{{ $customer->id }}">{{ $customer->name }}{{ $customerCode }}{{ $customer->profile?->phone ? ' – ' . $customer->profile->phone : '' }}{{ $hasActiveSession ? ' (Sedang check-in)' : '' }}</option>
           @endforeach
         </select>
       </div>
@@ -315,6 +316,7 @@
                   'id' => $c->id,
                   'phone' => $c->profile?->phone ?? '',
                   'email' => $c->email ?? '',
+                  'customer_code' => $c->customerUser?->customer_code ?? '',
               ],
           )->values(),
   ) !!};

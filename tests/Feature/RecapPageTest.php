@@ -142,6 +142,8 @@ test('admin can open recap page', function () {
         'total_breakage' => 95000,
         'total_room' => 106000,
         'total_staff_meal' => 55000,
+        'total_compliment_quantity' => 9,
+        'total_foc_quantity' => 7,
         'total_ld' => 117000,
         'total_ld_quantity' => 12,
         'total_penjualan_rokok' => 42,
@@ -183,6 +185,8 @@ test('admin can open recap page', function () {
         ->assertSeeText('Total Breakage')
         ->assertSeeText('Total Room')
         ->assertSeeText('Total Staff Meal')
+        ->assertSeeText('Total Compliment (Qty)')
+        ->assertSeeText('Total FOC (Qty)')
         ->assertSeeText('Total LD')
         ->assertSeeText('Qty 12')
         ->assertSeeText('Rp 51.000')
@@ -193,6 +197,8 @@ test('admin can open recap page', function () {
         ->assertSeeText('Rp 106.000')
         ->assertSeeText('Rp 55.000')
         ->assertSeeText('Rp 117.000')
+        ->assertSeeText('9')
+        ->assertSeeText('7')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('42')
         ->assertSeeText('Item Keluar Kitchen')
@@ -281,6 +287,8 @@ test('recap close preview page shows printable a4 summary', function () {
         [
             'total_amount' => 500000,
             'total_penjualan_rokok' => 42,
+            'total_compliment_quantity' => 6,
+            'total_foc_quantity' => 4,
             'total_tax' => 15000,
             'total_service_charge' => 12000,
             'total_cash' => 100000,
@@ -310,6 +318,8 @@ test('recap close preview page shows printable a4 summary', function () {
         ->assertSeeText('Save PDF')
         ->assertSeeText('Item Keluar Kitchen')
         ->assertSeeText('Item Keluar Bar')
+        ->assertSeeText('Total Compliment (Qty)')
+        ->assertSeeText('Total FOC (Qty)')
         ->assertSeeText('Qty 8')
         ->assertSeeText('Tutup End Day')
         ->assertSeeText('INFO ROKOK')

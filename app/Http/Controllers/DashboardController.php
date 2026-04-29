@@ -97,6 +97,8 @@ class DashboardController extends Controller
         $dashboardTotalBreakage = (float) ($dashboardAggregate?->total_breakage ?? 0);
         $dashboardTotalRoom = (float) ($dashboardAggregate?->total_room ?? 0);
         $dashboardTotalStaffMeal = (float) ($dashboardAggregate?->total_staff_meal ?? 0);
+        $dashboardTotalComplimentQuantity = (int) ($dashboardAggregate?->total_compliment_quantity ?? 0);
+        $dashboardTotalFocQuantity = (int) ($dashboardAggregate?->total_foc_quantity ?? 0);
         $dashboardTotalLd = (float) ($dashboardAggregate?->total_ld ?? 0);
         $dashboardTotalLdQuantity = (int) ($dashboardAggregate?->total_ld_quantity ?? 0);
         $dashboardTotalPenjualanRokok = (int) ($dashboardAggregate?->total_penjualan_rokok ?? 0);
@@ -130,6 +132,8 @@ class DashboardController extends Controller
             'dashboardTotalBreakage',
             'dashboardTotalRoom',
             'dashboardTotalStaffMeal',
+            'dashboardTotalComplimentQuantity',
+            'dashboardTotalFocQuantity',
             'dashboardTotalLd',
             'dashboardTotalLdQuantity',
             'dashboardTotalPenjualanRokok',

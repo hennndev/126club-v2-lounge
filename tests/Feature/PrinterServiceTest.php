@@ -2,6 +2,7 @@
 
 use App\Models\BarOrder;
 use App\Models\Billing;
+use App\Models\InventoryItem;
 use App\Models\KitchenOrder;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -148,6 +149,131 @@ it('prints walk-in billing simulation with discount row after subtotal', functio
         ->and($remainingPos)->not->toBeFalse()
         ->and($discountPos > $subTotalPos)->toBeTrue()
         ->and($remainingPos > $discountPos)->toBeTrue();
+});
+
+it('forces compliment and foc prices to zero in cashier receipt output', function () {
+    $complimentItem = new InventoryItem;
+    $complimentItem->category_main = 'compliment';
+
+    $focItem = new InventoryItem;
+    $focItem->category_main = 'foc';
+
+    $complimentOrderItem = new OrderItem;
+    $complimentOrderItem->item_name = 'Compliment Soup';
+    $complimentOrderItem->quantity = 1;
+    $complimentOrderItem->price = 45000;
+    $complimentOrderItem->subtotal = 45000;
+    $complimentOrderItem->setRelation('inventoryItem', $complimentItem);
+
+    $focOrderItem = new OrderItem;
+    $focOrderItem->item_name = 'FOC Drink';
+    $focOrderItem->quantity = 2;
+    $focOrderItem->price = 30000;
+    $focOrderItem->subtotal = 60000;
+    $focOrderItem->setRelation('inventoryItem', $focItem);
+
+    $order = new Order;
+    $order->order_number = 'WALKIN-ZERO-01';
+    $order->ordered_at = now();
+    $order->setRelation('items', collect([$complimentOrderItem, $focOrderItem]));
+    $order->setRelation('customer', null);
+    $order->setRelation('createdBy', null);
+
+    $billing = new Billing;
+    $billing->transaction_code = 'WALKIN-ZERO-001';
+    $billing->updated_at = now();
+    $billing->minimum_charge = 0;
+    $billing->subtotal = 0;
+    $billing->tax = 0;
+    $billing->tax_percentage = 0;
+    $billing->service_charge = 0;
+    $billing->service_charge_percentage = 0;
+    $billing->discount_amount = 0;
+    $billing->grand_total = 0;
+    $billing->payment_mode = 'normal';
+    $billing->payment_method = 'cash';
+
+    $printer = Printer::make([
+        'name' => 'Walkin Zero Test',
+        'connection_type' => 'log',
+        'width' => 42,
+    ]);
+
+    $result = (new PrinterService)->printWalkInBillingReceipt($order, $billing, $printer);
+
+    $log = (string) file_get_contents(storage_path('logs/printer.log'));
+
+    expect($result)->toBeTrue()
+        ->and($log)->toContain('Compliment Soup 1x')
+        ->and($log)->toContain('FOC Drink 2x')
+        ->and(substr_count($log, 'Harga: Rp 0'))->toBe(2)
+        ->and(substr_count($log, 'Total: Rp 0'))->toBe(2);
+});
+
+it('forces compliment and foc prices to zero in closed billing receipt output', function () {
+    $table = new Tabel;
+    $table->table_number = 'C-11';
+
+    $complimentItem = new InventoryItem;
+    $complimentItem->category_main = 'compliment';
+
+    $focItem = new InventoryItem;
+    $focItem->category_main = 'foc';
+
+    $complimentOrderItem = new OrderItem;
+    $complimentOrderItem->item_name = 'Compliment Soup';
+    $complimentOrderItem->quantity = 1;
+    $complimentOrderItem->price = 45000;
+    $complimentOrderItem->subtotal = 45000;
+    $complimentOrderItem->setRelation('inventoryItem', $complimentItem);
+
+    $focOrderItem = new OrderItem;
+    $focOrderItem->item_name = 'FOC Drink';
+    $focOrderItem->quantity = 2;
+    $focOrderItem->price = 30000;
+    $focOrderItem->subtotal = 60000;
+    $focOrderItem->setRelation('inventoryItem', $focItem);
+
+    $order = new Order;
+    $order->order_number = 'CLOSED-ZERO-01';
+    $order->ordered_at = now();
+    $order->setRelation('items', collect([$complimentOrderItem, $focOrderItem]));
+
+    $session = new \App\Models\TableSession;
+    $session->setRelation('table', $table);
+    $session->setRelation('customer', null);
+    $session->setRelation('reservation', null);
+    $session->setRelation('orders', collect([$order]));
+
+    $billing = new Billing;
+    $billing->transaction_code = 'CLOSED-ZERO-001';
+    $billing->updated_at = now();
+    $billing->minimum_charge = 0;
+    $billing->subtotal = 0;
+    $billing->tax = 0;
+    $billing->tax_percentage = 0;
+    $billing->service_charge = 0;
+    $billing->service_charge_percentage = 0;
+    $billing->discount_amount = 0;
+    $billing->grand_total = 0;
+    $billing->payment_mode = 'normal';
+    $billing->payment_method = 'cash';
+
+    $printer = Printer::make([
+        'name' => 'Closed Zero Test',
+        'connection_type' => 'log',
+        'width' => 42,
+    ]);
+
+    $result = (new PrinterService)->printClosedBillingReceipt($billing, $session, $printer);
+
+    $log = (string) file_get_contents(storage_path('logs/printer.log'));
+
+    expect($result)->toBeTrue()
+        ->and($log)->toContain('Compliment Soup')
+        ->and($log)->toContain('FOC Drink')
+        ->and(substr_count($log, 'Harga: Rp 0'))->toBe(2)
+        ->and(substr_count($log, 'Total: Rp 0'))->toBe(2);
 });
 
 it('prints end day recap with LD quantity row', function () {

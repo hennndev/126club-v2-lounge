@@ -124,6 +124,16 @@
               <p class="text-2xl font-bold text-cyan-800 mt-1">Rp {{ number_format($dashboardPreview['total_staff_meal'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
+            <div class="p-4 border border-gray-200 rounded-lg bg-sky-50">
+              <p class="text-sm font-medium text-sky-700">Total Compliment (Qty)</p>
+              <p class="text-2xl font-bold text-sky-800 mt-1">{{ number_format($dashboardPreview['total_compliment_quantity'] ?? 0, 0, ',', '.') }}</p>
+            </div>
+
+            <div class="p-4 border border-gray-200 rounded-lg bg-indigo-50">
+              <p class="text-sm font-medium text-indigo-700">Total FOC (Qty)</p>
+              <p class="text-2xl font-bold text-indigo-800 mt-1">{{ number_format($dashboardPreview['total_foc_quantity'] ?? 0, 0, ',', '.') }}</p>
+            </div>
+
             <div class="p-4 border border-gray-200 rounded-lg bg-purple-50">
               <p class="text-sm font-medium text-purple-700">Total LD</p>
               <p class="text-2xl font-bold text-purple-800 mt-1">Rp {{ number_format($dashboardPreview['total_ld'] ?? 0, 0, ',', '.') }}</p>
@@ -415,6 +425,8 @@
                     'total_breakage' => 'Rp ' . number_format($history->total_breakage ?? 0, 0, ',', '.'),
                     'total_room' => 'Rp ' . number_format($history->total_room ?? 0, 0, ',', '.'),
                     'total_ld' => 'Rp ' . number_format($history->total_ld ?? 0, 0, ',', '.'),
+                    'total_compliment_quantity' => number_format($history->total_compliment_quantity ?? 0, 0, ',', '.'),
+                    'total_foc_quantity' => number_format($history->total_foc_quantity ?? 0, 0, ',', '.'),
                     'total_ld_quantity' => number_format($history->total_ld_quantity ?? 0, 0, ',', '.'),
                     'total_penjualan_rokok' => number_format($history->total_penjualan_rokok, 0, ',', '.'),
                     'total_tax' => 'Rp ' . number_format($history->total_tax, 0, ',', '.'),
@@ -573,6 +585,18 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <p class="text-sm font-medium text-gray-500">Total Compliment (Qty)</p>
+                  <p class="text-2xl font-bold text-sky-700 mt-1"
+                     x-text="selectedHistory?.total_compliment_quantity ?? '0'"></p>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <p class="text-sm font-medium text-gray-500">Total FOC (Qty)</p>
+                  <p class="text-2xl font-bold text-indigo-700 mt-1"
+                     x-text="selectedHistory?.total_foc_quantity ?? '0'"></p>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                   <p class="text-sm font-medium text-gray-500">Total Penjualan Rokok (Qty)</p>
                   <p class="text-2xl font-bold text-rose-700 mt-1"
                      x-text="selectedHistory?.total_penjualan_rokok ?? '0'"></p>
@@ -608,6 +632,18 @@
                     <p class="text-sm font-medium text-rose-700">Total Penjualan Rokok (Qty)</p>
                     <p class="text-2xl font-bold text-rose-800 mt-1"
                        x-text="selectedHistory?.total_penjualan_rokok ?? '0'"></p>
+                  </div>
+
+                  <div class="p-4 border border-gray-200 rounded-lg bg-sky-50">
+                    <p class="text-sm font-medium text-sky-700">Total Compliment (Qty)</p>
+                    <p class="text-2xl font-bold text-sky-800 mt-1"
+                       x-text="selectedHistory?.total_compliment_quantity ?? '0'"></p>
+                  </div>
+
+                  <div class="p-4 border border-gray-200 rounded-lg bg-indigo-50">
+                    <p class="text-sm font-medium text-indigo-700">Total FOC (Qty)</p>
+                    <p class="text-2xl font-bold text-indigo-800 mt-1"
+                       x-text="selectedHistory?.total_foc_quantity ?? '0'"></p>
                   </div>
 
                   <div class="p-4 border border-gray-200 rounded-lg bg-amber-50">

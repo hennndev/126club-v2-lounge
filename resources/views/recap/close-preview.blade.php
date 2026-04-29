@@ -187,6 +187,14 @@
           <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_staff_meal'] ?? 0), 0, ',', '.') }}</span>
         </div>
         <div class="flex items-center justify-between gap-2">
+          <span class="label">Total Compliment (Qty)</span>
+          <span class="value">{{ number_format((int) ($dashboardPreview['total_compliment_quantity'] ?? 0), 0, ',', '.') }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="label">Total FOC (Qty)</span>
+          <span class="value">{{ number_format((int) ($dashboardPreview['total_foc_quantity'] ?? 0), 0, ',', '.') }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-2">
           <span class="label">Total LD</span>
           <span class="value">Rp {{ number_format((float) ($dashboardPreview['total_ld'] ?? 0), 0, ',', '.') }}</span>
         </div>

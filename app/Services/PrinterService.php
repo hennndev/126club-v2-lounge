@@ -7,6 +7,7 @@ use App\Models\Billing;
 use App\Models\GeneralSetting;
 use App\Models\KitchenOrder;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\TableSession;
 use Illuminate\Support\Facades\Log;
@@ -475,7 +476,7 @@ class PrinterService
         ];
 
         foreach ($order->items as $item) {
-            $lines[] = "  {$item->quantity}x {$item->item_name}  Rp ".number_format($item->subtotal, 0, ',', '.');
+            $lines[] = "  {$item->quantity}x {$item->item_name}  Rp ".number_format($this->resolvePrintableItemSubtotal($item), 0, ',', '.');
         }
 
         $lines[] = '';
@@ -610,8 +611,8 @@ class PrinterService
     {
         $name = $this->truncate($item->item_name, 12);
         $qty = (string) $item->quantity;
-        $price = number_format($item->price, 0, ',', '.');
-        $subtotal = number_format($item->subtotal, 0, ',', '.');
+        $price = number_format($this->resolvePrintableItemPrice($item), 0, ',', '.');
+        $subtotal = number_format($this->resolvePrintableItemSubtotal($item), 0, ',', '.');
 
         return $this->padLine($name, $qty, $price, $subtotal, $width)."\n";
     }
@@ -693,6 +694,28 @@ class PrinterService
         ];
     }
 
+    protected function resolvePrintableItemPrice(OrderItem $item): float
+    {
+        $categoryMain = strtolower(trim((string) ($item->inventoryItem?->category_main ?? '')));
+
+        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
+            return 0.0;
+        }
+
+        return (float) ($item->price ?? 0);
+    }
+
+    protected function resolvePrintableItemSubtotal(OrderItem $item): float
+    {
+        $categoryMain = strtolower(trim((string) ($item->inventoryItem?->category_main ?? '')));
+
+        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
+            return 0.0;
+        }
+
+        return (float) ($item->subtotal ?? ((float) $item->price * (int) $item->quantity));
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -707,8 +730,8 @@ class PrinterService
                 return [
                     'name' => (string) $first->item_name,
                     'qty' => (int) $group->sum('quantity'),
-                    'price' => (float) $first->price,
-                    'subtotal' => (float) $group->sum('subtotal'),
+                    'price' => $this->resolvePrintableItemPrice($first),
+                    'subtotal' => (float) $group->sum(fn ($item): float => $this->resolvePrintableItemSubtotal($item)),
                 ];
             })
             ->values()
@@ -766,8 +789,8 @@ class PrinterService
                 return [
                     'name' => (string) $first->item_name,
                     'qty' => (int) $group->sum('quantity'),
-                    'price' => (float) $first->price,
-                    'subtotal' => (float) $group->sum('subtotal'),
+                    'price' => $this->resolvePrintableItemPrice($first),
+                    'subtotal' => (float) $group->sum(fn ($item): float => $this->resolvePrintableItemSubtotal($item)),
                 ];
             })
             ->values()
@@ -1207,6 +1230,8 @@ class PrinterService
         $kitchenItemsOut = (int) ($dashboardPreview['total_kitchen_items'] ?? $recapData['kitchenQtyTotal'] ?? 0);
         $barItemsOut = (int) ($dashboardPreview['total_bar_items'] ?? $recapData['barQtyTotal'] ?? 0);
         $ldQuantity = (int) ($dashboardPreview['total_ld_quantity'] ?? $recapData['totalLdQuantity'] ?? 0);
+        $complimentQuantity = (int) ($dashboardPreview['total_compliment_quantity'] ?? $recapData['totalComplimentQuantity'] ?? 0);
+        $focQuantity = (int) ($dashboardPreview['total_foc_quantity'] ?? $recapData['totalFocQuantity'] ?? 0);
 
         $lines = [
             'REKAP END DAY',
@@ -1221,6 +1246,8 @@ class PrinterService
             $this->formatClosedBillingPair('Item Keluar Kitchen', number_format($kitchenItemsOut, 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Item Keluar Bar', number_format($barItemsOut, 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Total Staff Meal', 'Rp '.number_format((float) ($dashboardPreview['total_staff_meal'] ?? $recapData['totalStaffMeal'] ?? 0), 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Total Compliment (Qty)', number_format($complimentQuantity, 0, ',', '.'), $width),
+            $this->formatClosedBillingPair('Total FOC (Qty)', number_format($focQuantity, 0, ',', '.'), $width),
             $this->formatClosedBillingPair('Total LD Qty', number_format($ldQuantity, 0, ',', '.'), $width),
             $separator,
             'RINGKASAN PEMBAYARAN',
