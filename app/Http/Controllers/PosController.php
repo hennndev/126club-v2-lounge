@@ -74,7 +74,7 @@ class PosController extends Controller
                 'item_id' => $item->id,
                 'name' => $item->pos_name ?: $item->name,
                 'category' => $item->category_type,
-                'price' => $item->price ?? 0,
+                'price' => $this->resolveZeroPricedItemAmount($item),
                 'stock' => $isItemGroup ? null : ($item->stock_quantity ?? 0),
                 'is_menu' => (bool) $setting?->is_menu,
                 'is_item_group' => $isItemGroup,
@@ -173,6 +173,7 @@ class PosController extends Controller
                 'id' => $u->id,
                 'name' => $u->name,
                 'phone' => $u->profile?->phone ?? '',
+                'customer_code' => $u->customerUser?->customer_code ?? '',
             ]);
 
         return response()->json(['customers' => $customers]);
@@ -192,7 +193,7 @@ class PosController extends Controller
         try {
             $user = User::create([
                 'name' => $validated['name'],
-                'email' => 'walkin.'.Str::uuid().'@126club.local',
+                'email' => $this->generateWalkInCustomerEmail($validated['name']),
                 'password' => Hash::make(Str::random(16)),
             ]);
 
@@ -322,7 +323,7 @@ class PosController extends Controller
         $product = [
             'id' => $productId,
             'name' => $inventoryItem->pos_name ?: $inventoryItem->name,
-            'price' => $inventoryItem->price ?? 0,
+            'price' => $this->resolveZeroPricedItemAmount($inventoryItem),
             'type' => 'item',
             'preparation_location' => $this->resolvePreparationLocationFromPrinters($inventoryItem) ?? $setting->preparation_location,
             'assigned_printer_types' => $this->resolveAssignedPrinterTypes($inventoryItem),
@@ -591,7 +592,7 @@ class PosController extends Controller
                         ? (string) $inventoryItem->pos_name
                         : (string) $inventoryItem->name;
                     $itemCode = $inventoryItem->code;
-                    $price = $inventoryItem->price;
+                    $price = $this->resolveZeroPricedItemAmount($inventoryItem);
                     $preparationLocation = $this->resolvePreparationLocationFromPrinters($inventoryItem);
 
                     $quantity = $cartItem['quantity'];
@@ -880,7 +881,7 @@ class PosController extends Controller
                         ? (string) $inventoryItem->pos_name
                         : (string) $inventoryItem->name;
                     $itemCode = $inventoryItem->code;
-                    $price = $inventoryItem->price;
+                    $price = $this->resolveZeroPricedItemAmount($inventoryItem);
                     $preparationLocation = $this->resolvePreparationLocationFromPrinters($inventoryItem);
                     $quantity = $cartItem['quantity'];
                     $subtotal = $price * $quantity;
@@ -2139,6 +2140,17 @@ class PosController extends Controller
         return null;
     }
 
+    protected function resolveZeroPricedItemAmount(InventoryItem $inventoryItem): float
+    {
+        $categoryMain = strtolower(trim((string) $inventoryItem->category_main));
+
+        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
+            return 0.0;
+        }
+
+        return (float) $inventoryItem->price;
+    }
+
     protected function resolveAssignedPrinterTypes(InventoryItem $inventoryItem): \Illuminate\Support\Collection
     {
         return $inventoryItem->printers
@@ -2361,17 +2373,26 @@ class PosController extends Controller
      */
     protected function pushOrderToAccurate(Order $order, ?CustomerUser $customerUser, int|float $finalTotal): void
     {
+        $billing = Billing::query()->where('order_id', $order->id)->latest('id')->first();
+
         try {
             $order->load(['items.inventoryItem']);
-            $billing = Billing::query()->where('order_id', $order->id)->latest('id')->first();
 
             if (! $customerUser) {
+                $billing?->update([
+                    'error_message' => 'Customer walk-in tidak ditemukan untuk sinkronisasi Accurate.',
+                ]);
+
                 return;
             }
 
             $customerNo = $this->ensureAccurateCustomer($customerUser);
 
             if (! $customerNo) {
+                $billing?->update([
+                    'error_message' => 'Customer Accurate tidak ditemukan untuk transaksi walk-in ini.',
+                ]);
+
                 return;
             }
 
@@ -2463,6 +2484,7 @@ class PosController extends Controller
             if ($serviceChargeAmount > 0) {
                 $serviceChargeItem = [
                     'itemNo' => 'SERVICE-CHARGE',
+                    'quantity' => 1,
                     'unitPrice' => $serviceChargeAmount,
                 ];
 
@@ -2481,8 +2503,51 @@ class PosController extends Controller
                 'accurate_so_number' => $soNumber,
                 'accurate_inv_number' => $invNumber,
             ]);
+
+            $billing?->update([
+                'accurate_so_number' => $soNumber,
+                'accurate_inv_number' => $invNumber,
+                'error_message' => null,
+            ]);
         } catch (\Exception $e) {
+            $billing?->update([
+                'error_message' => $e->getMessage(),
+            ]);
+
+            Log::error('Accurate walk-in sync failed', [
+                'order_id' => $order->id,
+                'billing_id' => $billing?->id,
+                'message' => $e->getMessage(),
+            ]);
         }
+    }
+
+    protected function generateWalkInCustomerEmail(string $name): string
+    {
+        $domain = '126club.local';
+        $baseName = Str::of($name)
+            ->ascii()
+            ->lower()
+            ->replaceMatches('/[^a-z0-9]+/', '')
+            ->value();
+
+        $baseName = $baseName !== '' ? $baseName : 'walkin';
+        $baseName = Str::limit($baseName, 24, '');
+
+        for ($attempt = 1; $attempt <= 10; $attempt++) {
+            $email = sprintf(
+                '%s%06d@%s',
+                $baseName,
+                random_int(0, 999999),
+                $domain,
+            );
+
+            if (! User::query()->where('email', $email)->exists()) {
+                return $email;
+            }
+        }
+
+        return sprintf('walkin%s@%s', Str::uuid()->toString(), $domain);
     }
 
     protected function ensureAccurateCustomer(CustomerUser $customerUser): ?string
@@ -2527,19 +2592,20 @@ class PosController extends Controller
     {
         $cartItemFlags = InventoryItem::query()
             ->whereIn('id', collect($cart)->map(fn ($item) => (int) str_replace('item_', '', (string) ($item['id'] ?? '0')))->filter()->values())
-            ->get(['id', 'include_tax', 'include_service_charge'])
+            ->get(['id', 'include_tax', 'include_service_charge', 'category_main', 'price'])
             ->keyBy('id');
 
         $cartItems = collect($cart)->values()->map(function ($item) use ($cartItemFlags) {
             $inventoryItemId = (int) str_replace('item_', '', (string) ($item['id'] ?? '0'));
             $flags = $cartItemFlags->get($inventoryItemId);
+            $price = $flags ? $this->resolveZeroPricedItemAmount($flags) : (float) $item['price'];
 
             return [
                 'id' => $item['id'],
                 'name' => $item['name'],
-                'price' => (float) $item['price'],
+                'price' => $price,
                 'quantity' => (int) $item['quantity'],
-                'subtotal' => (float) $item['price'] * (int) $item['quantity'],
+                'subtotal' => $price * (int) $item['quantity'],
                 'preparation_location' => $item['preparation_location'] ?? 'direct',
                 'assigned_printer_types' => collect($item['assigned_printer_types'] ?? [])->values()->all(),
                 'assigned_checker_printers' => collect($item['assigned_checker_printers'] ?? [])->values()->all(),

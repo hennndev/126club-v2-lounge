@@ -350,6 +350,8 @@ class RecapController extends Controller
         $dashboardAggregate = Dashboard::query()->find(1);
         $dashboardTotalDp = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_dp ?? 0);
         $dashboardTotalLdQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_ld_quantity ?? 0);
+        $dashboardTotalComplimentQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_compliment_quantity ?? 0);
+        $dashboardTotalFocQuantity = $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_foc_quantity ?? 0);
         $resolvedTotalDp = $isSelectedEndDayClosed
             ? 0.0
             : ($dashboardTotalDp > 0 ? $dashboardTotalDp : $liveTotalDownPayment);
@@ -440,6 +442,8 @@ class RecapController extends Controller
             'totalBreakage' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_breakage ?? 0),
             'totalRoom' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_room ?? 0),
             'totalStaffMeal' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_staff_meal ?? 0),
+            'totalComplimentQuantity' => $dashboardTotalComplimentQuantity,
+            'totalFocQuantity' => $dashboardTotalFocQuantity,
             'totalLd' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_ld ?? 0),
             'totalLdQuantity' => $dashboardTotalLdQuantity,
             'totalTax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
@@ -461,6 +465,8 @@ class RecapController extends Controller
                 'total_breakage' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_breakage ?? 0),
                 'total_room' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_room ?? 0),
                 'total_staff_meal' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_staff_meal ?? 0),
+                'total_compliment_quantity' => $dashboardTotalComplimentQuantity,
+                'total_foc_quantity' => $dashboardTotalFocQuantity,
                 'total_ld' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_ld ?? 0),
                 'total_ld_quantity' => $dashboardTotalLdQuantity,
                 'total_penjualan_rokok' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_penjualan_rokok ?? 0),
@@ -641,6 +647,8 @@ class RecapController extends Controller
                     'total_breakage' => 0.0,
                     'total_room' => 0.0,
                     'total_staff_meal' => 0.0,
+                    'total_compliment_quantity' => 0,
+                    'total_foc_quantity' => 0,
                     'total_ld' => 0.0,
                     'total_ld_quantity' => 0,
                     'total_penjualan_rokok' => 0.0,
@@ -668,6 +676,8 @@ class RecapController extends Controller
             'totalBreakage' => (float) ($recapHistory->total_breakage ?? 0),
             'totalRoom' => (float) ($recapHistory->total_room ?? 0),
             'totalStaffMeal' => (float) ($recapHistory->total_staff_meal ?? 0),
+            'totalComplimentQuantity' => (int) ($recapHistory->total_compliment_quantity ?? 0),
+            'totalFocQuantity' => (int) ($recapHistory->total_foc_quantity ?? 0),
             'totalLd' => (float) ($recapHistory->total_ld ?? 0),
             'totalTax' => (float) $recapHistory->total_tax,
             'totalServiceCharge' => (float) $recapHistory->total_service_charge,
@@ -691,6 +701,8 @@ class RecapController extends Controller
                 'total_breakage' => (float) ($recapHistory->total_breakage ?? 0),
                 'total_room' => (float) ($recapHistory->total_room ?? 0),
                 'total_staff_meal' => (float) ($recapHistory->total_staff_meal ?? 0),
+                'total_compliment_quantity' => (int) ($recapHistory->total_compliment_quantity ?? 0),
+                'total_foc_quantity' => (int) ($recapHistory->total_foc_quantity ?? 0),
                 'total_ld' => (float) ($recapHistory->total_ld ?? 0),
                 'total_penjualan_rokok' => (float) $recapHistory->total_penjualan_rokok,
                 'total_tax' => (float) $recapHistory->total_tax,
@@ -729,6 +741,8 @@ class RecapController extends Controller
             ['Total Breakage', (float) ($recapData['dashboardPreview']['total_breakage'] ?? 0)],
             ['Total Room', (float) ($recapData['dashboardPreview']['total_room'] ?? 0)],
             ['Total Staff Meal', (float) ($recapData['dashboardPreview']['total_staff_meal'] ?? 0)],
+            ['Total Compliment (Qty)', (int) ($recapData['dashboardPreview']['total_compliment_quantity'] ?? 0)],
+            ['Total FOC (Qty)', (int) ($recapData['dashboardPreview']['total_foc_quantity'] ?? 0)],
             ['Total LD', (float) ($recapData['dashboardPreview']['total_ld'] ?? 0)],
             ['Total LD Qty', (int) ($recapData['dashboardPreview']['total_ld_quantity'] ?? 0)],
             ['Total Pajak', $recapData['totalTax']],
@@ -804,6 +818,8 @@ class RecapController extends Controller
             ['Total Breakage', (float) ($recapHistory->total_breakage ?? 0)],
             ['Total Room', (float) ($recapHistory->total_room ?? 0)],
             ['Total Staff Meal', (float) ($recapHistory->total_staff_meal ?? 0)],
+            ['Total Compliment (Qty)', (int) ($recapHistory->total_compliment_quantity ?? 0)],
+            ['Total FOC (Qty)', (int) ($recapHistory->total_foc_quantity ?? 0)],
             ['Total LD', (float) ($recapHistory->total_ld ?? 0)],
             ['Total LD Qty', (int) ($recapHistory->total_ld_quantity ?? 0)],
             ['Total Penjualan Rokok', (float) $recapHistory->total_penjualan_rokok],

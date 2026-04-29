@@ -117,6 +117,66 @@ test('booking checkout decrements inventory stock', function () {
         ->and((float) $orderItem->tax_amount)->toBe(8250.0);
 });
 
+test('booking checkout stores compliment and foc items as zero rupiah', function (string $categoryMain) {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $area = makePosArea();
+    $table = makePosTable($area);
+    $inventoryItem = makePosInventoryItem([
+        'stock_quantity' => 10,
+        'price' => 25000,
+        'category_main' => $categoryMain,
+    ]);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
+    TableSession::create([
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'SESSION-'.uniqid(),
+        'checked_in_at' => now(),
+        'status' => 'active',
+    ]);
+
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 2,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'booking',
+            'customer_user_id' => $customer->id,
+            'table_id' => $table->id,
+            'discount_percentage' => 0,
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $orderItem = OrderItem::query()->latest('id')->firstOrFail();
+
+    expect((float) $orderItem->price)->toBe(0.0)
+        ->and((float) $orderItem->subtotal)->toBe(0.0)
+        ->and((float) $orderItem->tax_amount)->toBe(0.0)
+        ->and((float) $orderItem->service_charge_amount)->toBe(0.0);
+})->with([
+    'compliment' => 'compliment',
+    'foc' => 'foc',
+]);
+
 test('booking checkout calculates tax from subtotal without adding service charge to tax base', function () {
     $admin = adminUser();
     $customer = User::factory()->create();
@@ -380,6 +440,29 @@ test('pos payment modal keeps minimum-charge shortfall expression and does not s
         ->assertDontSee('>DP<', false);
 });
 
+test('walk in create customer generates email from name and six random digits', function () {
+    $admin = adminUser();
+
+    $response = actingAs($admin)
+        ->postJson(route('admin.pos.walk-in.create-customer'), [
+            'name' => 'John Doe VIP',
+            'phone' => '081234567890',
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('customer.name', 'John Doe VIP')
+        ->assertJsonPath('customer.phone', '081234567890');
+
+    $user = User::query()->latest('id')->firstOrFail();
+    $customerUser = CustomerUser::query()->where('user_id', $user->id)->first();
+
+    expect($user->email)->toMatch('/^johndoevip\d{6}@126club\.local$/')
+        ->and($customerUser)->not->toBeNull()
+        ->and($user->profile?->phone)->toBe('081234567890');
+});
+
 test('walk in checkout split payment must match grand total', function () {
     $admin = adminUser();
     $customer = User::factory()->create();
@@ -510,6 +593,84 @@ test('walk in checkout calculates percentage discount after tax and service char
         ->and((float) $billing->grand_total)->toBe(54945.0)
         ->and((float) $billing->discount_amount)->toBe(6105.0);
 });
+
+test('walk in checkout stores compliment and foc items as zero rupiah', function (string $categoryMain) {
+    $admin = adminUser();
+    $customer = User::factory()->create();
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081999999999',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => null,
+        'customer_code' => null,
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
+    $inventoryItem = makePosInventoryItem([
+        'stock_quantity' => 12,
+        'price' => 30000,
+        'category_main' => $categoryMain,
+        'include_tax' => true,
+        'include_service_charge' => true,
+    ]);
+
+    DailyAuthCode::query()->updateOrCreate(
+        ['date' => now()->format('Y-m-d')],
+        [
+            'code' => '9753',
+            'override_code' => null,
+            'generated_at' => now(),
+        ],
+    );
+
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 2,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'walk-in',
+            'walk_in_customer_id' => $customer->id,
+            'payment_mode' => 'normal',
+            'payment_method' => 'cash',
+            'discount_type' => 'percentage',
+            'discount_percentage' => 10,
+            'discount_auth_code' => '9753',
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $orderItem = OrderItem::query()->latest('id')->firstOrFail();
+
+    expect((float) $orderItem->price)->toBe(0.0)
+        ->and((float) $orderItem->subtotal)->toBe(0.0)
+        ->and((float) $orderItem->tax_amount)->toBe(0.0)
+        ->and((float) $orderItem->service_charge_amount)->toBe(0.0);
+})->with([
+    'compliment' => 'compliment',
+    'foc' => 'foc',
+]);
 
 test('walk in checkout supports split non-cash and non-cash payment', function () {
     $admin = adminUser();
@@ -979,6 +1140,7 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->and(collect($capturedInvoicePayload['detailItem'] ?? [])->count())->toBe(2)
         ->and(collect($capturedInvoicePayload['detailItem'] ?? [])->contains(function (array $item): bool {
             return (string) ($item['itemNo'] ?? '') === 'SERVICE-CHARGE'
+                && (int) ($item['quantity'] ?? 0) === 1
                 && (float) ($item['unitPrice'] ?? 0) === 5550.0;
         }))->toBeTrue();
 
@@ -1003,8 +1165,87 @@ test('walk in checkout decrements inventory stock and syncs accurate documents',
         ->and($order->payment_method)->toBe('transfer')
         ->and($order->payment_mode)->toBe('normal')
         ->and((string) $billing->transaction_code)->toMatch('/^WALKIN-\d{6}$/')
+        ->and((string) $billing->accurate_so_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{5}$/')
+        ->and((string) $billing->accurate_inv_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{5}$/')
+        ->and($billing->error_message)->toBeNull()
         ->and((string) $order->accurate_so_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{5}$/')
         ->and((string) $order->accurate_inv_number)->toMatch('/^ROOM-WALKIN-\d{8}-\d{5}$/');
+});
+
+test('walk in checkout stores accurate sync error on billing when invoice push fails', function () {
+    $admin = adminUser();
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 10,
+        'tax_percentage' => 11,
+    ]);
+
+    $customer = User::factory()->create();
+    $profile = UserProfile::create([
+        'user_id' => $customer->id,
+        'phone' => '081200000001',
+    ]);
+
+    CustomerUser::create([
+        'user_id' => $customer->id,
+        'user_profile_id' => $profile->id,
+        'accurate_id' => null,
+        'customer_code' => null,
+        'total_visits' => 0,
+        'lifetime_spending' => 0,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getItemGroupComponents')->andReturn([]);
+        $mock->shouldReceive('saveCustomer')->once()->andReturn([
+            'r' => [
+                'id' => 11111,
+                'customerNo' => 'CUST-WALKIN-ERR',
+            ],
+        ]);
+        $mock->shouldReceive('saveSalesOrder')->once()->andReturn([
+            'r' => [
+                'number' => 'ROOM-WALKIN-20260318-54321',
+            ],
+        ]);
+        $mock->shouldReceive('saveSalesInvoice')->once()->andThrow(new RuntimeException('Accurate invoice failed'));
+    });
+
+    $inventoryItem = makePosInventoryItem(['stock_quantity' => 8]);
+    $cartKey = 'item_'.$inventoryItem->id;
+
+    $response = actingAs($admin)
+        ->withSession([
+            'pos_cart' => [
+                $cartKey => [
+                    'id' => $cartKey,
+                    'name' => $inventoryItem->name,
+                    'price' => (float) $inventoryItem->price,
+                    'quantity' => 1,
+                    'preparation_location' => 'kitchen',
+                ],
+            ],
+        ])
+        ->postJson(route('admin.pos.checkout'), [
+            'customer_type' => 'walk-in',
+            'walk_in_customer_id' => $customer->id,
+            'payment_method' => 'cash',
+            'payment_mode' => 'normal',
+            'discount_percentage' => 0,
+            'auto_print_receipt' => false,
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $billing = Billing::query()->latest('id')->firstOrFail();
+    $order = Order::query()->latest('id')->firstOrFail();
+
+    expect($billing->error_message)->toBe('Accurate invoice failed')
+        ->and($billing->accurate_so_number)->toBeNull()
+        ->and($billing->accurate_inv_number)->toBeNull()
+        ->and($order->accurate_so_number)->toBeNull()
+        ->and($order->accurate_inv_number)->toBeNull();
 });
 
 test('walk in checkout auto prints one menu to multiple assigned target printers', function () {
@@ -1594,6 +1835,38 @@ test('menu category item can be added to cart even when sold item stock is zero'
         ->assertJsonPath('cart.0.id', 'item_'.$menuItem->id)
         ->assertJsonPath('cart.0.quantity', 1);
 });
+
+test('admin pos forces compliment and foc prices to zero in cart payload', function (string $categoryMain) {
+    $admin = adminUser();
+
+    PosCategorySetting::create([
+        'category_type' => 'main-course',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'is_item_group' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    $item = makePosInventoryItem([
+        'category_type' => 'main-course',
+        'category_main' => $categoryMain,
+        'price' => 75000,
+        'stock_quantity' => 10,
+        'is_item_group' => true,
+        'is_count_portion_possible' => true,
+    ]);
+
+    $response = actingAs($admin)->postJson(route('admin.pos.add-to-cart', [
+        'productId' => 'item_'.$item->id,
+    ]));
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('cart.0.id', 'item_'.$item->id)
+        ->assertJsonPath('cart.0.price', 0)
+        ->assertJsonPath('cart.0.subtotal', 0);
+})->with(['compliment', 'foc']);
 
 test('portion possible is skipped when is count portion possible is off and item group can still be added', function () {
     $admin = adminUser();

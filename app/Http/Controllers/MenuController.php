@@ -79,7 +79,7 @@ class MenuController extends Controller
             'name' => 'required|string|max:255',
             'item_type' => ['required', 'string', 'in:GROUP,INVENTORY'],
             'category_type' => ['required', 'string', 'max:255'],
-            'category_main' => ['nullable', 'string', 'in:food,alcohol,beverage,cigarette,breakage,room,staff_meal,LD'],
+            'category_main' => ['nullable', 'string', 'in:food,alcohol,beverage,cigarette,breakage,room,staff_meal,compliment,foc,LD'],
             'unit' => 'required|string|max:50',
             'selling_price' => 'required|numeric|min:0',
             'include_tax' => ['nullable', 'boolean'],
@@ -228,7 +228,7 @@ class MenuController extends Controller
     public function updateCategoryMain(Request $request, InventoryItem $inventory): JsonResponse
     {
         $validated = $request->validate([
-            'category_main' => ['nullable', 'string', 'in:food,alcohol,beverage,cigarette,breakage,room,staff_meal,LD'],
+            'category_main' => ['nullable', 'string', 'in:food,alcohol,beverage,cigarette,breakage,room,staff_meal,compliment,foc,LD'],
         ]);
 
         $inventory->update(['category_main' => $validated['category_main'] ?? null]);

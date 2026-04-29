@@ -147,6 +147,8 @@
             <option value="breakage">Breakage</option>
             <option value="room">Room</option>
             <option value="staff_meal">Staff Meal</option>
+            <option value="compliment">Compliment</option>
+            <option value="foc">FOC</option>
             <option value="LD">LD</option>
           </select>
         </div>
@@ -477,6 +479,8 @@
               <option value="breakage">Breakage</option>
               <option value="room">Room</option>
               <option value="staff_meal">Staff Meal</option>
+              <option value="compliment">Compliment</option>
+              <option value="foc">FOC</option>
               <option value="LD">LD</option>
             </select>
             <button type="button"

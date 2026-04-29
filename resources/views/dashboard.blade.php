@@ -175,6 +175,16 @@
           <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardTotalStaffMeal, 0, ',', '.') }}</p>
         </div>
 
+        <div class="p-4 bg-sky-50 border border-sky-200 rounded-lg">
+          <p class="text-sm font-medium text-sky-700">Total Compliment (Qty)</p>
+          <p class="text-2xl font-bold text-sky-800 mt-1">{{ number_format($dashboardTotalComplimentQuantity, 0, ',', '.') }}</p>
+        </div>
+
+        <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+          <p class="text-sm font-medium text-indigo-700">Total FOC (Qty)</p>
+          <p class="text-2xl font-bold text-indigo-800 mt-1">{{ number_format($dashboardTotalFocQuantity, 0, ',', '.') }}</p>
+        </div>
+
         <div class="p-4 bg-purple-50 border border-purple-200 rounded-lg">
           <p class="text-sm font-medium text-purple-700">Total LD</p>
           <p class="text-2xl font-bold text-purple-800 mt-1">Rp {{ number_format($dashboardTotalLd, 0, ',', '.') }}</p>

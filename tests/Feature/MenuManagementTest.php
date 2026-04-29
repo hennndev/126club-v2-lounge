@@ -165,6 +165,41 @@ test('menu store can save printer targets for a menu item', function () {
         ->toEqualCanonicalizing([$printerOne->id, $printerTwo->id]);
 });
 
+test('menu store accepts compliment and foc as category main values', function (string $categoryMain, string $menuName) {
+    $admin = adminUser();
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('saveItem')
+            ->once()
+            ->andReturn([
+                'r' => [
+                    'id' => random_int(700000, 799999),
+                    'no' => 'MENU-'.random_int(700000, 799999),
+                ],
+            ]);
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.menus.store'), [
+            'code_mode' => 'manual',
+            'no' => 'MENU-'.strtoupper($categoryMain),
+            'name' => $menuName,
+            'item_type' => 'INVENTORY',
+            'category_type' => 'menu-qty',
+            'category_main' => $categoryMain,
+            'unit' => 'pcs',
+            'selling_price' => 0,
+            'detail_group' => [],
+        ])
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    expect(InventoryItem::query()->where('name', $menuName)->firstOrFail()->category_main)->toBe($categoryMain);
+})->with([
+    ['compliment', 'Compliment Menu'],
+    ['foc', 'FOC Menu'],
+]);
+
 test('menu detail endpoint returns error when accurate detail cannot be fetched', function () {
     $admin = adminUser();
 

@@ -121,7 +121,7 @@ class TableReservationController extends Controller
         $checkedInBookings = TableReservation::where('status', 'checked_in')->count();
 
         $tables = Tabel::with('area')->where('is_active', true)->orderBy('table_number')->get();
-        $customers = User::whereHas('customerUser')->with('profile')->orderBy('name')->get();
+        $customers = User::whereHas('customerUser')->with(['profile', 'customerUser'])->orderBy('name')->get();
         $areas = \App\Models\Area::where('is_active', true)->orderBy('sort_order')->get();
 
         // Derive table status counts from the tables themselves (consistent with updateStatus logic)

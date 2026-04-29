@@ -263,11 +263,15 @@
                     <span class="text-xs font-bold text-gray-600"
                           x-text="c.name[0].toUpperCase()"></span>
                   </div>
-                  <div>
+                  <div class="flex-1">
                     <p class="text-sm font-medium text-gray-900"
                        x-text="c.name"></p>
                     <p class="text-xs text-gray-400"
                        x-text="c.phone || 'Tidak ada nomor'"></p>
+                    <template x-if="c.customer_code">
+                      <p class="text-xs text-gray-500 mt-1"
+                         x-text="'Code: ' + c.customer_code"></p>
+                    </template>
                   </div>
                 </button>
               </template>
