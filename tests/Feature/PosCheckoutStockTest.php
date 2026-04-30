@@ -117,7 +117,7 @@ test('booking checkout decrements inventory stock', function () {
         ->and((float) $orderItem->tax_amount)->toBe(8250.0);
 });
 
-test('booking checkout stores compliment and foc items as zero rupiah', function (string $categoryMain) {
+test('booking checkout keeps compliment and foc items at original price', function (string $categoryMain) {
     $admin = adminUser();
     $customer = User::factory()->create();
     $area = makePosArea();
@@ -168,10 +168,10 @@ test('booking checkout stores compliment and foc items as zero rupiah', function
 
     $orderItem = OrderItem::query()->latest('id')->firstOrFail();
 
-    expect((float) $orderItem->price)->toBe(0.0)
-        ->and((float) $orderItem->subtotal)->toBe(0.0)
-        ->and((float) $orderItem->tax_amount)->toBe(0.0)
-        ->and((float) $orderItem->service_charge_amount)->toBe(0.0);
+    expect((float) $orderItem->price)->toBe(25000.0)
+        ->and((float) $orderItem->subtotal)->toBe(50000.0)
+        ->and((float) $orderItem->tax_amount)->toBe(5500.0)
+        ->and((float) $orderItem->service_charge_amount)->toBe(5550.0);
 })->with([
     'compliment' => 'compliment',
     'foc' => 'foc',
@@ -573,6 +573,7 @@ test('walk in checkout calculates percentage discount after tax and service char
             'walk_in_customer_id' => $customer->id,
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
+            'foc_comp_payment_method' => 'Compliment',
             'discount_type' => 'percentage',
             'discount_percentage' => 10,
             'discount_auth_code' => '9753',
@@ -591,10 +592,11 @@ test('walk in checkout calculates percentage discount after tax and service char
 
     expect($billing)->not->toBeNull()
         ->and((float) $billing->grand_total)->toBe(54945.0)
-        ->and((float) $billing->discount_amount)->toBe(6105.0);
+        ->and((float) $billing->discount_amount)->toBe(6105.0)
+        ->and($billing->foc_comp_payment_method)->toBe('Compliment');
 });
 
-test('walk in checkout stores compliment and foc items as zero rupiah', function (string $categoryMain) {
+test('walk in checkout keeps compliment and foc items at original price', function (string $categoryMain) {
     $admin = adminUser();
     $customer = User::factory()->create();
     $profile = UserProfile::create([
@@ -663,10 +665,10 @@ test('walk in checkout stores compliment and foc items as zero rupiah', function
 
     $orderItem = OrderItem::query()->latest('id')->firstOrFail();
 
-    expect((float) $orderItem->price)->toBe(0.0)
-        ->and((float) $orderItem->subtotal)->toBe(0.0)
-        ->and((float) $orderItem->tax_amount)->toBe(0.0)
-        ->and((float) $orderItem->service_charge_amount)->toBe(0.0);
+    expect((float) $orderItem->price)->toBe(30000.0)
+        ->and((float) $orderItem->subtotal)->toBe(60000.0)
+        ->and((float) $orderItem->tax_amount)->toBe(6600.0)
+        ->and((float) $orderItem->service_charge_amount)->toBe(6660.0);
 })->with([
     'compliment' => 'compliment',
     'foc' => 'foc',
@@ -1626,6 +1628,7 @@ test('walk in draft receipt print sends payload to printer service', function ()
                 return $printer->name === 'Walk-in Draft Printer'
                     && (string) ($payload['customer_name'] ?? '') === 'Guest Test'
                     && (float) ($payload['grand_total'] ?? 0) === 100000.0
+                    && (string) ($payload['foc_comp_payment_method'] ?? '') === 'FOC'
                     && count($payload['items'] ?? []) === 1;
             })
             ->andReturnTrue();
@@ -1651,6 +1654,7 @@ test('walk in draft receipt print sends payload to printer service', function ()
             'grand_total' => 100000,
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
+            'foc_comp_payment_method' => 'FOC',
             'payment_reference_number' => '',
         ])
         ->assertSuccessful()
@@ -1836,7 +1840,7 @@ test('menu category item can be added to cart even when sold item stock is zero'
         ->assertJsonPath('cart.0.quantity', 1);
 });
 
-test('admin pos forces compliment and foc prices to zero in cart payload', function (string $categoryMain) {
+test('admin pos keeps compliment and foc prices at original value in cart payload', function (string $categoryMain) {
     $admin = adminUser();
 
     PosCategorySetting::create([
@@ -1864,8 +1868,8 @@ test('admin pos forces compliment and foc prices to zero in cart payload', funct
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('cart.0.id', 'item_'.$item->id)
-        ->assertJsonPath('cart.0.price', 0)
-        ->assertJsonPath('cart.0.subtotal', 0);
+        ->assertJsonPath('cart.0.price', 75000)
+        ->assertJsonPath('cart.0.subtotal', 75000);
 })->with(['compliment', 'foc']);
 
 test('portion possible is skipped when is count portion possible is off and item group can still be added', function () {

@@ -54,7 +54,8 @@ class PosController extends Controller
 
         // Get inventory items for configured category types
         $inventoryQuery = InventoryItem::whereIn('category_type', $allTypes ?: ['__none__'])
-            ->where('is_active', true);
+            ->where('is_active', true)
+            ->where('is_visible_in_pos', true);
 
         // Search functionality
         if ($request->filled('search')) {
@@ -485,6 +486,7 @@ class PosController extends Controller
             'discount_nominal' => 'nullable|numeric|min:0',
             'discount_auth_code' => 'nullable|digits:4',
             'payment_method' => 'nullable|in:cash,debit,kredit,qris,transfer',
+            'foc_comp_payment_method' => 'nullable|in:FOC,Compliment',
             'payment_mode' => 'nullable|in:normal,split',
             'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'nullable|numeric|min:0',
@@ -567,6 +569,7 @@ class PosController extends Controller
                 ], 'ORD', 'booking');
 
                 $orderNumber = (string) $order->order_number;
+                $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
 
                 $discountPercentage = (int) ($validated['discount_percentage'] ?? 0);
 
@@ -677,6 +680,7 @@ class PosController extends Controller
                         'service_charge_percentage' => (float) $sessionTotals['service_charge_percentage'],
                         'service_charge' => (float) $sessionTotals['service_charge'],
                         'grand_total' => (float) $sessionTotals['grand_total'],
+                        'foc_comp_payment_method' => $focCompPaymentMethod,
                     ]);
                 }
 
@@ -725,6 +729,7 @@ class PosController extends Controller
                 $orderNumber = $this->generateDailyOrderNumber('WALKIN', 'walk-in');
 
                 $paymentMode = $validated['payment_mode'] ?? 'normal';
+                $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
                 $discountType = $validated['discount_type'] ?? 'none';
                 $discountPercentage = 0;
                 $discountNominal = 0;
@@ -858,6 +863,7 @@ class PosController extends Controller
                     'payment_method' => $paymentMethod,
                     'payment_mode' => $paymentMode,
                     'payment_reference_number' => $paymentReferenceNumber,
+                    'foc_comp_payment_method' => $focCompPaymentMethod,
                 ], 'WALKIN', 'walk-in');
 
                 $orderNumber = (string) $order->order_number;
@@ -949,9 +955,10 @@ class PosController extends Controller
                 ], true);
 
                 if ($paymentMode === 'split') {
-                    $splitTotal = round((float) ($splitCashAmount ?? 0) + (float) ($splitNonCashAmount ?? 0) + (float) ($splitSecondNonCashAmount ?? 0), 2);
+                    $grandTotal = round((float) $totals['grand_total'], 0);
+                    $splitTotal = round((float) ($splitCashAmount ?? 0) + (float) ($splitNonCashAmount ?? 0) + (float) ($splitSecondNonCashAmount ?? 0), 0);
 
-                    if (abs($splitTotal - (float) $totals['grand_total']) > 0.01) {
+                    if (abs($splitTotal - $grandTotal) > 0.01) {
                         throw ValidationException::withMessages([
                             'split_total' => 'Total split harus sama dengan grand total.',
                         ]);
@@ -982,6 +989,7 @@ class PosController extends Controller
                     'billing_status' => 'paid',
                     'paid_at' => now('Asia/Jakarta'),
                     'payment_method' => $paymentMethod,
+                    'foc_comp_payment_method' => $focCompPaymentMethod,
                     'payment_reference_number' => $paymentReferenceNumber,
                     'payment_mode' => $paymentMode,
                     'split_cash_amount' => $splitCashAmount,
@@ -1621,6 +1629,7 @@ class PosController extends Controller
             'grand_total' => 'required|numeric|min:0',
             'payment_mode' => 'nullable|in:normal,split',
             'payment_method' => 'nullable|string|max:50',
+            'foc_comp_payment_method' => 'nullable|in:FOC,Compliment',
             'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'nullable|numeric|min:0',
             'split_non_cash_amount' => 'nullable|numeric|min:0',
@@ -1670,6 +1679,7 @@ class PosController extends Controller
             'grand_total' => (float) ($validated['grand_total'] ?? 0),
             'payment_mode' => $paymentMode,
             'payment_method' => $paymentMode === 'split' ? 'SPLIT BILL' : $paymentMethod,
+            'foc_comp_payment_method' => (string) ($validated['foc_comp_payment_method'] ?? ''),
             'payment_reference_number' => (string) ($validated['payment_reference_number'] ?? ''),
             'split_cash_amount' => (float) ($validated['split_cash_amount'] ?? 0),
             'split_non_cash_amount' => (float) ($validated['split_non_cash_amount'] ?? 0),
@@ -2142,12 +2152,6 @@ class PosController extends Controller
 
     protected function resolveZeroPricedItemAmount(InventoryItem $inventoryItem): float
     {
-        $categoryMain = strtolower(trim((string) $inventoryItem->category_main));
-
-        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
-            return 0.0;
-        }
-
         return (float) $inventoryItem->price;
     }
 

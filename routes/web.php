@@ -173,6 +173,7 @@ Route::middleware('auth')->group(function () {
         Route::get('recap/export', [RecapController::class, 'export'])->name('recap.export');
         Route::post('recap/close-export', [RecapController::class, 'closeAndExport'])->name('recap.close-export');
         Route::get('recap/history/{recapHistory}/export', [RecapController::class, 'exportHistory'])->name('recap.history.export');
+        Route::get('recap/history/{recapHistory}/transactions', [RecapController::class, 'historyTransactions'])->name('recap.history.transactions');
         Route::post('recap/history/{recapHistory}/reprint', [RecapController::class, 'reprintHistory'])->name('recap.history.reprint');
 
         // Waiter Performance

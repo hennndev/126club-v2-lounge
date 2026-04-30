@@ -64,6 +64,7 @@ test('bookings history can be filtered by billing transaction code', function ()
         'paid_at' => now(),
         'payment_method' => 'cash',
         'payment_mode' => 'normal',
+        'foc_comp_payment_method' => 'FOC',
     ]);
 
     $session->update(['billing_id' => $billing->id]);

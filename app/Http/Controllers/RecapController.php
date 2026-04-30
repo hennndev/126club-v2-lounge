@@ -33,8 +33,24 @@ class RecapController extends Controller
 
         [$startAt, $endAt] = $this->resolveRange($validated);
         $recapData = $this->buildRecapData($startAt, $endAt, (bool) ($validated['reprint'] ?? false));
+        $recapHistoryTransactionRecaps = RecapHistory::query()
+            ->latest('end_day')
+            ->limit(10)
+            ->get()
+            ->mapWithKeys(function (RecapHistory $history): array {
+                $historyRecapData = $this->buildRecapDataFromHistory($history);
 
-        return view('recap.index', $recapData);
+                return [
+                    $history->id => [
+                        'cashier_transactions' => $historyRecapData['cashierTransactions'] ?? [],
+                    ],
+                ];
+            })
+            ->all();
+
+        return view('recap.index', array_merge($recapData, [
+            'recapHistoryTransactionRecaps' => $recapHistoryTransactionRecaps,
+        ]));
     }
 
     public function export(Request $request): BinaryFileResponse
@@ -162,6 +178,16 @@ class RecapController extends Controller
             $this->buildHistoryExportRows($recapHistory),
             'rekapan-history-'.$recapHistory->end_day?->format('Ymd').'.xlsx'
         );
+    }
+
+    public function historyTransactions(RecapHistory $recapHistory): JsonResponse
+    {
+        $historyRecapData = $this->buildRecapDataFromHistory($recapHistory);
+
+        return response()->json([
+            'billing_transactions' => $historyRecapData['todayBillingTransactions'] ?? [],
+            'walkin_transactions' => $historyRecapData['todayWalkInTransactions'] ?? [],
+        ]);
     }
 
     public function reprintHistory(RecapHistory $recapHistory, PrinterService $printerService): RedirectResponse
@@ -427,6 +453,8 @@ class RecapController extends Controller
                 ->sortBy(fn (array $event) => $event['timestamp'] ?? now())
                 ->values();
 
+        [$todayBillingTransactions, $todayWalkInTransactions] = $this->buildTodayTransactionsRecap();
+
         return [
             'selectedDate' => $startAt->toDateString(),
             'selectedStartDatetime' => $startAt->format('Y-m-d\TH:i'),
@@ -457,6 +485,8 @@ class RecapController extends Controller
             'barItems' => $barItems,
             'barQtyTotal' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_bar_items ?? 0),
             'rokokItems' => $rokokItems,
+            'todayBillingTransactions' => $todayBillingTransactions,
+            'todayWalkInTransactions' => $todayWalkInTransactions,
             'dashboardPreview' => [
                 'total_food' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_food ?? 0),
                 'total_alcohol' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_alcohol ?? 0),
@@ -595,6 +625,247 @@ class RecapController extends Controller
         ];
     }
 
+    /**
+     * @return array{0: \Illuminate\Support\Collection<int, array<string, mixed>>, 1: \Illuminate\Support\Collection<int, array<string, mixed>>}
+     */
+    private function buildTodayTransactionsRecap(): array
+    {
+        [$todayStart, $todayEnd] = $this->resolveOperationalWindow();
+
+        return [
+            $this->buildTodayBillingTransactions($todayStart, $todayEnd),
+            $this->buildTodayWalkInTransactions($todayStart, $todayEnd),
+        ];
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function buildTodayBillingTransactions(Carbon $todayStart, Carbon $todayEnd)
+    {
+        return Billing::query()
+            ->with([
+                'tableSession.customer.profile',
+                'tableSession.reservation.customer.profile',
+                'tableSession.orders.items.inventoryItem',
+            ])
+            ->where('billing_status', 'paid')
+            ->where('is_booking', true)
+            ->where(function ($query) use ($todayStart, $todayEnd): void {
+                $query->where(function ($paidAtQuery) use ($todayStart, $todayEnd): void {
+                    $paidAtQuery->whereNotNull('paid_at')
+                        ->whereBetween('paid_at', [$todayStart, $todayEnd]);
+                })->orWhere(function ($fallbackQuery) use ($todayStart, $todayEnd): void {
+                    $fallbackQuery->whereNull('paid_at')
+                        ->whereBetween('updated_at', [$todayStart, $todayEnd]);
+                });
+            })
+            ->orderByDesc('paid_at')
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(function (Billing $billing): array {
+                $tableSession = $billing->tableSession;
+                $orderItems = $tableSession?->orders
+                    ? $tableSession->orders
+                        ->flatMap(fn (Order $order) => $order->items->where('status', '!=', 'cancelled')->values())
+                        ->values()
+                    : collect();
+                $categoryFlags = $this->extractTransactionCategoryFlags($orderItems);
+
+                $paidAt = $billing->paid_at ?? $billing->updated_at;
+                $paymentReferenceNumber = $billing->payment_reference_number
+                    ?? $billing->split_non_cash_reference_number
+                    ?? $billing->split_second_non_cash_reference_number;
+                $focCompPaymentMethod = (string) ($billing->foc_comp_payment_method ?? '');
+                $downPaymentAmount = (float) ($tableSession?->reservation?->down_payment_amount ?? 0);
+                $customerName = $tableSession?->reservation?->customer?->profile?->name
+                    ?? $tableSession?->reservation?->customer?->name
+                    ?? $tableSession?->customer?->profile?->name
+                    ?? $tableSession?->customer?->name
+                    ?? 'Customer Booking';
+
+                return [
+                    'timestamp' => $paidAt,
+                    'datetime' => $paidAt?->format('d/m/Y H:i') ?? '-',
+                    'transaction_number' => (string) ($billing->transaction_code ?? ('BILLING-'.$billing->id)),
+                    'customer_name' => (string) $customerName,
+                    'payment_method' => $this->formatPaymentMethod((string) ($billing->payment_method ?? ''), (string) ($billing->payment_mode ?? 'normal')).($focCompPaymentMethod !== '' ? ' / '.$focCompPaymentMethod : ''),
+                    'payment_method_key' => $this->resolvePaymentFilterKey((string) ($billing->payment_method ?? ''), (string) ($billing->payment_mode ?? 'normal')),
+                    'foc_comp_payment_method' => $focCompPaymentMethod,
+                    'payment_reference_number' => (string) ($paymentReferenceNumber ?? ''),
+                    'items_count' => (int) $orderItems->count(),
+                    'total_bill' => (float) max((float) ($billing->minimum_charge ?? 0), (float) ($billing->orders_total ?? 0)),
+                    'tax_total' => (float) ($billing->tax ?? 0),
+                    'service_charge_total' => (float) ($billing->service_charge ?? 0),
+                    'discount_amount' => (float) ($billing->discount_amount ?? 0),
+                    'down_payment_amount' => $downPaymentAmount,
+                    'has_down_payment' => $downPaymentAmount > 0,
+                    'contains_food' => $categoryFlags['food'],
+                    'contains_alcohol' => $categoryFlags['alcohol'],
+                    'contains_beverage' => $categoryFlags['beverage'],
+                    'contains_cigarette' => $categoryFlags['cigarette'],
+                    'contains_breakage' => $categoryFlags['breakage'],
+                    'contains_room' => $categoryFlags['room'],
+                    'contains_staff_meal' => $categoryFlags['staff_meal'],
+                    'contains_compliment' => $categoryFlags['compliment'],
+                    'contains_foc' => $categoryFlags['foc'],
+                    'contains_ld' => $categoryFlags['ld'],
+                    'total' => (float) ($billing->paid_amount ?? $billing->grand_total ?? 0),
+                    'items' => $orderItems
+                        ->map(fn ($item): array => [
+                            'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? $item->item_name ?? '-'),
+                            'category_main' => (string) ($item->inventoryItem?->category_main ?? ''),
+                            'quantity' => (int) ($item->quantity ?? 0),
+                            'price' => (float) ($item->price ?? 0),
+                            'subtotal' => (float) ($item->subtotal ?? 0),
+                        ])
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function buildTodayWalkInTransactions(Carbon $todayStart, Carbon $todayEnd)
+    {
+        $walkInOrders = Order::query()
+            ->with(['items.inventoryItem', 'customer.user'])
+            ->whereNull('table_session_id')
+            ->where('status', '!=', 'cancelled')
+            ->where(function ($query) use ($todayStart, $todayEnd): void {
+                $query->whereBetween('ordered_at', [$todayStart, $todayEnd])
+                    ->orWhere(function ($fallbackQuery) use ($todayStart, $todayEnd): void {
+                        $fallbackQuery->whereNull('ordered_at')
+                            ->whereBetween('created_at', [$todayStart, $todayEnd]);
+                    });
+            })
+            ->orderByRaw('COALESCE(ordered_at, created_at) DESC')
+            ->get();
+
+        $billingsByOrderId = Billing::query()
+            ->whereIn('order_id', $walkInOrders->pluck('id')->filter()->values())
+            ->where('billing_status', 'paid')
+            ->get()
+            ->keyBy('order_id');
+
+        return $walkInOrders
+            ->map(function (Order $order) use ($billingsByOrderId): array {
+                $billing = $billingsByOrderId->get($order->id);
+                $eventTime = $order->ordered_at ?? $order->created_at;
+                $orderItems = $order->items->where('status', '!=', 'cancelled')->values();
+                $categoryFlags = $this->extractTransactionCategoryFlags($orderItems);
+                $paymentMethod = (string) ($billing?->payment_method ?? $order->payment_method ?? '');
+                $paymentMode = (string) ($billing?->payment_mode ?? $order->payment_mode ?? 'normal');
+                $focCompPaymentMethod = (string) ($billing?->foc_comp_payment_method ?? '');
+                $paymentReferenceNumber = $billing?->payment_reference_number
+                    ?? $billing?->split_non_cash_reference_number
+                    ?? $billing?->split_second_non_cash_reference_number
+                    ?? $order->payment_reference_number;
+
+                return [
+                    'timestamp' => $eventTime,
+                    'datetime' => $eventTime?->format('d/m/Y H:i') ?? '-',
+                    'transaction_number' => (string) ($order->order_number ?? ($billing?->transaction_code ?? ('WALKIN-'.$order->id))),
+                    'customer_name' => (string) ($order->customer?->user?->name ?? 'Walk-in'),
+                    'payment_method' => $this->formatPaymentMethod($paymentMethod, $paymentMode).($focCompPaymentMethod !== '' ? ' / '.$focCompPaymentMethod : ''),
+                    'payment_method_key' => $this->resolvePaymentFilterKey($paymentMethod, $paymentMode),
+                    'foc_comp_payment_method' => $focCompPaymentMethod,
+                    'payment_reference_number' => (string) ($paymentReferenceNumber ?? ''),
+                    'items_count' => (int) $orderItems->count(),
+                    'total_bill' => (float) ($billing?->orders_total ?? $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0))),
+                    'tax_total' => (float) ($billing?->tax ?? $orderItems->sum(fn ($item) => (float) ($item->tax_amount ?? 0))),
+                    'service_charge_total' => (float) ($billing?->service_charge ?? $orderItems->sum(fn ($item) => (float) ($item->service_charge_amount ?? 0))),
+                    'discount_amount' => (float) ($billing?->discount_amount ?? $order->discount_amount ?? 0),
+                    'down_payment_amount' => 0.0,
+                    'has_down_payment' => false,
+                    'contains_food' => $categoryFlags['food'],
+                    'contains_alcohol' => $categoryFlags['alcohol'],
+                    'contains_beverage' => $categoryFlags['beverage'],
+                    'contains_cigarette' => $categoryFlags['cigarette'],
+                    'contains_breakage' => $categoryFlags['breakage'],
+                    'contains_room' => $categoryFlags['room'],
+                    'contains_staff_meal' => $categoryFlags['staff_meal'],
+                    'contains_compliment' => $categoryFlags['compliment'],
+                    'contains_foc' => $categoryFlags['foc'],
+                    'contains_ld' => $categoryFlags['ld'],
+                    'total' => (float) ($billing?->paid_amount ?? $billing?->grand_total ?? $order->total ?? 0),
+                    'items' => $orderItems
+                        ->map(fn ($item): array => [
+                            'name' => (string) ($item->inventoryItem?->pos_name ?? $item->inventoryItem?->name ?? $item->item_name ?? '-'),
+                            'category_main' => (string) ($item->inventoryItem?->category_main ?? ''),
+                            'quantity' => (int) ($item->quantity ?? 0),
+                            'price' => (float) ($item->price ?? 0),
+                            'subtotal' => (float) ($item->subtotal ?? 0),
+                        ])
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->filter(function (array $transaction): bool {
+                return $transaction['items_count'] > 0 || (float) $transaction['total'] > 0;
+            })
+            ->values();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, mixed>  $orderItems
+     * @return array{food: bool, alcohol: bool, beverage: bool, cigarette: bool, breakage: bool, room: bool, staff_meal: bool, compliment: bool, foc: bool, ld: bool}
+     */
+    private function extractTransactionCategoryFlags($orderItems): array
+    {
+        $categories = $orderItems
+            ->map(fn ($item): string => $this->normalizeTransactionCategoryMain((string) ($item->inventoryItem?->category_main ?? '')))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return [
+            'food' => $categories->contains('food'),
+            'alcohol' => $categories->contains('alcohol'),
+            'beverage' => $categories->contains('beverage'),
+            'cigarette' => $categories->contains('cigarette'),
+            'breakage' => $categories->contains('breakage'),
+            'room' => $categories->contains('room'),
+            'staff_meal' => $categories->contains('staff meal'),
+            'compliment' => $categories->contains('compliment'),
+            'foc' => $categories->contains('foc'),
+            'ld' => $categories->contains('ld'),
+        ];
+    }
+
+    private function normalizeTransactionCategoryMain(string $categoryMain): string
+    {
+        $normalized = strtolower(trim($categoryMain));
+        $normalized = str_replace(['_', '-'], ' ', $normalized);
+
+        return match ($normalized) {
+            'staff meal', 'staffmeal', 'staff meal menu', 'meal staff' => 'staff meal',
+            'break age' => 'breakage',
+            default => $normalized,
+        };
+    }
+
+    private function resolvePaymentFilterKey(?string $paymentMethod, ?string $paymentMode): string
+    {
+        if (strtolower((string) $paymentMode) === 'split') {
+            return 'split';
+        }
+
+        $normalizedPaymentMethod = strtolower(trim((string) $paymentMethod));
+
+        return match ($normalizedPaymentMethod) {
+            'cash' => 'cash',
+            'transfer' => 'transfer',
+            'debit', 'debit-card' => 'debit',
+            'kredit', 'credit-card' => 'kredit',
+            'qris' => 'qris',
+            default => 'other',
+        };
+    }
+
     private function resolveEndDayPrinter(): ?Printer
     {
         $settings = GeneralSetting::instance();
@@ -659,8 +930,10 @@ class RecapController extends Controller
             ];
         }
 
-        [$startAt, $endAt] = $this->resolveEndDayWindow($recapHistory->end_day->copy());
+        [$startAt, $endAt] = $this->resolveHistoryTransactionWindow($recapHistory);
         $liveRecapData = $this->buildRecapData($startAt, $endAt, true);
+        $historyBillingTransactions = $this->buildTodayBillingTransactions($startAt, $endAt);
+        $historyWalkInTransactions = $this->buildTodayWalkInTransactions($startAt, $endAt);
 
         return array_merge($liveRecapData, [
             'selectedDate' => $recapHistory->end_day->toDateString(),
@@ -693,6 +966,8 @@ class RecapController extends Controller
             'rokokItems' => $liveRecapData['rokokItems'] ?? [],
             'kitchenQtyTotal' => (int) $recapHistory->total_kitchen_items,
             'barQtyTotal' => (int) $recapHistory->total_bar_items,
+            'todayBillingTransactions' => $historyBillingTransactions,
+            'todayWalkInTransactions' => $historyWalkInTransactions,
             'dashboardPreview' => [
                 'total_food' => (float) ($recapHistory->total_food ?? 0),
                 'total_alcohol' => (float) ($recapHistory->total_alcohol ?? 0),
@@ -992,6 +1267,28 @@ class RecapController extends Controller
             $startAt,
             $startAt->copy()->addDay()->subSecond(),
         ];
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function resolveHistoryTransactionWindow(RecapHistory $recapHistory): array
+    {
+        if ($recapHistory->last_synced_at) {
+            $syncedAt = $recapHistory->last_synced_at->copy()->timezone('Asia/Jakarta');
+            $anchor = $syncedAt->copy()->setTime(9, 0, 0);
+
+            if ($syncedAt->lt($anchor)) {
+                $anchor = $anchor->copy()->subDay();
+            }
+
+            return [
+                $anchor,
+                $syncedAt,
+            ];
+        }
+
+        return $this->resolveEndDayWindow($recapHistory->end_day?->copy() ?? now('Asia/Jakarta'));
     }
 
     private function isSelectedEndDayClosed(Carbon $startAt): bool

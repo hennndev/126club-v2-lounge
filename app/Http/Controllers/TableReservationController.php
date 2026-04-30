@@ -560,6 +560,7 @@ class TableReservationController extends Controller
         $validated = $request->validate([
             'payment_mode' => 'required|in:normal,split',
             'payment_method' => 'required_if:payment_mode,normal|nullable|in:cash,kredit,debit,qris,transfer',
+            'foc_comp_payment_method' => 'nullable|in:FOC,Compliment',
             'payment_reference_number' => 'nullable|string|max:100',
             'split_cash_amount' => 'nullable|numeric|min:0',
             'split_non_cash_amount' => 'nullable|numeric|min:0',
@@ -680,6 +681,7 @@ class TableReservationController extends Controller
                 $paymentMethod = $paymentMode === 'split'
                     ? null
                     : $validated['payment_method'];
+                $focCompPaymentMethod = $validated['foc_comp_payment_method'] ?? null;
                 $paymentReferenceNumber = $paymentMode === 'normal'
                     ? (($paymentMethod ?? null) === 'cash' ? null : ($validated['payment_reference_number'] ?? null))
                     : null;
@@ -706,8 +708,8 @@ class TableReservationController extends Controller
                     $splitSecondNonCashAmount = (float) ($validated['split_second_non_cash_amount'] ?? 0);
                     $splitSecondNonCashMethod = $validated['split_second_non_cash_method'] ?? null;
                     $splitSecondNonCashReferenceNumber = $validated['split_second_non_cash_reference_number'] ?? null;
-                    $grandTotal = round((float) $totals['grand_total'], 2);
-                    $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 2);
+                    $grandTotal = round((float) $totals['grand_total'], 0);
+                    $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 0);
                     $activeNonCashCount = collect([
                         ['amount' => $splitDebitAmount, 'method' => $splitNonCashMethod, 'reference' => $splitNonCashReferenceNumber],
                         ['amount' => $splitSecondNonCashAmount, 'method' => $splitSecondNonCashMethod, 'reference' => $splitSecondNonCashReferenceNumber],
@@ -743,8 +745,8 @@ class TableReservationController extends Controller
                         $isDiscountApplied = $requestedDiscountAmount > 0;
 
                         if ($isDiscountApplied && $splitCashAmount > 0 && $splitCashAmount < $grandTotal && $splitSecondNonCashAmount <= 0) {
-                            $splitDebitAmount = round($grandTotal - $splitCashAmount, 2);
-                            $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 2);
+                            $splitDebitAmount = round($grandTotal - $splitCashAmount, 0);
+                            $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 0);
                         }
                     }
 
@@ -793,6 +795,7 @@ class TableReservationController extends Controller
                     'paid_at' => now('Asia/Jakarta'),
                     'transaction_code' => $transactionCode,
                     'payment_method' => $paymentMethod,
+                    'foc_comp_payment_method' => $focCompPaymentMethod,
                     'payment_reference_number' => $paymentReferenceNumber,
                     'payment_mode' => $paymentMode,
                     'split_cash_amount' => $splitCashAmount,
@@ -1023,8 +1026,8 @@ class TableReservationController extends Controller
                     return $normalizedMethod !== '' && ! in_array($normalizedMethod, ['cash', 'tunai'], true);
                 };
 
-                $grandTotal = round((float) $billing->grand_total, 2);
-                $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 2);
+                $grandTotal = round((float) $billing->grand_total, 0);
+                $splitTotal = round($splitCashAmount + $splitDebitAmount + $splitSecondNonCashAmount, 0);
 
                 $activeNonCashCount = collect([
                     ['amount' => $splitDebitAmount, 'method' => $splitNonCashMethod, 'reference' => $splitNonCashReferenceNumber],

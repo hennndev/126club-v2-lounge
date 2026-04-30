@@ -133,3 +133,32 @@ test('pos search finds item by pos_name', function () {
 
     $response->assertOk()->assertSee('Nasi Uduk');
 });
+
+test('pos index hides inventory items marked invisible in pos', function () {
+    $admin = adminUser();
+
+    PosCategorySetting::create([
+        'category_type' => 'food',
+        'show_in_pos' => true,
+        'is_menu' => true,
+        'preparation_location' => 'kitchen',
+    ]);
+
+    InventoryItem::create([
+        'code' => 'MENU-006',
+        'accurate_id' => 1006,
+        'name' => 'Ayam Bakar Hidden',
+        'pos_name' => 'Ayam Bakar POS Hidden',
+        'category_type' => 'food',
+        'price' => 42000,
+        'stock_quantity' => 10,
+        'threshold' => 0,
+        'unit' => 'porsi',
+        'is_active' => true,
+        'is_visible_in_pos' => false,
+    ]);
+
+    $response = actingAs($admin)->get(route('admin.pos.index'));
+
+    $response->assertOk()->assertDontSee('Ayam Bakar Hidden')->assertDontSee('Ayam Bakar POS Hidden');
+});

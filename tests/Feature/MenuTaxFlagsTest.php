@@ -123,3 +123,35 @@ test('admin can toggle is count portion possible flag for menu item', function (
 
     expect((bool) $menu->fresh()->is_count_portion_possible)->toBeTrue();
 });
+
+test('admin can toggle visible in pos flag for menu item', function () {
+    $admin = adminUser();
+
+    $menu = InventoryItem::create([
+        'code' => 'MENU-VISIBLE-001',
+        'accurate_id' => 900005,
+        'name' => 'Menu Visible Toggle',
+        'category_type' => 'food',
+        'price' => 32000,
+        'stock_quantity' => 100,
+        'threshold' => 10,
+        'unit' => 'porsi',
+        'is_active' => true,
+        'include_tax' => true,
+        'include_service_charge' => true,
+        'is_visible_in_pos' => true,
+    ]);
+
+    $this->actingAs($admin)
+        ->patchJson(route('admin.menus.update-tax-flags', ['inventory' => $menu->id]), [
+            'field' => 'is_visible_in_pos',
+            'value' => false,
+        ])
+        ->assertSuccessful()
+        ->assertJson([
+            'success' => true,
+            'value' => false,
+        ]);
+
+    expect((bool) $menu->fresh()->is_visible_in_pos)->toBeFalse();
+});

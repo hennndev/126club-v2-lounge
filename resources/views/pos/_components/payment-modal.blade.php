@@ -56,6 +56,16 @@
         </div>
       </div>
 
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1.5">FOC / Compliment</label>
+        <select x-model="checkoutForm.foc_comp_payment_method"
+                class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
+          <option value="">-</option>
+          <option value="FOC">FOC</option>
+          <option value="Compliment">Compliment</option>
+        </select>
+      </div>
+
       <!-- Waiter Info (hidden for walk-in) -->
       <div x-show="checkoutForm.customer_type !== 'walk-in'"
            style="display: none;"
