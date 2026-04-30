@@ -151,6 +151,16 @@
               <p class="text-2xl font-bold text-gray-900 mt-1">{{ number_format($dashboardPreview['total_transactions'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
+            <div class="p-4 border border-gray-200 rounded-lg bg-emerald-50">
+              <p class="text-sm font-medium text-emerald-700">Gross Sales</p>
+              <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardPreview['gross_sales'] ?? 0, 0, ',', '.') }}</p>
+            </div>
+
+            <div class="p-4 border border-gray-200 rounded-lg bg-slate-50">
+              <p class="text-sm font-medium text-slate-700">Net Sales</p>
+              <p class="text-2xl font-bold text-slate-800 mt-1">Rp {{ number_format($dashboardPreview['net_sales'] ?? 0, 0, ',', '.') }}</p>
+            </div>
+
             <div class="p-4 border border-gray-200 rounded-lg bg-rose-50">
               <p class="text-sm font-medium text-rose-700">Total Penjualan Rokok (Qty)</p>
               <p class="text-2xl font-bold text-rose-800 mt-1">{{ number_format($dashboardPreview['total_penjualan_rokok'] ?? 0, 0, ',', '.') }}</p>
@@ -578,6 +588,8 @@
                     'total_breakage' => 'Rp ' . number_format($history->total_breakage ?? 0, 0, ',', '.'),
                     'total_room' => 'Rp ' . number_format($history->total_room ?? 0, 0, ',', '.'),
                     'total_ld' => 'Rp ' . number_format($history->total_ld ?? 0, 0, ',', '.'),
+                    'gross_sales' => 'Rp ' . number_format($history->total_amount, 0, ',', '.'),
+                    'net_sales' => 'Rp ' . number_format(max(0, $history->total_amount - ($history->total_tax ?? 0) - ($history->total_service_charge ?? 0)), 0, ',', '.'),
                     'total_compliment_quantity' => number_format($history->total_compliment_quantity ?? 0, 0, ',', '.'),
                     'total_foc_quantity' => number_format($history->total_foc_quantity ?? 0, 0, ',', '.'),
                     'total_ld_quantity' => number_format($history->total_ld_quantity ?? 0, 0, ',', '.'),
@@ -700,6 +712,18 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <p class="text-sm font-medium text-emerald-700">Gross Sales</p>
+                  <p class="text-2xl font-bold text-emerald-800 mt-1"
+                     x-text="selectedHistory?.gross_sales ?? 'Rp 0'"></p>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <p class="text-sm font-medium text-slate-700">Net Sales</p>
+                  <p class="text-2xl font-bold text-slate-800 mt-1"
+                     x-text="selectedHistory?.net_sales ?? 'Rp 0'"></p>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                   <p class="text-sm font-medium text-gray-500">Total Food</p>
                   <p class="text-2xl font-bold text-lime-700 mt-1"
                      x-text="selectedHistory?.total_food ?? 'Rp 0'"></p>
@@ -782,7 +806,7 @@
 
               <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
                 <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-base font-semibold text-gray-900">Preview Dashboard (Akumulasi)</h3>
+                  <h3 class="text-base font-semibold text-gray-900">Preview Dashboard (Akumulasiii)</h3>
                   <span class="text-xs text-gray-500">Snapshot history closing</span>
                 </div>
 
@@ -811,12 +835,6 @@
                        x-text="selectedHistory?.total_tax ?? 'Rp 0'"></p>
                   </div>
 
-                  <div class="p-4 border border-gray-200 rounded-lg bg-cyan-50">
-                    <p class="text-sm font-medium text-cyan-700">Total DP <span class="text-xs font-normal">(booking)</span></p>
-                    <p class="text-2xl font-bold text-cyan-800 mt-1"
-                       x-text="selectedHistory?.total_down_payment ?? 'Rp 0'"></p>
-                  </div>
-
                   <div class="p-4 border border-gray-200 rounded-lg bg-orange-50">
                     <p class="text-sm font-medium text-orange-700">Total Service Charge</p>
                     <p class="text-2xl font-bold text-orange-800 mt-1"
@@ -827,6 +845,18 @@
                     <p class="text-sm font-medium text-gray-500">Total Tunai</p>
                     <p class="text-2xl font-bold text-gray-900 mt-1"
                        x-text="selectedHistory?.total_cash ?? 'Rp 0'"></p>
+                  </div>
+
+                  <div class="p-4 border border-gray-200 rounded-lg bg-emerald-50">
+                    <p class="text-sm font-medium text-emerald-700">Gross Sales</p>
+                    <p class="text-2xl font-bold text-emerald-800 mt-1"
+                       x-text="selectedHistory?.gross_sales ?? 'Rp 0'"></p>
+                  </div>
+
+                  <div class="p-4 border border-gray-200 rounded-lg bg-slate-50">
+                    <p class="text-sm font-medium text-slate-700">Net Sales</p>
+                    <p class="text-2xl font-bold text-slate-800 mt-1"
+                       x-text="selectedHistory?.net_sales ?? 'Rp 0'"></p>
                   </div>
 
                   <div class="p-4 border border-gray-200 rounded-lg bg-blue-50">
@@ -1063,6 +1093,38 @@
                   <p class="text-xs text-gray-500">No. Referensi</p>
                   <p class="text-sm font-semibold text-gray-900"
                      x-text="selectedTransaction?.payment_reference_number || '-' "></p>
+                </div>
+              </div>
+
+              <div x-show="Array.isArray(selectedTransaction?.split_payments) && selectedTransaction.split_payments.length > 0"
+                   class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-200">
+                  <p class="text-sm font-semibold text-gray-900">Detail Split Payment</p>
+                </div>
+                <div class="divide-y divide-gray-100">
+                  <template x-for="(payment, index) in (selectedTransaction?.split_payments ?? [])"
+                            :key="payment.label + '-' + index">
+                    <div class="px-4 py-3 grid grid-cols-1 gap-1 sm:grid-cols-4 sm:items-center sm:gap-3">
+                      <div class="sm:col-span-1">
+                        <p class="text-xs text-gray-500"
+                           x-text="payment.label"></p>
+                      </div>
+                      <div class="sm:col-span-1">
+                        <p class="text-sm font-semibold text-gray-900"
+                           x-text="payment.method || '-' "></p>
+                      </div>
+                      <div class="sm:col-span-1">
+                        <p class="text-xs text-gray-500">Referensi</p>
+                        <p class="text-sm text-gray-700"
+                           x-text="payment.reference_number || '-' "></p>
+                      </div>
+                      <div class="sm:col-span-1 sm:text-right">
+                        <p class="text-xs text-gray-500">Nominal</p>
+                        <p class="text-sm font-semibold text-gray-900"
+                           x-text="'Rp ' + Number(payment.amount || 0).toLocaleString('id-ID')"></p>
+                      </div>
+                    </div>
+                  </template>
                 </div>
               </div>
 

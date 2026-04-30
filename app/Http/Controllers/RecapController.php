@@ -381,6 +381,10 @@ class RecapController extends Controller
         $resolvedTotalDp = $isSelectedEndDayClosed
             ? 0.0
             : ($dashboardTotalDp > 0 ? $dashboardTotalDp : $liveTotalDownPayment);
+        $grossSales = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_amount ?? 0);
+        $netSales = $isSelectedEndDayClosed
+            ? 0.0
+            : max(0.0, $grossSales - (float) ($dashboardAggregate?->total_tax ?? 0) - (float) ($dashboardAggregate?->total_service_charge ?? 0));
 
         $recapHistories = RecapHistory::query()
             ->latest('end_day')
@@ -462,6 +466,8 @@ class RecapController extends Controller
             'cashierTransactions' => $cashierTransactions,
             'cashierCount' => $isSelectedEndDayClosed ? 0 : (int) ($dashboardAggregate?->total_transactions ?? 0),
             'cashierRevenue' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_amount ?? 0),
+            'grossSales' => $grossSales,
+            'netSales' => $netSales,
             'totalPenjualanRokok' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_penjualan_rokok ?? 0),
             'totalFood' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_food ?? 0),
             'totalAlcohol' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_alcohol ?? 0),
@@ -500,6 +506,8 @@ class RecapController extends Controller
                 'total_ld' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_ld ?? 0),
                 'total_ld_quantity' => $dashboardTotalLdQuantity,
                 'total_penjualan_rokok' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_penjualan_rokok ?? 0),
+                'gross_sales' => $grossSales,
+                'net_sales' => $netSales,
                 'total_tax' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_tax ?? 0),
                 'total_service_charge' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_service_charge ?? 0),
                 'total_discount' => $totalDiscount,
@@ -683,16 +691,22 @@ class RecapController extends Controller
                     ?? $tableSession?->customer?->profile?->name
                     ?? $tableSession?->customer?->name
                     ?? 'Customer Booking';
+                $splitPayments = $this->resolveSplitPayments($billing);
 
                 return [
                     'timestamp' => $paidAt,
                     'datetime' => $paidAt?->format('d/m/Y H:i') ?? '-',
                     'transaction_number' => 'BILLING-'.$billing->id,
+                    'billing_id' => (int) $billing->id,
+                    'billing_status' => (string) ($billing->billing_status ?? '-'),
                     'customer_name' => (string) $customerName,
+                    'payment_mode' => (string) ($billing->payment_mode ?? 'normal'),
+                    'payment_method_raw' => (string) ($billing->payment_method ?? ''),
                     'payment_method' => $this->formatPaymentMethod((string) ($billing->payment_method ?? ''), (string) ($billing->payment_mode ?? 'normal')).($focCompPaymentMethod !== '' ? ' / '.$focCompPaymentMethod : ''),
                     'payment_method_key' => $this->resolvePaymentFilterKey((string) ($billing->payment_method ?? ''), (string) ($billing->payment_mode ?? 'normal')),
                     'foc_comp_payment_method' => $focCompPaymentMethod,
                     'payment_reference_number' => (string) ($paymentReferenceNumber ?? ''),
+                    'split_payments' => $splitPayments,
                     'items_count' => (int) $orderItems->count(),
                     'total_bill' => (float) max((float) ($billing->minimum_charge ?? 0), (float) ($billing->orders_total ?? 0)),
                     'tax_total' => (float) ($billing->tax ?? 0),
@@ -764,16 +778,22 @@ class RecapController extends Controller
                     ?? $billing?->split_non_cash_reference_number
                     ?? $billing?->split_second_non_cash_reference_number
                     ?? $order->payment_reference_number;
+                $splitPayments = $this->resolveSplitPayments($billing);
 
                 return [
                     'timestamp' => $eventTime,
                     'datetime' => $eventTime?->format('d/m/Y H:i') ?? '-',
                     'transaction_number' => (string) ($order->order_number ?? ($billing?->transaction_code ?? ('WALKIN-'.$order->id))),
+                    'billing_id' => (int) ($billing?->id ?? 0),
+                    'billing_status' => (string) ($billing?->billing_status ?? '-'),
                     'customer_name' => (string) ($order->customer?->user?->name ?? 'Walk-in'),
+                    'payment_mode' => $paymentMode,
+                    'payment_method_raw' => $paymentMethod,
                     'payment_method' => $this->formatPaymentMethod($paymentMethod, $paymentMode).($focCompPaymentMethod !== '' ? ' / '.$focCompPaymentMethod : ''),
                     'payment_method_key' => $this->resolvePaymentFilterKey($paymentMethod, $paymentMode),
                     'foc_comp_payment_method' => $focCompPaymentMethod,
                     'payment_reference_number' => (string) ($paymentReferenceNumber ?? ''),
+                    'split_payments' => $splitPayments,
                     'items_count' => (int) $orderItems->count(),
                     'total_bill' => (float) ($billing?->orders_total ?? $orderItems->sum(fn ($item) => (float) ($item->subtotal ?? 0))),
                     'tax_total' => (float) ($billing?->tax ?? $orderItems->sum(fn ($item) => (float) ($item->tax_amount ?? 0))),
@@ -866,6 +886,42 @@ class RecapController extends Controller
         };
     }
 
+    /**
+     * @return array<int, array{label: string, method: string, reference_number: string, amount: float}>
+     */
+    private function resolveSplitPayments(?Billing $billing): array
+    {
+        if (! $billing || strtolower((string) ($billing->payment_mode ?? 'normal')) !== 'split') {
+            return [];
+        }
+
+        $payments = [
+            [
+                'label' => 'Cash',
+                'method' => 'Cash',
+                'reference_number' => '',
+                'amount' => (float) ($billing->split_cash_amount ?? 0),
+            ],
+            [
+                'label' => 'Non-Cash',
+                'method' => (string) ($billing->split_non_cash_method ?? '-'),
+                'reference_number' => (string) ($billing->split_non_cash_reference_number ?? ''),
+                'amount' => (float) ($billing->split_debit_amount ?? 0),
+            ],
+            [
+                'label' => 'Second Non-Cash',
+                'method' => (string) ($billing->split_second_non_cash_method ?? '-'),
+                'reference_number' => (string) ($billing->split_second_non_cash_reference_number ?? ''),
+                'amount' => (float) ($billing->split_second_non_cash_amount ?? 0),
+            ],
+        ];
+
+        return collect($payments)
+            ->filter(fn (array $payment): bool => $payment['amount'] > 0 || filled($payment['method']) || filled($payment['reference_number']))
+            ->values()
+            ->all();
+    }
+
     private function resolveEndDayPrinter(): ?Printer
     {
         $settings = GeneralSetting::instance();
@@ -941,6 +997,8 @@ class RecapController extends Controller
             'selectedEndDatetime' => $endAt->format('d/m/Y H:i'),
             'cashierCount' => (int) $recapHistory->total_transactions,
             'cashierRevenue' => (float) $recapHistory->total_amount,
+            'grossSales' => (float) $recapHistory->total_amount,
+            'netSales' => max(0.0, (float) $recapHistory->total_amount - (float) $recapHistory->total_tax - (float) $recapHistory->total_service_charge),
             'totalPenjualanRokok' => (float) $recapHistory->total_penjualan_rokok,
             'totalFood' => (float) ($recapHistory->total_food ?? 0),
             'totalAlcohol' => (float) ($recapHistory->total_alcohol ?? 0),
@@ -980,6 +1038,8 @@ class RecapController extends Controller
                 'total_foc_quantity' => (int) ($recapHistory->total_foc_quantity ?? 0),
                 'total_ld' => (float) ($recapHistory->total_ld ?? 0),
                 'total_penjualan_rokok' => (float) $recapHistory->total_penjualan_rokok,
+                'gross_sales' => (float) $recapHistory->total_amount,
+                'net_sales' => max(0.0, (float) $recapHistory->total_amount - (float) $recapHistory->total_tax - (float) $recapHistory->total_service_charge),
                 'total_tax' => (float) $recapHistory->total_tax,
                 'total_service_charge' => (float) $recapHistory->total_service_charge,
                 'total_discount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
@@ -1016,6 +1076,8 @@ class RecapController extends Controller
             ['Total Breakage', (float) ($recapData['dashboardPreview']['total_breakage'] ?? 0)],
             ['Total Room', (float) ($recapData['dashboardPreview']['total_room'] ?? 0)],
             ['Total Staff Meal', (float) ($recapData['dashboardPreview']['total_staff_meal'] ?? 0)],
+            ['Gross Sales', (float) ($recapData['dashboardPreview']['gross_sales'] ?? 0)],
+            ['Net Sales', (float) ($recapData['dashboardPreview']['net_sales'] ?? 0)],
             ['Total Compliment (Qty)', (int) ($recapData['dashboardPreview']['total_compliment_quantity'] ?? 0)],
             ['Total FOC (Qty)', (int) ($recapData['dashboardPreview']['total_foc_quantity'] ?? 0)],
             ['Total LD', (float) ($recapData['dashboardPreview']['total_ld'] ?? 0)],
@@ -1093,6 +1155,8 @@ class RecapController extends Controller
             ['Total Breakage', (float) ($recapHistory->total_breakage ?? 0)],
             ['Total Room', (float) ($recapHistory->total_room ?? 0)],
             ['Total Staff Meal', (float) ($recapHistory->total_staff_meal ?? 0)],
+            ['Gross Sales', (float) $recapHistory->total_amount],
+            ['Net Sales', max(0.0, (float) $recapHistory->total_amount - (float) $recapHistory->total_tax - (float) $recapHistory->total_service_charge)],
             ['Total Compliment (Qty)', (int) ($recapHistory->total_compliment_quantity ?? 0)],
             ['Total FOC (Qty)', (int) ($recapHistory->total_foc_quantity ?? 0)],
             ['Total LD', (float) ($recapHistory->total_ld ?? 0)],
