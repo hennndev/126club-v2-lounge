@@ -27,6 +27,7 @@ class Billing extends Model
         'payment_method',
         'payment_reference_number',
         'payment_mode',
+        'foc_comp_payment_method',
         'split_cash_amount',
         'split_debit_amount',
         'split_non_cash_method',

@@ -151,7 +151,7 @@ it('prints walk-in billing simulation with discount row after subtotal', functio
         ->and($remainingPos > $discountPos)->toBeTrue();
 });
 
-it('forces compliment and foc prices to zero in cashier receipt output', function () {
+it('prints compliment and foc prices using their original values in cashier receipt output', function () {
     $complimentItem = new InventoryItem;
     $complimentItem->category_main = 'compliment';
 
@@ -183,13 +183,13 @@ it('forces compliment and foc prices to zero in cashier receipt output', functio
     $billing->transaction_code = 'WALKIN-ZERO-001';
     $billing->updated_at = now();
     $billing->minimum_charge = 0;
-    $billing->subtotal = 0;
+    $billing->subtotal = 105000;
     $billing->tax = 0;
     $billing->tax_percentage = 0;
     $billing->service_charge = 0;
     $billing->service_charge_percentage = 0;
     $billing->discount_amount = 0;
-    $billing->grand_total = 0;
+    $billing->grand_total = 105000;
     $billing->payment_mode = 'normal';
     $billing->payment_method = 'cash';
 
@@ -206,11 +206,13 @@ it('forces compliment and foc prices to zero in cashier receipt output', functio
     expect($result)->toBeTrue()
         ->and($log)->toContain('Compliment Soup 1x')
         ->and($log)->toContain('FOC Drink 2x')
-        ->and(substr_count($log, 'Harga: Rp 0'))->toBe(2)
-        ->and(substr_count($log, 'Total: Rp 0'))->toBe(2);
+        ->and($log)->toContain('Rp 45.000')
+        ->and($log)->toContain('Rp 60.000')
+        ->and(substr_count($log, 'Harga: Rp 0'))->toBe(0)
+        ->and(substr_count($log, 'Total: Rp 0'))->toBe(0);
 });
 
-it('forces compliment and foc prices to zero in closed billing receipt output', function () {
+it('prints compliment and foc prices using their original values in closed billing receipt output', function () {
     $table = new Tabel;
     $table->table_number = 'C-11';
 
@@ -249,13 +251,13 @@ it('forces compliment and foc prices to zero in closed billing receipt output', 
     $billing->transaction_code = 'CLOSED-ZERO-001';
     $billing->updated_at = now();
     $billing->minimum_charge = 0;
-    $billing->subtotal = 0;
+    $billing->subtotal = 105000;
     $billing->tax = 0;
     $billing->tax_percentage = 0;
     $billing->service_charge = 0;
     $billing->service_charge_percentage = 0;
     $billing->discount_amount = 0;
-    $billing->grand_total = 0;
+    $billing->grand_total = 105000;
     $billing->payment_mode = 'normal';
     $billing->payment_method = 'cash';
 
@@ -272,8 +274,10 @@ it('forces compliment and foc prices to zero in closed billing receipt output', 
     expect($result)->toBeTrue()
         ->and($log)->toContain('Compliment Soup')
         ->and($log)->toContain('FOC Drink')
-        ->and(substr_count($log, 'Harga: Rp 0'))->toBe(2)
-        ->and(substr_count($log, 'Total: Rp 0'))->toBe(2);
+        ->and($log)->toContain('Rp 45.000')
+        ->and($log)->toContain('Rp 60.000')
+        ->and(substr_count($log, 'Harga: Rp 0'))->toBe(0)
+        ->and(substr_count($log, 'Total: Rp 0'))->toBe(0);
 });
 
 it('prints end day recap with LD quantity row', function () {

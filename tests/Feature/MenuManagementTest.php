@@ -165,6 +165,68 @@ test('menu store can save printer targets for a menu item', function () {
         ->toEqualCanonicalizing([$printerOne->id, $printerTwo->id]);
 });
 
+test('menu store defaults to visible in pos', function () {
+    $admin = adminUser();
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('saveItem')
+            ->once()
+            ->andReturn([
+                'r' => [
+                    'id' => 777101,
+                    'no' => 'MENU-777101',
+                ],
+            ]);
+    });
+
+    actingAs($admin)
+        ->postJson(route('admin.menus.store'), [
+            'code_mode' => 'manual',
+            'no' => 'MENU-VISIBLE-DEFAULT',
+            'name' => 'Menu Visible Default',
+            'item_type' => 'INVENTORY',
+            'category_type' => 'food-menu',
+            'unit' => 'porsi',
+            'selling_price' => 30000,
+            'detail_group' => [],
+        ])
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    expect(InventoryItem::query()->where('accurate_id', 777101)->firstOrFail()->is_visible_in_pos)->toBeTrue();
+});
+
+test('menu detail endpoint returns visible in pos state', function () {
+    $admin = adminUser();
+
+    $menuItem = InventoryItem::create([
+        'code' => 'MENU-DETAIL-VISIBLE',
+        'accurate_id' => 998878,
+        'name' => 'Menu Detail Visible',
+        'category_type' => 'food-menu',
+        'price' => 25000,
+        'stock_quantity' => 0,
+        'threshold' => 0,
+        'unit' => 'porsi',
+        'is_active' => true,
+        'is_visible_in_pos' => false,
+    ]);
+
+    mock(AccurateService::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('getDetailItem')
+            ->once()
+            ->andReturn([
+                'detailGroup' => [],
+            ]);
+    });
+
+    actingAs($admin)
+        ->getJson(route('admin.menus.fetch-detail', $menuItem))
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('is_visible_in_pos', false);
+});
+
 test('menu store accepts compliment and foc as category main values', function (string $categoryMain, string $menuName) {
     $admin = adminUser();
 

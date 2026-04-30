@@ -42,7 +42,7 @@ function makeRecapOrder(int $createdById, \Illuminate\Support\Carbon $orderedAt,
         'customer_user_id' => null,
         'created_by' => $createdById,
         'order_number' => $orderNumber,
-        'status' => 'completed',
+        'status' => 'served',
         'items_total' => 30000,
         'discount_amount' => 0,
         'total' => 30000,
@@ -1699,6 +1699,10 @@ test('recap page shows automatic closing history list and modal content shell', 
         ->assertSeeText('History Closing')
         ->assertSeeText('List snapshot dashboard yang otomatis tersimpan setiap jam 12 malam.')
         ->assertSeeText('Detail History Closing')
+        ->assertSeeText('Transactions Recap History')
+        ->assertSeeText('Dari Billing')
+        ->assertSeeText('Dari Walk-in')
+        ->assertSeeText('Total DP (booking)')
         ->assertSeeText('Export History (.xlsx)')
         ->assertSeeText(now()->subDay()->format('d/m/Y'))
         ->assertSeeText('Snapshot recap tersimpan otomatis saat proses closing harian.')
@@ -1855,6 +1859,104 @@ test('recap history can be reprinted from history flow', function () {
         ->toContain('Status : SUCCESS (LOG MODE)');
 });
 
+test('recap history transactions endpoint returns billing and walk-in arrays', function () {
+    $admin = adminUser();
+
+    $history = RecapHistory::query()->create([
+        'end_day' => now()->subDay()->toDateString(),
+        'total_amount' => 0,
+        'total_tax' => 0,
+        'total_service_charge' => 0,
+        'total_cash' => 0,
+        'total_transfer' => 0,
+        'total_debit' => 0,
+        'total_kredit' => 0,
+        'total_qris' => 0,
+        'total_transactions' => 0,
+        'last_synced_at' => now()->subMinutes(10),
+    ]);
+
+    $response = actingAs($admin)
+        ->getJson(route('admin.recap.history.transactions', $history));
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonStructure([
+            'billing_transactions',
+            'walkin_transactions',
+        ]);
+});
+
+test('recap history transactions endpoint stops at last synced time', function () {
+    $admin = adminUser();
+    $historySyncAt = now('Asia/Jakarta')->setTime(0, 30);
+    $previousDayOrderAt = $historySyncAt->copy()->subDay()->setTime(10, 0);
+    $afterSyncOrderAt = $historySyncAt->copy()->setTime(7, 30);
+
+    $previousDayOrder = makeRecapOrder($admin->id, $previousDayOrderAt, 'RCP-HIST-SYNC-001', [
+        'status' => 'completed',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'total' => 15000,
+    ]);
+    $previousDayItem = makeRecapInventoryItem(['name' => 'Previous Day Item']);
+    OrderItem::create([
+        'order_id' => $previousDayOrder->id,
+        'inventory_item_id' => $previousDayItem->id,
+        'item_code' => $previousDayItem->code,
+        'item_name' => $previousDayItem->name,
+        'quantity' => 1,
+        'price' => 15000,
+        'subtotal' => 15000,
+        'discount_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    $afterSyncOrder = makeRecapOrder($admin->id, $afterSyncOrderAt, 'RCP-HIST-SYNC-002', [
+        'status' => 'completed',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'total' => 20000,
+    ]);
+    $afterSyncItem = makeRecapInventoryItem(['name' => 'After Sync Item']);
+    OrderItem::create([
+        'order_id' => $afterSyncOrder->id,
+        'inventory_item_id' => $afterSyncItem->id,
+        'item_code' => $afterSyncItem->code,
+        'item_name' => $afterSyncItem->name,
+        'quantity' => 1,
+        'price' => 20000,
+        'subtotal' => 20000,
+        'discount_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    $history = RecapHistory::query()->create([
+        'end_day' => $historySyncAt->copy()->subDay()->toDateString(),
+        'total_amount' => 35000,
+        'total_tax' => 0,
+        'total_service_charge' => 0,
+        'total_cash' => 35000,
+        'total_transfer' => 0,
+        'total_debit' => 0,
+        'total_kredit' => 0,
+        'total_qris' => 0,
+        'total_transactions' => 2,
+        'last_synced_at' => $historySyncAt,
+    ]);
+
+    $response = actingAs($admin)
+        ->getJson(route('admin.recap.history.transactions', $history));
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonCount(0, 'billing_transactions')
+        ->assertJsonCount(1, 'walkin_transactions')
+        ->assertJsonPath('walkin_transactions.0.transaction_number', 'RCP-HIST-SYNC-001');
+});
+
 test('recap close preview hides close end day button in reprint mode', function () {
     $admin = adminUser();
     $start = now()->startOfDay();
@@ -1975,6 +2077,182 @@ test('recap kitchen summary follows dashboard aggregate after close', function (
     $response->assertSuccessful();
 
     expect((int) $response->viewData('kitchenQtyTotal'))->toBe(0);
+});
+
+test('recap page shows transactions recap hari ini tabs for billing and walk-in', function () {
+    $admin = adminUser();
+    $windowStart = now('Asia/Jakarta')->startOfDay()->setTime(9, 0);
+    $preWindowTime = $windowStart->copy()->subMinutes(30);
+    $inWindowTime = $windowStart->copy()->addMinutes(30);
+
+    Dashboard::query()->create([
+        'total_amount' => 500000,
+        'total_food' => 51000,
+        'total_alcohol' => 62000,
+        'total_beverage' => 73000,
+        'total_cigarette' => 84000,
+        'total_breakage' => 95000,
+        'total_room' => 106000,
+        'total_staff_meal' => 55000,
+        'total_compliment_quantity' => 9,
+        'total_foc_quantity' => 7,
+        'total_ld' => 117000,
+        'total_ld_quantity' => 12,
+        'total_penjualan_rokok' => 42,
+        'total_tax' => 15000,
+        'total_service_charge' => 12000,
+        'total_dp' => 13000,
+        'total_cash' => 100000,
+        'total_transfer' => 120000,
+        'total_debit' => 90000,
+        'total_kredit' => 80000,
+        'total_qris' => 110000,
+        'total_transactions' => 10,
+        'last_synced_at' => now(),
+    ]);
+
+    $preWindowSession = makeRecapTableSessionWithBilling($admin->id, [
+        'is_booking' => true,
+        'is_walk_in' => false,
+        'transaction_code' => 'BILL-PRE-001',
+        'minimum_charge' => 50000,
+        'orders_total' => 50000,
+        'grand_total' => 56000,
+        'paid_amount' => 56000,
+        'tax' => 5000,
+        'service_charge' => 1000,
+        'paid_at' => $preWindowTime,
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'payment_reference_number' => 'BILL-PRE-REF',
+    ]);
+
+    $preWindowBillingOrder = makeRecapOrder($admin->id, $preWindowTime, 'ORDER-BILL-PRE-001', [
+        'table_session_id' => $preWindowSession->id,
+        'payment_method' => 'cash',
+        'total' => 56000,
+    ]);
+
+    $preWindowBillingItem = makeRecapInventoryItem();
+    OrderItem::create([
+        'order_id' => $preWindowBillingOrder->id,
+        'inventory_item_id' => $preWindowBillingItem->id,
+        'item_code' => $preWindowBillingItem->code,
+        'item_name' => $preWindowBillingItem->name,
+        'quantity' => 1,
+        'price' => 56000,
+        'subtotal' => 56000,
+        'status' => 'served',
+    ]);
+
+    $preWindowWalkInOrder = makeRecapOrder($admin->id, $preWindowTime, 'WALKIN-PRE-001', [
+        'table_session_id' => null,
+        'payment_method' => 'cash',
+        'total' => 30000,
+    ]);
+
+    $preWindowWalkInItem = makeRecapInventoryItem();
+    OrderItem::create([
+        'order_id' => $preWindowWalkInOrder->id,
+        'inventory_item_id' => $preWindowWalkInItem->id,
+        'item_code' => $preWindowWalkInItem->code,
+        'item_name' => $preWindowWalkInItem->name,
+        'quantity' => 1,
+        'price' => 30000,
+        'subtotal' => 30000,
+        'status' => 'served',
+    ]);
+
+    $tableSession = makeRecapTableSessionWithBilling($admin->id, [
+        'is_booking' => true,
+        'is_walk_in' => false,
+        'transaction_code' => 'BILL-TODAY-001',
+        'minimum_charge' => 50000,
+        'orders_total' => 50000,
+        'grand_total' => 56000,
+        'paid_amount' => 56000,
+        'tax' => 5000,
+        'service_charge' => 1000,
+        'paid_at' => now(),
+        'payment_method' => 'qris',
+        'payment_mode' => 'normal',
+        'foc_comp_payment_method' => 'Compliment',
+        'payment_reference_number' => 'BILL-REF-001',
+    ]);
+
+    $billingOrder = makeRecapOrder($admin->id, $inWindowTime, 'ORDER-BILL-001', [
+        'table_session_id' => $tableSession->id,
+        'payment_method' => 'qris',
+        'total' => 56000,
+    ]);
+
+    $billingItem = makeRecapInventoryItem();
+    OrderItem::create([
+        'order_id' => $billingOrder->id,
+        'inventory_item_id' => $billingItem->id,
+        'item_code' => $billingItem->code,
+        'item_name' => $billingItem->name,
+        'quantity' => 2,
+        'price' => 25000,
+        'subtotal' => 50000,
+        'status' => 'served',
+    ]);
+
+    $walkInOrder = makeRecapOrder($admin->id, $inWindowTime, 'WALKIN-TODAY-001', [
+        'table_session_id' => null,
+        'payment_method' => 'cash',
+        'total' => 30000,
+    ]);
+
+    Billing::query()->create([
+        'table_session_id' => null,
+        'order_id' => $walkInOrder->id,
+        'is_walk_in' => true,
+        'is_booking' => false,
+        'minimum_charge' => 0,
+        'orders_total' => 30000,
+        'subtotal' => 30000,
+        'tax' => 0,
+        'tax_percentage' => 0,
+        'service_charge' => 0,
+        'service_charge_percentage' => 0,
+        'discount_amount' => 0,
+        'grand_total' => 30000,
+        'paid_amount' => 30000,
+        'billing_status' => 'paid',
+        'paid_at' => now(),
+        'transaction_code' => 'WALK-BILL-TODAY-001',
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'foc_comp_payment_method' => 'FOC',
+    ]);
+
+    $walkInItem = makeRecapInventoryItem();
+    OrderItem::create([
+        'order_id' => $walkInOrder->id,
+        'inventory_item_id' => $walkInItem->id,
+        'item_code' => $walkInItem->code,
+        'item_name' => $walkInItem->name,
+        'quantity' => 1,
+        'price' => 30000,
+        'subtotal' => 30000,
+        'status' => 'served',
+    ]);
+
+    actingAs($admin)
+        ->get(route('admin.recap.index'))
+        ->assertSuccessful()
+        ->assertSeeText('Transactions Recap Hari Ini')
+        ->assertSeeText('Dari Billing')
+        ->assertSeeText('Dari Walk-in')
+        ->assertSeeText('Filter Payment')
+        ->assertSeeText('Breakage')
+        ->assertSeeText('Room')
+        ->assertSeeText('Staff Meal')
+        ->assertSeeText('Compliment')
+        ->assertSeeText('FOC')
+        ->assertSeeText('DP (Booking)')
+        ->assertSeeText('Detail Transaksi');
 });
 
 test('user without recap permission cannot access recap route', function () {

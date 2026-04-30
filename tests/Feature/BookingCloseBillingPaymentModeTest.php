@@ -223,8 +223,8 @@ test('close billing sends LOUNGE-BILLING sales order number and maps salesOrderN
                 if (empty($payload['detailItem']) || ! isset($payload['number'])) {
                     return false;
                 }
-                // Validate number format: LOUNGE-(BILLING|WALKIN)-YYYYMMDD-[5 digits]
-                if (! preg_match('/^LOUNGE-(BILLING|WALKIN)-\d{8}-\d{5}$/', $payload['number'])) {
+
+                if (! preg_match('/^ROOM-(BILLING|WALKIN)-\d{8}-\d{5}$/', $payload['number'])) {
                     return false;
                 }
 
@@ -321,6 +321,7 @@ test('close billing sends LOUNGE-BILLING sales order number and maps salesOrderN
         ->postJson(route('admin.bookings.closeBilling', $booking), [
             'payment_mode' => 'normal',
             'payment_method' => 'cash',
+            'foc_comp_payment_method' => 'FOC',
         ])
         ->assertSuccessful()
         ->assertJsonPath('success', true);
@@ -328,7 +329,8 @@ test('close billing sends LOUNGE-BILLING sales order number and maps salesOrderN
     $updatedBilling = $booking->fresh()->tableSession->billing;
 
     expect((string) $updatedBilling->transaction_code)->toMatch('/^BILLING-\d{6}$/')
-        ->and((string) $updatedBilling->accurate_so_number)->toMatch('/^LOUNGE-(BILLING|WALKIN)-\d{8}-\d{5}$/')
+        ->and($updatedBilling->foc_comp_payment_method)->toBe('FOC')
+        ->and((string) $updatedBilling->accurate_so_number)->toMatch('/^ROOM-(BILLING|WALKIN)-\d{8}-\d{5}$/')
         ->and((string) $updatedBilling->accurate_inv_number)->not->toBeEmpty();
 });
 
@@ -716,6 +718,51 @@ test('close billing works with split payment mode cash and non-cash method', fun
         ->and($updatedBilling->split_non_cash_method)->toBe('kredit')
         ->and($updatedBilling->split_non_cash_reference_number)->toBe('KREDIT-9988')
         ->and((float) $updatedBilling->paid_amount)->toBe((float) $updatedBilling->grand_total);
+});
+
+test('close billing split payment tolerates rounded rupiah totals', function () {
+    $admin = adminUser();
+    [$booking] = makeBookingCloseBillingFixture($admin);
+
+    $booking->tableSession->orders->each(function (Order $order): void {
+        $order->update([
+            'total' => 100001,
+            'items_total' => 100001,
+        ]);
+
+        $order->items->each(function (OrderItem $item): void {
+            $item->update([
+                'price' => 100001,
+                'subtotal' => 100001,
+            ]);
+        });
+    });
+
+    GeneralSetting::instance()->update([
+        'service_charge_percentage' => 5,
+        'tax_percentage' => 11,
+    ]);
+
+    $response = actingAs($admin)->postJson(route('admin.bookings.closeBilling', $booking), [
+        'payment_mode' => 'split',
+        'split_cash_amount' => 50000,
+        'split_non_cash_amount' => 66551,
+        'split_non_cash_method' => 'debit',
+        'split_non_cash_reference_number' => 'DB-ROUND-001',
+        'split_second_non_cash_amount' => 0,
+        'split_second_non_cash_method' => 'debit',
+        'split_second_non_cash_reference_number' => '',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('success', true);
+
+    $updatedBilling = $booking->fresh()->tableSession->billing;
+
+    expect($updatedBilling->billing_status)->toBe('paid')
+        ->and((float) $updatedBilling->split_cash_amount)->toBe(50000.0)
+        ->and((float) $updatedBilling->split_debit_amount)->toBe(66551.0);
 });
 
 test('close billing works with split payment mode non-cash and non-cash', function () {

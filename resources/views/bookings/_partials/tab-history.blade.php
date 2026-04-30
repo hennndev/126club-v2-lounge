@@ -453,6 +453,11 @@
           <p id="historyBillingDetailPaymentMethod"
              class="font-semibold text-gray-900 mt-0.5">-</p>
         </div>
+        <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+          <p class="text-xs text-gray-500">FOC / Compliment</p>
+          <p id="historyFocCompPaymentMethod"
+             class="font-semibold text-gray-900 mt-0.5">-</p>
+        </div>
         <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 sm:col-span-2">
           <p class="text-xs text-gray-500">Reference Number</p>
           <p id="historyBillingDetailReferenceNumber"
@@ -745,6 +750,8 @@
               $referenceNumberDisplay = filled($billing?->payment_reference_number) ? (string) $billing->payment_reference_number : '-';
           }
 
+          $focCompPaymentMethod = (string) ($billing?->foc_comp_payment_method ?? '');
+
           return [
               $booking->id => [
                   'customer' => $booking->customer->name,
@@ -758,7 +765,8 @@
                   'down_payment_amount' => $downPaymentAmount,
                   'remaining_payment' => (float) ($billing?->grand_total ?? 0),
                   'payment_mode' => strtoupper((string) ($billing?->payment_mode ?? '-')),
-                  'payment_method' => $paymentMethodDisplay,
+                  'payment_method' => $paymentMethodDisplay . ($focCompPaymentMethod !== '' ? ' / ' . strtoupper($focCompPaymentMethod) : ''),
+                  'foc_comp_payment_method' => $focCompPaymentMethod,
                   'reference_number' => $referenceNumberDisplay,
                   'payment_mode_value' => strtolower((string) ($billing?->payment_mode ?? 'normal')),
                   'payment_method_value' => strtolower((string) ($billing?->payment_method ?? 'cash')),
@@ -1021,6 +1029,11 @@
 
     if (paymentMethod) {
       paymentMethod.textContent = data.payment_method || '-';
+    }
+
+    const focCompPaymentMethod = document.getElementById('historyFocCompPaymentMethod');
+    if (focCompPaymentMethod) {
+      focCompPaymentMethod.textContent = data.foc_comp_payment_method || '-';
     }
 
     if (referenceNumber) {

@@ -214,6 +214,17 @@
         </div>
       </div>
 
+      <div>
+        <label for="cb_foc_comp_payment_method"
+               class="block text-xs font-semibold text-gray-600 mb-1.5">FOC / Compliment</label>
+        <select id="cb_foc_comp_payment_method"
+                class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white">
+          <option value="">-</option>
+          <option value="FOC">FOC</option>
+          <option value="Compliment">Compliment</option>
+        </select>
+      </div>
+
       <!-- Payment method (normal mode) -->
       <div id="cbNormalMethodBlock">
         <label class="block text-xs font-semibold text-gray-600 mb-2">Metode Pembayaran</label>
@@ -528,7 +539,7 @@
     const subTotalAfterDiscount = subTotal - discountAmount;
 
     // Sisa Bayar = SubTotal setelah diskon - DP
-    const sistaBayar = Math.max(subTotalAfterDiscount - downPaymentAmount, 0);
+    const sistaBayar = Math.max(Math.round(subTotalAfterDiscount - downPaymentAmount), 0);
 
     const discountRow = document.getElementById('cbDiscountRow');
     if (discountAmount > 0) {
@@ -596,6 +607,7 @@
     // Reset payment mode + method defaults
     document.querySelector('input[name="cb_payment_mode"][value="normal"]').checked = true;
     document.querySelector('input[name="cb_payment_method"][value="cash"]').checked = true;
+    document.getElementById('cb_foc_comp_payment_method').value = '';
     document.getElementById('cb_payment_reference_number').value = '';
     document.querySelector('input[name="cb_discount_type"][value="none"]').checked = true;
     document.getElementById('cb_discount_percentage').value = '';
@@ -679,7 +691,7 @@
       discountAmount = Number(document.getElementById('cb_discount_nominal')?.value || 0);
     }
 
-    const sistaBayar = Math.max(cbCurrentSubTotal - cbCurrentDownPayment - discountAmount, 0);
+    const sistaBayar = Math.max(Math.round(cbCurrentSubTotal - cbCurrentDownPayment - discountAmount), 0);
     cbCurrentGrandTotal = sistaBayar;
 
     // Update Sisa Bayar display
@@ -749,6 +761,7 @@
 
     const payload = {
       payment_mode: paymentMode,
+      foc_comp_payment_method: document.getElementById('cb_foc_comp_payment_method').value || null,
     };
 
     const discountType = getDiscountType();

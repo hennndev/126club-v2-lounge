@@ -6,7 +6,7 @@
   </x-slot>
 
   <div class="py-6"
-       x-data="{ activeTab: 'recap', showHistoryModal: false, selectedHistory: null }">
+       x-data="recapPage({ billingTransactions: @js($todayBillingTransactions), walkInTransactions: @js($todayWalkInTransactions) })">
     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
       @if (session('error'))
         <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
@@ -48,6 +48,12 @@
                     :class="activeTab === 'history' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
                     class="px-5 py-3 text-sm transition">
               History
+            </button>
+            <button type="button"
+                    @click="activeTab = 'transactions-recap-today'"
+                    :class="activeTab === 'transactions-recap-today' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
+                    class="px-5 py-3 text-sm transition">
+              Transactions Recap Hari Ini
             </button>
           </div>
         </div>
@@ -396,6 +402,152 @@
         </div>
       </div>
 
+      <div x-show="activeTab === 'transactions-recap-today'"
+           class="space-y-4">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-base font-semibold text-gray-900">Transactions Recap Hari Ini</h3>
+              <p class="text-sm text-gray-500 mt-1">Klik row untuk melihat detail transaksi.</p>
+            </div>
+          </div>
+
+          <div class="flex border-b border-gray-200 gap-2 mb-4">
+            <button type="button"
+                    @click="transactionRecapTab = 'billing'"
+                    :class="transactionRecapTab === 'billing' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
+                    class="px-5 py-3 text-sm transition">
+              Dari Billing
+            </button>
+            <button type="button"
+                    @click="transactionRecapTab = 'walkin'"
+                    :class="transactionRecapTab === 'walkin' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
+                    class="px-5 py-3 text-sm transition">
+              Dari Walk-in
+            </button>
+          </div>
+
+          <div class="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Filter Payment</label>
+                <select x-model="transactionFilters[transactionRecapTab].payment"
+                        class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                  <option value="all">Semua Payment</option>
+                  <option value="cash">Tunai</option>
+                  <option value="transfer">Transfer</option>
+                  <option value="debit">Debit</option>
+                  <option value="kredit">Kredit</option>
+                  <option value="qris">QRIS</option>
+                  <option value="split">Split Bill</option>
+                </select>
+              </div>
+              <div class="flex items-end justify-start md:justify-end">
+                <button type="button"
+                        @click="resetTransactionFilters(transactionRecapTab)"
+                        class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100">
+                  Reset Filter
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <p class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Filter Include Item</p>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="category in filterCategories"
+                          :key="category.key">
+                  <button type="button"
+                          @click="toggleTransactionCategory(transactionRecapTab, category.key)"
+                          :class="isCategorySelected(transactionRecapTab, category.key) ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'"
+                          class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                          x-text="category.label"></button>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <div x-show="transactionRecapTab === 'billing'"
+               class="overflow-x-auto border border-gray-200 rounded-lg">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal & Jam</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">No. Transaksi</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Metode Pembayaran</th>
+                  <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Qty Item</th>
+                  <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-100">
+                <template x-for="transaction in filteredTransactions('billing')"
+                          :key="transaction.transaction_number + '-' + transaction.datetime">
+                  <tr @click="selectedTransaction = transaction; showTransactionModal = true"
+                      class="cursor-pointer hover:bg-gray-50 transition">
+                    <td class="px-4 py-3 text-sm text-gray-700"
+                        x-text="transaction.datetime"></td>
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900"
+                        x-text="transaction.transaction_number"></td>
+                    <td class="px-4 py-3 text-sm text-gray-700"
+                        x-text="transaction.customer_name"></td>
+                    <td class="px-4 py-3 text-sm text-gray-700"
+                        x-text="transaction.payment_method"></td>
+                    <td class="px-4 py-3 text-sm text-gray-700 text-right"
+                        x-text="transaction.items_count"></td>
+                    <td class="px-4 py-3 text-sm font-semibold text-gray-900 text-right"
+                        x-text="formatCurrency(transaction.total)"></td>
+                  </tr>
+                </template>
+                <tr x-show="filteredTransactions('billing').length === 0">
+                  <td colspan="6"
+                      class="px-4 py-6 text-sm text-center text-gray-500">Belum ada transaksi billing dengan filter ini.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div x-show="transactionRecapTab === 'walkin'"
+               class="overflow-x-auto border border-gray-200 rounded-lg">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal & Jam</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">No. Transaksi</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Metode Pembayaran</th>
+                  <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Qty Item</th>
+                  <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-100">
+                <template x-for="transaction in filteredTransactions('walkin')"
+                          :key="transaction.transaction_number + '-' + transaction.datetime">
+                  <tr @click="selectedTransaction = transaction; showTransactionModal = true"
+                      class="cursor-pointer hover:bg-gray-50 transition">
+                    <td class="px-4 py-3 text-sm text-gray-700"
+                        x-text="transaction.datetime"></td>
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900"
+                        x-text="transaction.transaction_number"></td>
+                    <td class="px-4 py-3 text-sm text-gray-700"
+                        x-text="transaction.customer_name"></td>
+                    <td class="px-4 py-3 text-sm text-gray-700"
+                        x-text="transaction.payment_method"></td>
+                    <td class="px-4 py-3 text-sm text-gray-700 text-right"
+                        x-text="transaction.items_count"></td>
+                    <td class="px-4 py-3 text-sm font-semibold text-gray-900 text-right"
+                        x-text="formatCurrency(transaction.total)"></td>
+                  </tr>
+                </template>
+                <tr x-show="filteredTransactions('walkin').length === 0">
+                  <td colspan="6"
+                      class="px-4 py-6 text-sm text-center text-gray-500">Belum ada transaksi walk-in dengan filter ini.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div x-show="activeTab === 'history'"
            class="space-y-4">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
@@ -411,6 +563,7 @@
               @php
                 $historyPayload = [
                     'export_url' => route('admin.recap.history.export', $history),
+                    'transactions_url' => route('admin.recap.history.transactions', $history),
                     'reprint_url' => route('admin.recap.history.reprint', $history),
                     'end_day' => $history->end_day?->format('d/m/Y') ?? '-',
                     'last_synced_at' => $history->last_synced_at?->format('d/m/Y H:i') ?? '-',
@@ -441,7 +594,7 @@
               @endphp
 
               <button type="button"
-                      @click="selectedHistory = {{ \Illuminate\Support\Js::from($historyPayload) }}; showHistoryModal = true"
+                      @click="loadHistoryTransactions({{ \Illuminate\Support\Js::from($historyPayload) }})"
                       class="w-full text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-slate-300 hover:bg-gray-50 transition">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
@@ -652,6 +805,12 @@
                        x-text="selectedHistory?.total_tax ?? 'Rp 0'"></p>
                   </div>
 
+                  <div class="p-4 border border-gray-200 rounded-lg bg-cyan-50">
+                    <p class="text-sm font-medium text-cyan-700">Total DP <span class="text-xs font-normal">(booking)</span></p>
+                    <p class="text-2xl font-bold text-cyan-800 mt-1"
+                       x-text="selectedHistory?.total_down_payment ?? 'Rp 0'"></p>
+                  </div>
+
                   <div class="p-4 border border-gray-200 rounded-lg bg-orange-50">
                     <p class="text-sm font-medium text-orange-700">Total Service Charge</p>
                     <p class="text-2xl font-bold text-orange-800 mt-1"
@@ -689,6 +848,267 @@
                   </div>
                 </div>
               </div>
+
+              <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 class="text-base font-semibold text-gray-900">Transactions Recap History</h3>
+                    <p class="text-sm text-gray-500 mt-1">Formatnya disamakan dengan Transactions Recap Hari Ini.</p>
+                  </div>
+                </div>
+
+                <div x-show="historyTransactionsLoading"
+                     class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Memuat transaksi history...
+                </div>
+
+                <div class="flex border-b border-gray-200 gap-2 mb-4">
+                  <button type="button"
+                          @click="historyTransactionRecapTab = 'billing'"
+                          :class="historyTransactionRecapTab === 'billing' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
+                          class="px-5 py-3 text-sm transition">
+                    Dari Billing
+                  </button>
+                  <button type="button"
+                          @click="historyTransactionRecapTab = 'walkin'"
+                          :class="historyTransactionRecapTab === 'walkin' ? '-mb-px border-b-2 border-slate-800 text-slate-900 font-semibold' : 'text-gray-500 hover:text-gray-700'"
+                          class="px-5 py-3 text-sm transition">
+                    Dari Walk-in
+                  </button>
+                </div>
+
+                <div class="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Filter Payment</label>
+                      <select x-model="historyTransactionFilters[historyTransactionRecapTab].payment"
+                              class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                        <option value="all">Semua Payment</option>
+                        <option value="cash">Tunai</option>
+                        <option value="transfer">Transfer</option>
+                        <option value="debit">Debit</option>
+                        <option value="kredit">Kredit</option>
+                        <option value="qris">QRIS</option>
+                        <option value="split">Split Bill</option>
+                      </select>
+                    </div>
+                    <div class="flex items-end justify-start md:justify-end">
+                      <button type="button"
+                              @click="resetHistoryTransactionFilters(historyTransactionRecapTab)"
+                              class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100">
+                        Reset Filter
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="space-y-2">
+                    <p class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Filter Include Item</p>
+                    <div class="flex flex-wrap gap-2">
+                      <template x-for="category in filterCategories"
+                                :key="category.key">
+                        <button type="button"
+                                @click="toggleHistoryTransactionCategory(historyTransactionRecapTab, category.key)"
+                                :class="isHistoryCategorySelected(historyTransactionRecapTab, category.key) ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'"
+                                class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                                x-text="category.label"></button>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+
+                <div x-show="historyTransactionRecapTab === 'billing'"
+                     class="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal &amp; Jam</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">No. Transaksi</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Metode Pembayaran</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Qty Item</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-100">
+                      <template x-for="transaction in filteredHistoryTransactions('billing')"
+                                :key="transaction.transaction_number + '-' + transaction.datetime">
+                        <tr @click="selectedTransaction = transaction; showTransactionModal = true"
+                            class="cursor-pointer hover:bg-gray-50 transition">
+                          <td class="px-4 py-3 text-sm text-gray-700"
+                              x-text="transaction.datetime"></td>
+                          <td class="px-4 py-3 text-sm font-medium text-gray-900"
+                              x-text="transaction.transaction_number"></td>
+                          <td class="px-4 py-3 text-sm text-gray-700"
+                              x-text="transaction.customer_name"></td>
+                          <td class="px-4 py-3 text-sm text-gray-700"
+                              x-text="transaction.payment_method"></td>
+                          <td class="px-4 py-3 text-sm text-gray-700 text-right"
+                              x-text="transaction.items_count"></td>
+                          <td class="px-4 py-3 text-sm font-semibold text-gray-900 text-right"
+                              x-text="formatCurrency(transaction.total)"></td>
+                        </tr>
+                      </template>
+                      <tr x-show="filteredHistoryTransactions('billing').length === 0">
+                        <td colspan="6"
+                            class="px-4 py-6 text-sm text-center text-gray-500">Belum ada transaksi billing dengan filter ini.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div x-show="historyTransactionRecapTab === 'walkin'"
+                     class="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal &amp; Jam</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">No. Transaksi</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Metode Pembayaran</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Qty Item</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-100">
+                      <template x-for="transaction in filteredHistoryTransactions('walkin')"
+                                :key="transaction.transaction_number + '-' + transaction.datetime">
+                        <tr @click="selectedTransaction = transaction; showTransactionModal = true"
+                            class="cursor-pointer hover:bg-gray-50 transition">
+                          <td class="px-4 py-3 text-sm text-gray-700"
+                              x-text="transaction.datetime"></td>
+                          <td class="px-4 py-3 text-sm font-medium text-gray-900"
+                              x-text="transaction.transaction_number"></td>
+                          <td class="px-4 py-3 text-sm text-gray-700"
+                              x-text="transaction.customer_name"></td>
+                          <td class="px-4 py-3 text-sm text-gray-700"
+                              x-text="transaction.payment_method"></td>
+                          <td class="px-4 py-3 text-sm text-gray-700 text-right"
+                              x-text="transaction.items_count"></td>
+                          <td class="px-4 py-3 text-sm font-semibold text-gray-900 text-right"
+                              x-text="formatCurrency(transaction.total)"></td>
+                        </tr>
+                      </template>
+                      <tr x-show="filteredHistoryTransactions('walkin').length === 0">
+                        <td colspan="6"
+                            class="px-4 py-6 text-sm text-center text-gray-500">Belum ada transaksi walk-in dengan filter ini.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div x-show="showTransactionModal"
+           x-transition:enter="ease-out duration-300"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="ease-in duration-200"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           class="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4"
+           @click.self="showTransactionModal = false">
+        <div class="mx-auto flex min-h-full max-w-3xl items-start justify-center py-6">
+          <div class="w-full rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div class="flex items-start justify-between border-b border-gray-200 px-6 py-5">
+              <div>
+                <p class="text-sm text-gray-500">Detail Transaksi</p>
+                <h3 class="mt-1 text-xl font-bold text-gray-900"
+                    x-text="selectedTransaction?.transaction_number ?? '-' "></h3>
+                <p class="mt-1 text-sm text-gray-500"
+                   x-text="selectedTransaction?.datetime ?? '-' "></p>
+              </div>
+
+              <button type="button"
+                      @click="showTransactionModal = false"
+                      class="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600">
+                <svg class="h-6 w-6"
+                     fill="none"
+                     stroke="currentColor"
+                     viewBox="0 0 24 24">
+                  <path stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="space-y-4 px-6 py-6 bg-gray-50">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="rounded-lg border border-gray-200 bg-white p-3">
+                  <p class="text-xs text-gray-500">Customer</p>
+                  <p class="text-sm font-semibold text-gray-900"
+                     x-text="selectedTransaction?.customer_name ?? '-' "></p>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-white p-3">
+                  <p class="text-xs text-gray-500">Metode Pembayaran</p>
+                  <p class="text-sm font-semibold text-gray-900"
+                     x-text="selectedTransaction?.payment_method ?? '-' "></p>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-white p-3">
+                  <p class="text-xs text-gray-500">FOC / Compliment</p>
+                  <p class="text-sm font-semibold text-gray-900"
+                     x-text="selectedTransaction?.foc_comp_payment_method ?? '-' "></p>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-white p-3 md:col-span-2">
+                  <p class="text-xs text-gray-500">No. Referensi</p>
+                  <p class="text-sm font-semibold text-gray-900"
+                     x-text="selectedTransaction?.payment_reference_number || '-' "></p>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-200">
+                  <p class="text-sm font-semibold text-gray-900">Item</p>
+                </div>
+                <div class="max-h-64 overflow-auto divide-y divide-gray-100">
+                  <template x-for="item in (selectedTransaction?.items ?? [])"
+                            :key="item.name + '-' + item.quantity + '-' + item.price">
+                    <div class="px-4 py-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p class="text-sm font-medium text-gray-900"
+                           x-text="item.name"></p>
+                        <p class="text-xs text-gray-500"
+                           x-text="item.quantity + ' x Rp ' + Number(item.price || 0).toLocaleString('id-ID')"></p>
+                      </div>
+                      <p class="text-sm font-semibold text-gray-900"
+                         x-text="'Rp ' + Number(item.subtotal || 0).toLocaleString('id-ID')"></p>
+                    </div>
+                  </template>
+                  <p x-show="(selectedTransaction?.items ?? []).length === 0"
+                     class="px-4 py-4 text-sm text-gray-500">Tidak ada item.</p>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-2 text-sm">
+                <div class="flex items-center justify-between text-gray-700">
+                  <span>Total Bill</span>
+                  <span x-text="'Rp ' + Number(selectedTransaction?.total_bill || 0).toLocaleString('id-ID')"></span>
+                </div>
+                <div class="flex items-center justify-between text-amber-700">
+                  <span>PB1</span>
+                  <span x-text="'Rp ' + Number(selectedTransaction?.tax_total || 0).toLocaleString('id-ID')"></span>
+                </div>
+                <div class="flex items-center justify-between text-orange-700">
+                  <span>Service Charge</span>
+                  <span x-text="'Rp ' + Number(selectedTransaction?.service_charge_total || 0).toLocaleString('id-ID')"></span>
+                </div>
+                <div class="flex items-center justify-between text-rose-700">
+                  <span>Diskon</span>
+                  <span x-text="'- Rp ' + Number(selectedTransaction?.discount_amount || 0).toLocaleString('id-ID')"></span>
+                </div>
+                <div class="flex items-center justify-between text-cyan-700">
+                  <span>DP</span>
+                  <span x-text="'Rp ' + Number(selectedTransaction?.down_payment_amount || 0).toLocaleString('id-ID')"></span>
+                </div>
+                <div class="flex items-center justify-between text-gray-900 font-semibold border-t border-dashed border-gray-200 pt-2">
+                  <span>Total Bayar</span>
+                  <span x-text="'Rp ' + Number(selectedTransaction?.total || 0).toLocaleString('id-ID')"></span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -696,4 +1116,312 @@
 
     </div>
   </div>
+
+  <script>
+    function recapPage({
+      billingTransactions = [],
+      walkInTransactions = []
+    }) {
+      return {
+        activeTab: 'recap',
+        transactionRecapTab: 'billing',
+        historyTransactionRecapTab: 'billing',
+        showHistoryModal: false,
+        selectedHistory: null,
+        historyTransactionsLoading: false,
+        showTransactionModal: false,
+        selectedTransaction: null,
+        billingTransactions,
+        walkInTransactions,
+        transactionFilters: {
+          billing: {
+            payment: 'all',
+            categories: [],
+          },
+          walkin: {
+            payment: 'all',
+            categories: [],
+          },
+        },
+        historyTransactionFilters: {
+          billing: {
+            payment: 'all',
+            categories: [],
+          },
+          walkin: {
+            payment: 'all',
+            categories: [],
+          },
+        },
+        filterCategories: [{
+            key: 'food',
+            label: 'Food'
+          },
+          {
+            key: 'alcohol',
+            label: 'Alcohol'
+          },
+          {
+            key: 'beverage',
+            label: 'Beverage'
+          },
+          {
+            key: 'cigarette',
+            label: 'Cigarette'
+          },
+          {
+            key: 'breakage',
+            label: 'Breakage'
+          },
+          {
+            key: 'room',
+            label: 'Room'
+          },
+          {
+            key: 'staff_meal',
+            label: 'Staff Meal'
+          },
+          {
+            key: 'compliment',
+            label: 'Compliment'
+          },
+          {
+            key: 'foc',
+            label: 'FOC'
+          },
+          {
+            key: 'ld',
+            label: 'LD'
+          },
+          {
+            key: 'dp',
+            label: 'DP (Booking)'
+          },
+        ],
+
+        resetTransactionFilters(tab) {
+          this.transactionFilters[tab] = {
+            payment: 'all',
+            categories: [],
+          };
+        },
+
+        resetHistoryTransactionFilters(tab) {
+          this.historyTransactionFilters[tab] = {
+            payment: 'all',
+            categories: [],
+          };
+        },
+
+        async loadHistoryTransactions(history) {
+          this.selectedHistory = {
+            ...history,
+            billing_transactions: [],
+            walkin_transactions: [],
+          };
+          this.historyTransactionRecapTab = 'billing';
+          this.historyTransactionsLoading = true;
+          this.showHistoryModal = true;
+
+          try {
+            const response = await fetch(history.transactions_url, {
+              headers: {
+                Accept: 'application/json',
+              },
+            });
+
+            if (!response.ok) {
+              throw new Error('Unable to load history transactions.');
+            }
+
+            const data = await response.json();
+
+            this.selectedHistory = {
+              ...history,
+              billing_transactions: data.billing_transactions ?? [],
+              walkin_transactions: data.walkin_transactions ?? [],
+            };
+          } catch (error) {
+            this.selectedHistory = {
+              ...history,
+              billing_transactions: [],
+              walkin_transactions: [],
+            };
+          } finally {
+            this.historyTransactionsLoading = false;
+          }
+        },
+
+        toggleTransactionCategory(tab, categoryKey) {
+          const categories = this.transactionFilters[tab].categories;
+          const foundIndex = categories.indexOf(categoryKey);
+
+          if (foundIndex >= 0) {
+            categories.splice(foundIndex, 1);
+            return;
+          }
+
+          categories.push(categoryKey);
+        },
+
+        isCategorySelected(tab, categoryKey) {
+          return this.transactionFilters[tab].categories.includes(categoryKey);
+        },
+
+        toggleHistoryTransactionCategory(tab, categoryKey) {
+          const categories = this.historyTransactionFilters[tab].categories;
+          const foundIndex = categories.indexOf(categoryKey);
+
+          if (foundIndex >= 0) {
+            categories.splice(foundIndex, 1);
+            return;
+          }
+
+          categories.push(categoryKey);
+        },
+
+        isHistoryCategorySelected(tab, categoryKey) {
+          return this.historyTransactionFilters[tab].categories.includes(categoryKey);
+        },
+
+        filteredTransactions(tab) {
+          const sourceTransactions = tab === 'billing' ? this.billingTransactions : this.walkInTransactions;
+          const filter = this.transactionFilters[tab];
+
+          return sourceTransactions.filter((transaction) => {
+            const paymentPass = filter.payment === 'all' ||
+              transaction.payment_method_key === filter.payment;
+
+            if (!paymentPass) {
+              return false;
+            }
+
+            if (!filter.categories.length) {
+              return true;
+            }
+
+            return filter.categories.some((category) => {
+              if (category === 'food') {
+                return !!transaction.contains_food;
+              }
+
+              if (category === 'alcohol') {
+                return !!transaction.contains_alcohol;
+              }
+
+              if (category === 'beverage') {
+                return !!transaction.contains_beverage;
+              }
+
+              if (category === 'cigarette') {
+                return !!transaction.contains_cigarette;
+              }
+
+              if (category === 'breakage') {
+                return !!transaction.contains_breakage;
+              }
+
+              if (category === 'room') {
+                return !!transaction.contains_room;
+              }
+
+              if (category === 'staff_meal') {
+                return !!transaction.contains_staff_meal;
+              }
+
+              if (category === 'compliment') {
+                return !!transaction.contains_compliment;
+              }
+
+              if (category === 'foc') {
+                return !!transaction.contains_foc;
+              }
+
+              if (category === 'ld') {
+                return !!transaction.contains_ld;
+              }
+
+              if (category === 'dp') {
+                return !!transaction.has_down_payment;
+              }
+
+              return false;
+            });
+          });
+        },
+
+        filteredHistoryTransactions(tab) {
+          const sourceTransactions = tab === 'billing' ?
+            (this.selectedHistory?.billing_transactions ?? []) :
+            (this.selectedHistory?.walkin_transactions ?? []);
+          const filter = this.historyTransactionFilters[tab];
+
+          return sourceTransactions.filter((transaction) => {
+            const paymentPass = filter.payment === 'all' ||
+              transaction.payment_method_key === filter.payment;
+
+            if (!paymentPass) {
+              return false;
+            }
+
+            if (!filter.categories.length) {
+              return true;
+            }
+
+            return filter.categories.some((category) => {
+              if (category === 'food') {
+                return !!transaction.contains_food;
+              }
+
+              if (category === 'alcohol') {
+                return !!transaction.contains_alcohol;
+              }
+
+              if (category === 'beverage') {
+                return !!transaction.contains_beverage;
+              }
+
+              if (category === 'cigarette') {
+                return !!transaction.contains_cigarette;
+              }
+
+              if (category === 'breakage') {
+                return !!transaction.contains_breakage;
+              }
+
+              if (category === 'room') {
+                return !!transaction.contains_room;
+              }
+
+              if (category === 'staff_meal') {
+                return !!transaction.contains_staff_meal;
+              }
+
+              if (category === 'compliment') {
+                return !!transaction.contains_compliment;
+              }
+
+              if (category === 'foc') {
+                return !!transaction.contains_foc;
+              }
+
+              if (category === 'ld') {
+                return !!transaction.contains_ld;
+              }
+
+              if (category === 'dp') {
+                return !!transaction.has_down_payment;
+              }
+
+              return false;
+            });
+          });
+        },
+
+        formatCurrency(value) {
+          return 'Rp ' + Number(value || 0).toLocaleString('id-ID');
+        },
+      };
+    }
+  </script>
 </x-app-layout>

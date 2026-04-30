@@ -16,6 +16,7 @@ class InventoryItem extends Model
         'stock_quantity' => 'integer',
         'threshold' => 'integer',
         'is_active' => 'boolean',
+        'is_visible_in_pos' => 'boolean',
         'include_tax' => 'boolean',
         'include_service_charge' => 'boolean',
         'is_item_group' => 'boolean',

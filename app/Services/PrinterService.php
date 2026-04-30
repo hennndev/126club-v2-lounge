@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Printer;
 use App\Models\TableSession;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Mike42\Escpos\EscposImage;
 use Mike42\Escpos\PrintConnectors\FilePrintConnector;
@@ -696,23 +697,11 @@ class PrinterService
 
     protected function resolvePrintableItemPrice(OrderItem $item): float
     {
-        $categoryMain = strtolower(trim((string) ($item->inventoryItem?->category_main ?? '')));
-
-        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
-            return 0.0;
-        }
-
         return (float) ($item->price ?? 0);
     }
 
     protected function resolvePrintableItemSubtotal(OrderItem $item): float
     {
-        $categoryMain = strtolower(trim((string) ($item->inventoryItem?->category_main ?? '')));
-
-        if (in_array($categoryMain, ['compliment', 'foc'], true)) {
-            return 0.0;
-        }
-
         return (float) ($item->subtotal ?? ((float) $item->price * (int) $item->quantity));
     }
 
@@ -749,7 +738,7 @@ class PrinterService
         return [
             'transaction_code' => (string) ($billing->order?->order_number ?? $billing->transaction_code ?? '-'),
             'date' => ($billing->updated_at ?? now())->format('d M Y H:i'),
-            'cashier' => auth()->user()?->name ?? 'System Administrator',
+            'cashier' => Auth::user()?->name ?? 'System Administrator',
             'customer_name' => $customerName,
             'type' => 'BOOKING',
             'table' => $session->table?->table_number ?? '-',
@@ -808,7 +797,7 @@ class PrinterService
         return [
             'transaction_code' => (string) ($order->order_number ?? $billing->transaction_code ?? '-'),
             'date' => ($billing->updated_at ?? $order->ordered_at ?? now())->format('d M Y H:i'),
-            'cashier' => $order->createdBy?->name ?? auth()->user()?->name ?? 'System Administrator',
+            'cashier' => $order->createdBy?->name ?? Auth::user()?->name ?? 'System Administrator',
             'customer_name' => $customerName,
             'type' => 'WALK-IN',
             'table' => '-',

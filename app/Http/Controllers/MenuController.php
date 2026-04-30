@@ -20,7 +20,7 @@ class MenuController extends Controller
 
         $inventoryItems = InventoryItem::where('is_active', true)
             ->orderBy('name')
-            ->get(['id', 'code', 'name', 'pos_name', 'unit']);
+            ->get(['id', 'code', 'name', 'pos_name', 'unit', 'is_visible_in_pos']);
 
         $inventoryCategoryTypes = InventoryItem::query()
             ->where('is_active', true)
@@ -42,7 +42,7 @@ class MenuController extends Controller
                     ->where('is_active', true)
                     ->where('category_type', $categoryType)
                     ->orderBy('name')
-                    ->get(['id', 'code', 'name', 'pos_name', 'category_type', 'category_main', 'price', 'unit', 'include_tax', 'include_service_charge', 'is_item_group', 'is_count_portion_possible']);
+                    ->get(['id', 'code', 'name', 'pos_name', 'category_type', 'category_main', 'price', 'unit', 'include_tax', 'include_service_charge', 'is_item_group', 'is_count_portion_possible', 'is_visible_in_pos']);
 
                 return [$categoryType => $menus];
             });
@@ -85,6 +85,7 @@ class MenuController extends Controller
             'include_tax' => ['nullable', 'boolean'],
             'include_service_charge' => ['nullable', 'boolean'],
             'is_item_group' => ['nullable', 'boolean'],
+            'is_visible_in_pos' => ['nullable', 'boolean'],
             'printer_ids' => ['nullable', 'array'],
             'printer_ids.*' => ['integer', 'exists:printers,id'],
             'pos_name' => ['nullable', 'string', 'max:255'],
@@ -146,6 +147,9 @@ class MenuController extends Controller
                     'is_item_group' => array_key_exists('is_item_group', $validated)
                         ? (bool) $validated['is_item_group']
                         : ($validated['item_type'] === 'GROUP'),
+                    'is_visible_in_pos' => array_key_exists('is_visible_in_pos', $validated)
+                        ? (bool) $validated['is_visible_in_pos']
+                        : true,
                     'stock_quantity' => 0,
                     'unit' => $validated['unit'],
                     'is_active' => true,
@@ -174,7 +178,7 @@ class MenuController extends Controller
     public function updateTaxFlags(Request $request, InventoryItem $inventory): JsonResponse
     {
         $validated = $request->validate([
-            'field' => ['required', 'string', 'in:include_tax,include_service_charge,is_item_group,is_count_portion_possible'],
+            'field' => ['required', 'string', 'in:include_tax,include_service_charge,is_item_group,is_count_portion_possible,is_visible_in_pos'],
             'value' => ['required', 'boolean'],
         ]);
 
@@ -209,6 +213,7 @@ class MenuController extends Controller
             'success' => true,
             'name' => $inventory->name,
             'pos_name' => $inventory->pos_name,
+            'is_visible_in_pos' => (bool) $inventory->is_visible_in_pos,
             'printer_ids' => $inventory->printers->pluck('id')->values()->all(),
             'detail_group' => $detailGroup,
         ]);

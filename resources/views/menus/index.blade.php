@@ -399,6 +399,8 @@
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->include_service_charge ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400' }}">SC</span>
                           <span data-card-group="{{ $menu->id }}"
                                 class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->is_item_group ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-400' }}">{{ $menu->is_item_group ? 'GROUP' : 'ITEM' }}</span>
+                          <span data-card-visible="{{ $menu->id }}"
+                                class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold {{ $menu->is_visible_in_pos ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400' }}">{{ $menu->is_visible_in_pos ? 'VISIBLE' : 'HIDDEN' }}</span>
                           <span class="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{{ $menu->unit ?: '-' }}</span>
                         </div>
                       </article>
@@ -490,6 +492,31 @@
               Simpan
             </button>
           </div>
+        </div>
+
+        {{-- POS Visibility Row --}}
+        <div class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
+          <div class="flex items-center gap-2.5">
+            <svg class="h-4 w-4 text-emerald-500"
+                 fill="none"
+                 stroke="currentColor"
+                 viewBox="0 0 24 24">
+              <path stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 12H9m12 0A9 9 0 1112 3a9 9 0 019 9z" />
+            </svg>
+            <div>
+              <p class="text-sm font-medium text-gray-800">Visible di POS</p>
+              <p class="text-xs text-gray-400">Sembunyikan item ini dari daftar penjualan POS</p>
+            </div>
+          </div>
+          <button type="button"
+                  id="modalVisibleToggle"
+                  class="flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition"
+                  data-tax-toggle-button="1"
+                  data-field="is_visible_in_pos">
+          </button>
         </div>
 
         {{-- Charge Toggles --}}
@@ -661,16 +688,17 @@
       function applyToggleStyle(el, field, isActive) {
         const activeClasses = field === 'include_tax' ? ['bg-amber-50', 'text-amber-700', 'ring-amber-200'] :
           field === 'include_service_charge' ? ['bg-blue-50', 'text-blue-700', 'ring-blue-200'] :
-          field === 'is_count_portion_possible' ? ['bg-emerald-50', 'text-emerald-700', 'ring-emerald-200'] : ['bg-violet-50', 'text-violet-700', 'ring-violet-200'];
+          field === 'is_count_portion_possible' ? ['bg-emerald-50', 'text-emerald-700', 'ring-emerald-200'] :
+          field === 'is_visible_in_pos' ? ['bg-emerald-50', 'text-emerald-700', 'ring-emerald-200'] : ['bg-violet-50', 'text-violet-700', 'ring-violet-200'];
         const inactiveClasses = ['bg-gray-100', 'text-gray-400', 'ring-gray-200'];
         if (isActive) {
           el.classList.add(...activeClasses);
           el.classList.remove(...inactiveClasses);
-          el.textContent = field === 'include_tax' ? 'PB1: ON' : field === 'include_service_charge' ? 'SC: ON' : field === 'is_count_portion_possible' ? 'COUNT: ON' : 'GROUP: ON';
+          el.textContent = field === 'include_tax' ? 'PB1: ON' : field === 'include_service_charge' ? 'SC: ON' : field === 'is_count_portion_possible' ? 'COUNT: ON' : field === 'is_visible_in_pos' ? 'VISIBLE: ON' : 'GROUP: ON';
         } else {
           el.classList.add(...inactiveClasses);
           el.classList.remove(...activeClasses);
-          el.textContent = field === 'include_tax' ? 'PB1: OFF' : field === 'include_service_charge' ? 'SC: OFF' : field === 'is_count_portion_possible' ? 'COUNT: OFF' : 'GROUP: OFF';
+          el.textContent = field === 'include_tax' ? 'PB1: OFF' : field === 'include_service_charge' ? 'SC: OFF' : field === 'is_count_portion_possible' ? 'COUNT: OFF' : field === 'is_visible_in_pos' ? 'VISIBLE: OFF' : 'GROUP: OFF';
         }
       }
 
@@ -721,16 +749,29 @@
             setCountPortionToggleVisibility(isActive);
           }
 
+          if (field === 'is_visible_in_pos') {
+            const visibleToggle = document.getElementById('modalVisibleToggle');
+            if (visibleToggle) {
+              visibleToggle.dataset.value = isActive ? '1' : '0';
+              visibleToggle.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+              applyToggleStyle(visibleToggle, 'is_visible_in_pos', isActive);
+            }
+          }
+
           // Sync the small badge on the card
           const cardBadgeSelector = field === 'include_tax' ?
             `[data-card-tax="${itemId}"]` :
             field === 'include_service_charge' ?
             `[data-card-sc="${itemId}"]` :
+            field === 'is_visible_in_pos' ?
+            `[data-card-visible="${itemId}"]` :
             `[data-card-group="${itemId}"]`;
           const badge = document.querySelector(cardBadgeSelector);
           if (badge) {
             if (field === 'is_item_group') {
               badge.textContent = isActive ? 'GROUP' : 'ITEM';
+            } else if (field === 'is_visible_in_pos') {
+              badge.textContent = isActive ? 'VISIBLE' : 'HIDDEN';
             }
 
             if (isActive) {
@@ -740,13 +781,16 @@
               } else if (field === 'include_service_charge') {
                 badge.classList.add('bg-blue-100', 'text-blue-700');
                 badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
+              } else if (field === 'is_visible_in_pos') {
+                badge.classList.add('bg-emerald-100', 'text-emerald-700');
+                badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-gray-100', 'text-gray-400');
               } else {
                 badge.classList.add('bg-violet-100', 'text-violet-700');
                 badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-gray-100', 'text-gray-400');
               }
             } else {
               badge.classList.add('bg-gray-100', 'text-gray-400');
-              badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700');
+              badge.classList.remove('bg-amber-100', 'text-amber-700', 'bg-blue-100', 'text-blue-700', 'bg-violet-100', 'text-violet-700', 'bg-emerald-100', 'text-emerald-700');
             }
           }
         } catch {
@@ -837,6 +881,12 @@
         countPortionToggle.dataset.value = menu.is_count_portion_possible ? '1' : '0';
         countPortionToggle.setAttribute('aria-pressed', menu.is_count_portion_possible ? 'true' : 'false');
         applyToggleStyle(countPortionToggle, 'is_count_portion_possible', Boolean(menu.is_count_portion_possible));
+
+        const visibleToggle = document.getElementById('modalVisibleToggle');
+        visibleToggle.dataset.itemId = menu.id;
+        visibleToggle.dataset.value = menu.is_visible_in_pos ? '1' : '0';
+        visibleToggle.setAttribute('aria-pressed', menu.is_visible_in_pos ? 'true' : 'false');
+        applyToggleStyle(visibleToggle, 'is_visible_in_pos', Boolean(menu.is_visible_in_pos));
 
         setCountPortionToggleVisibility(Boolean(menu.is_item_group));
 
