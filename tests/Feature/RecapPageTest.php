@@ -1674,21 +1674,23 @@ test('recap page shows automatic closing history list and modal content shell', 
     $start = now()->startOfDay()->addHours(8);
     $end = now()->startOfDay()->addHours(23)->addMinutes(59);
 
-    RecapHistory::query()->create([
-        'end_day' => now()->subDay()->toDateString(),
-        'total_amount' => 120000,
-        'total_tax' => 12000,
-        'total_service_charge' => 8000,
-        'total_cash' => 50000,
-        'total_transfer' => 30000,
-        'total_debit' => 20000,
-        'total_kredit' => 10000,
-        'total_qris' => 10000,
-        'total_kitchen_items' => 6,
-        'total_bar_items' => 4,
-        'total_transactions' => 4,
-        'last_synced_at' => now()->subMinutes(10),
-    ]);
+    collect(range(1, 11))->each(function (int $offset): void {
+        RecapHistory::query()->create([
+            'end_day' => now()->subDays($offset)->toDateString(),
+            'total_amount' => 120000,
+            'total_tax' => 12000,
+            'total_service_charge' => 8000,
+            'total_cash' => 50000,
+            'total_transfer' => 30000,
+            'total_debit' => 20000,
+            'total_kredit' => 10000,
+            'total_qris' => 10000,
+            'total_kitchen_items' => 6,
+            'total_bar_items' => 4,
+            'total_transactions' => 4,
+            'last_synced_at' => now()->subMinutes(10),
+        ]);
+    });
 
     actingAs($admin)
         ->get(route('admin.recap.index', [
@@ -1696,6 +1698,11 @@ test('recap page shows automatic closing history list and modal content shell', 
             'end_datetime' => $end->format('Y-m-d\TH:i'),
         ]))
         ->assertSuccessful()
+        ->assertViewHas('recapHistories', function ($recapHistories): bool {
+            return $recapHistories->hasPages()
+                && $recapHistories->perPage() === 10
+                && $recapHistories->total() === 11;
+        })
         ->assertSeeText('History Closing')
         ->assertSeeText('List snapshot dashboard yang otomatis tersimpan setiap jam 12 malam.')
         ->assertSeeText('Detail History Closing')
@@ -1862,18 +1869,69 @@ test('recap history can be reprinted from history flow', function () {
 test('recap history transactions endpoint returns billing and walk-in arrays', function () {
     $admin = adminUser();
 
+    $session = makeRecapTableSessionWithBilling($admin->id, [
+        'is_booking' => true,
+        'is_walk_in' => false,
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'billing_status' => 'paid',
+        'paid_at' => now(),
+        'grand_total' => 30000,
+        'paid_amount' => 30000,
+        'transaction_code' => 'TRANSACTION-CODE-001',
+    ]);
+
+    $order = Order::create([
+        'table_session_id' => $session->id,
+        'customer_user_id' => null,
+        'created_by' => $admin->id,
+        'order_number' => 'ORDER-HISTORY-BILL-001',
+        'status' => 'completed',
+        'items_total' => 30000,
+        'discount_amount' => 0,
+        'total' => 30000,
+        'ordered_at' => now(),
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+    ]);
+
+    $item = makeRecapInventoryItem(['name' => 'History Billing Item']);
+    OrderItem::create([
+        'order_id' => $order->id,
+        'inventory_item_id' => $item->id,
+        'item_code' => $item->code,
+        'item_name' => $item->name,
+        'quantity' => 1,
+        'price' => 30000,
+        'subtotal' => 30000,
+        'discount_amount' => 0,
+        'preparation_location' => 'kitchen',
+        'status' => 'served',
+    ]);
+
+    $session->billing->update([
+        'billing_status' => 'paid',
+        'paid_at' => now(),
+        'payment_method' => 'cash',
+        'payment_mode' => 'normal',
+        'orders_total' => 30000,
+        'subtotal' => 30000,
+        'grand_total' => 30000,
+        'paid_amount' => 30000,
+    ]);
+
     $history = RecapHistory::query()->create([
         'end_day' => now()->subDay()->toDateString(),
-        'total_amount' => 0,
+        'total_amount' => 30000,
         'total_tax' => 0,
         'total_service_charge' => 0,
-        'total_cash' => 0,
+        'total_cash' => 30000,
         'total_transfer' => 0,
         'total_debit' => 0,
         'total_kredit' => 0,
         'total_qris' => 0,
-        'total_transactions' => 0,
-        'last_synced_at' => now()->subMinutes(10),
+        'total_transactions' => 1,
+        'last_synced_at' => now()->addHour(),
     ]);
 
     $response = actingAs($admin)
@@ -1885,6 +1943,8 @@ test('recap history transactions endpoint returns billing and walk-in arrays', f
             'billing_transactions',
             'walkin_transactions',
         ]);
+
+    expect($response->json('billing_transactions.0.transaction_number'))->toBe('BILLING-'.$session->billing->id);
 });
 
 test('recap history transactions endpoint stops at last synced time', function () {

@@ -22,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -44,7 +45,7 @@ class WaiterPosController extends Controller
         $inventoryItem = InventoryItem::with('printers')->find($itemId);
         $setting = $posSettings->get($inventoryItem?->category_type);
 
-        if (! $inventoryItem || ! $setting || ! $setting->show_in_pos) {
+        if (! $inventoryItem || ! $setting || ! $setting->show_in_pos || ! $inventoryItem->is_visible_in_pos) {
             return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.'], 404);
         }
 
@@ -100,7 +101,7 @@ class WaiterPosController extends Controller
             $inventoryItem = InventoryItem::find($itemId);
             $setting = PosCategorySetting::allKeyed()->get($inventoryItem?->category_type);
 
-            if (! $inventoryItem || ! $setting || ! $setting->show_in_pos) {
+            if (! $inventoryItem || ! $setting || ! $setting->show_in_pos || ! $inventoryItem->is_visible_in_pos) {
                 return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.'], 404);
             }
 

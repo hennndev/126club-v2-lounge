@@ -170,6 +170,7 @@ class WaiterController extends Controller
 
         $products = InventoryItem::whereIn('category_type', $allowedTypes ?: ['__none__'])
             ->where('is_active', true)
+            ->where('is_visible_in_pos', true)
             ->get()
             ->map(function ($item) use ($posSettings) {
                 $setting = $posSettings->get($item->category_type);

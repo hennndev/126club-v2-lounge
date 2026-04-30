@@ -384,8 +384,8 @@ class RecapController extends Controller
 
         $recapHistories = RecapHistory::query()
             ->latest('end_day')
-            ->limit(10)
-            ->get();
+            ->paginate(10)
+            ->withQueryString();
 
         $dashboardPaymentMethodTotals = [
             'cash' => $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_cash ?? 0),
@@ -687,7 +687,7 @@ class RecapController extends Controller
                 return [
                     'timestamp' => $paidAt,
                     'datetime' => $paidAt?->format('d/m/Y H:i') ?? '-',
-                    'transaction_number' => (string) ($billing->transaction_code ?? ('BILLING-'.$billing->id)),
+                    'transaction_number' => 'BILLING-'.$billing->id,
                     'customer_name' => (string) $customerName,
                     'payment_method' => $this->formatPaymentMethod((string) ($billing->payment_method ?? ''), (string) ($billing->payment_mode ?? 'normal')).($focCompPaymentMethod !== '' ? ' / '.$focCompPaymentMethod : ''),
                     'payment_method_key' => $this->resolvePaymentFilterKey((string) ($billing->payment_method ?? ''), (string) ($billing->payment_mode ?? 'normal')),
