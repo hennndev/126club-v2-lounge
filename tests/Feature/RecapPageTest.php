@@ -15,6 +15,7 @@ use App\Models\RecapHistory;
 use App\Models\Tabel;
 use App\Models\TableReservation;
 use App\Models\TableSession;
+use App\Models\User;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -1560,8 +1561,78 @@ test('recap includes booking billing by table_session_id and walk-in calculated 
         ->assertSeeText('Total Pembayaran Debit')
         ->assertSeeText('Rp 14.000')
         ->assertSeeText('Rp 12.000')
-        ->assertSeeText('Rp 50.000')
-        ->assertSeeText('Rp 100.000');
+        ->assertSeeText('Rp 50.000');
+});
+
+test('recap dashboard accumulates split payment totals by actual split methods', function () {
+    $admin = adminUser();
+    $rangeStart = now()->startOfDay()->addHours(8);
+    $rangeEnd = now()->startOfDay()->addHours(23);
+
+    $tableSession = makeRecapTableSessionWithBilling($admin->id, [
+        'is_booking' => true,
+        'is_walk_in' => false,
+        'billing_status' => 'paid',
+        'paid_at' => now()->startOfDay()->addHours(12),
+        'payment_method' => 'cash',
+        'payment_mode' => 'split',
+        'split_cash_amount' => 10000,
+        'split_debit_amount' => 15000,
+        'split_non_cash_method' => 'qris',
+        'split_non_cash_reference_number' => 'QR-001',
+        'split_second_non_cash_amount' => 25000,
+        'split_second_non_cash_method' => 'transfer',
+        'split_second_non_cash_reference_number' => 'TR-002',
+        'grand_total' => 50000,
+        'paid_amount' => 50000,
+    ]);
+
+    $tableSession->billing->update([
+        'billing_status' => 'paid',
+        'paid_at' => now()->startOfDay()->addHours(12),
+        'payment_method' => 'cash',
+        'payment_mode' => 'split',
+        'split_cash_amount' => 10000,
+        'split_debit_amount' => 15000,
+        'split_non_cash_method' => 'qris',
+        'split_non_cash_reference_number' => 'QR-001',
+        'split_second_non_cash_amount' => 25000,
+        'split_second_non_cash_method' => 'transfer',
+        'split_second_non_cash_reference_number' => 'TR-002',
+        'grand_total' => 50000,
+        'paid_amount' => 50000,
+    ]);
+
+    Dashboard::query()->updateOrCreate(
+        ['id' => 1],
+        [
+            'total_amount' => 0,
+            'total_tax' => 0,
+            'total_service_charge' => 0,
+            'total_cash' => 0,
+            'total_transfer' => 0,
+            'total_debit' => 0,
+            'total_kredit' => 0,
+            'total_qris' => 0,
+            'total_kitchen_items' => 0,
+            'total_bar_items' => 0,
+            'total_transactions' => 0,
+            'last_synced_at' => now(),
+        ]
+    );
+
+    actingAs($admin)
+        ->get(route('admin.recap.index', [
+            'start_datetime' => $rangeStart->format('Y-m-d\TH:i'),
+            'end_datetime' => $rangeEnd->format('Y-m-d\TH:i'),
+        ]))
+        ->assertSuccessful()
+        ->assertViewHas('paymentMethodTotals', function (array $totals): bool {
+            return (float) ($totals['cash'] ?? 0) === 10000.0
+                && (float) ($totals['qris'] ?? 0) === 15000.0
+                && (float) ($totals['transfer'] ?? 0) === 25000.0
+                && (float) ($totals['debit'] ?? 0) === 0.0;
+        });
 });
 
 test('recap page shows dashboard preview aggregates', function () {
@@ -1592,10 +1663,18 @@ test('recap page shows dashboard preview aggregates', function () {
             'end_datetime' => $end->format('Y-m-d\TH:i'),
         ]))
         ->assertSuccessful()
+        ->assertViewHas('dashboardPreview', function (array $preview): bool {
+            return (float) ($preview['gross_sales'] ?? 0) === 500000.0
+                && (float) ($preview['net_sales'] ?? 0) === 473000.0;
+        })
         ->assertSeeText('Preview Dashboard (Akumulasi)')
         ->assertSeeText('Semua transaksi booking + walk-in')
+        ->assertSeeText('Gross Sales')
+        ->assertSeeText('Net Sales')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('42')
+        ->assertSeeText('Rp 500.000')
+        ->assertSeeText('Rp 473.000')
         ->assertSeeText('Rp 15.000')
         ->assertSeeText('Rp 12.000')
         ->assertSeeText('Rp 120.000')
@@ -1945,6 +2024,84 @@ test('recap history transactions endpoint returns billing and walk-in arrays', f
         ]);
 
     expect($response->json('billing_transactions.0.transaction_number'))->toBe('BILLING-'.$session->billing->id);
+});
+
+test('recap transaction detail includes split payment methods', function () {
+    $admin = adminUser();
+
+    $area = Area::create([
+        'code' => 'RS-AREA-01',
+        'name' => 'Recap Split Area',
+        'is_active' => true,
+    ]);
+
+    $table = Tabel::create([
+        'area_id' => $area->id,
+        'table_number' => 'RS-01',
+        'qr_code' => 'RS-01-QR',
+        'capacity' => 4,
+        'status' => 'available',
+        'is_active' => true,
+    ]);
+
+    $customer = User::factory()->create();
+
+    $tableSession = TableSession::create([
+        'table_id' => $table->id,
+        'customer_id' => $customer->id,
+        'session_code' => 'RS-SESSION-01',
+        'status' => 'active',
+        'checked_in_at' => now(),
+    ]);
+
+    $billing = Billing::create([
+        'table_session_id' => $tableSession->id,
+        'is_booking' => true,
+        'is_walk_in' => false,
+        'billing_status' => 'paid',
+        'paid_at' => now(),
+        'payment_method' => 'cash',
+        'payment_mode' => 'split',
+        'orders_total' => 50000,
+        'subtotal' => 50000,
+        'grand_total' => 50000,
+        'paid_amount' => 50000,
+        'split_cash_amount' => 20000,
+        'split_debit_amount' => 15000,
+        'split_non_cash_method' => 'debit',
+        'split_non_cash_reference_number' => 'DB-111',
+        'split_second_non_cash_amount' => 15000,
+        'split_second_non_cash_method' => 'qris',
+        'split_second_non_cash_reference_number' => 'QR-222',
+    ]);
+
+    $history = RecapHistory::query()->create([
+        'end_day' => now()->subDay()->toDateString(),
+        'total_amount' => 50000,
+        'total_tax' => 0,
+        'total_service_charge' => 0,
+        'total_cash' => 20000,
+        'total_transfer' => 0,
+        'total_debit' => 15000,
+        'total_kredit' => 0,
+        'total_qris' => 15000,
+        'total_transactions' => 1,
+        'last_synced_at' => now()->addHour(),
+    ]);
+
+    $response = actingAs($admin)
+        ->getJson(route('admin.recap.history.transactions', $history));
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('billing_transactions.0.transaction_number', 'BILLING-'.$billing->id)
+        ->assertJsonPath('billing_transactions.0.payment_mode', 'split')
+        ->assertJsonCount(3, 'billing_transactions.0.split_payments');
+
+    actingAs($admin)
+        ->get(route('admin.recap.index'))
+        ->assertSuccessful()
+        ->assertSeeText('Detail Split Payment');
 });
 
 test('recap history transactions endpoint stops at last synced time', function () {
