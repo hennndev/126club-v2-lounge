@@ -655,6 +655,49 @@ test('waiter pos page uses inventory pos_name as product display name', function
         ->and($productPayload['name'])->toBe('POS Display Name');
 });
 
+test('waiter pos page hides inventory items marked invisible in pos', function () {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-03-HIDDEN');
+    posSession($table, $customer, $waiter);
+
+    $product = posProduct('food');
+    $product->update([
+        'name' => 'Waiter Hidden Product',
+        'pos_name' => 'Waiter Hidden POS',
+        'is_visible_in_pos' => false,
+    ]);
+
+    $response = actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->get(route('waiter.pos'))
+        ->assertOk();
+
+    $products = collect($response->viewData('products'));
+
+    expect($products->pluck('id'))->not->toContain('item_'.$product->id);
+});
+
+test('waiter add to cart rejects inventory items hidden from pos', function () {
+    $waiter = posWaiter();
+    $customer = User::factory()->create();
+    $area = posArea();
+    $table = posTable($area, 'P-03-CART-HIDDEN');
+    posSession($table, $customer, $waiter);
+
+    $product = posProduct('food');
+    $product->update([
+        'is_visible_in_pos' => false,
+    ]);
+
+    actingAs($waiter)
+        ->withSession(['accurate_database' => 'test'])
+        ->post(route('waiter.pos.add-to-cart', 'item_'.$product->id))
+        ->assertStatus(404)
+        ->assertJsonPath('success', false);
+});
+
 test('waiter add to cart allows item group when ingredient portions are sufficient', function () {
     $waiter = posWaiter();
 

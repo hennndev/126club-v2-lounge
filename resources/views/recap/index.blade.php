@@ -612,6 +612,12 @@
                 Belum ada history closing otomatis.
               </div>
             @endforelse
+
+            @if ($recapHistories->hasPages())
+              <div class="border-t border-gray-200 px-4 py-4">
+                {{ $recapHistories->links() }}
+              </div>
+            @endif
           </div>
         </div>
       </div>
