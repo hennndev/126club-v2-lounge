@@ -2469,6 +2469,7 @@ test('recap page shows transactions recap hari ini tabs for billing and walk-in'
         ->assertSeeText('Compliment')
         ->assertSeeText('FOC')
         ->assertSeeText('DP (Booking)')
+        ->assertSee('selectedTransaction?.total_bill || 0')
         ->assertSeeText('Detail Transaksi');
 });
 

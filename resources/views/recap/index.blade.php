@@ -1169,6 +1169,10 @@
                   <span x-text="'- Rp ' + Number(selectedTransaction?.discount_amount || 0).toLocaleString('id-ID')"></span>
                 </div>
                 <div class="flex items-center justify-between text-cyan-700">
+                  <span>Subtotal</span>
+                  <span x-text="'Rp ' + Number(Math.max(0, (Number(selectedTransaction?.total_bill || 0) + Number(selectedTransaction?.tax_total || 0) + Number(selectedTransaction?.service_charge_total || 0) - Number(selectedTransaction?.discount_amount || 0)))).toLocaleString('id-ID')"></span>
+                </div>
+                <div class="flex items-center justify-between text-cyan-700">
                   <span>DP</span>
                   <span x-text="'Rp ' + Number(selectedTransaction?.down_payment_amount || 0).toLocaleString('id-ID')"></span>
                 </div>
