@@ -152,12 +152,12 @@
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-emerald-50">
-              <p class="text-sm font-medium text-emerald-700">Gross Sales</p>
+              <p class="text-sm font-medium text-emerald-700">Gross Sales (Included DP)</p>
               <p class="text-2xl font-bold text-emerald-800 mt-1">Rp {{ number_format($dashboardPreview['gross_sales'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
             <div class="p-4 border border-gray-200 rounded-lg bg-slate-50">
-              <p class="text-sm font-medium text-slate-700">Net Sales</p>
+              <p class="text-sm font-medium text-slate-700">Net Sales (Included DP)</p>
               <p class="text-2xl font-bold text-slate-800 mt-1">Rp {{ number_format($dashboardPreview['net_sales'] ?? 0, 0, ',', '.') }}</p>
             </div>
 
@@ -578,6 +578,10 @@
                     'end_day' => $history->end_day?->format('d/m/Y') ?? '-',
                     'last_synced_at' => $history->last_synced_at?->format('d/m/Y H:i') ?? '-',
                     'total_transactions' => number_format($history->total_transactions, 0, ',', '.'),
+                    'total_amount_raw' => (float) ($history->total_amount ?? 0),
+                    'total_tax_raw' => (float) ($history->total_tax ?? 0),
+                    'total_service_charge_raw' => (float) ($history->total_service_charge ?? 0),
+                    'total_dp_raw' => (float) ($history->total_dp ?? 0),
                     'total_kitchen_items' => number_format($history->total_kitchen_items, 0, ',', '.'),
                     'total_bar_items' => number_format($history->total_bar_items, 0, ',', '.'),
                     'total_amount' => 'Rp ' . number_format($history->total_amount, 0, ',', '.'),
@@ -588,8 +592,8 @@
                     'total_breakage' => 'Rp ' . number_format($history->total_breakage ?? 0, 0, ',', '.'),
                     'total_room' => 'Rp ' . number_format($history->total_room ?? 0, 0, ',', '.'),
                     'total_ld' => 'Rp ' . number_format($history->total_ld ?? 0, 0, ',', '.'),
-                    'gross_sales' => 'Rp ' . number_format($history->total_amount, 0, ',', '.'),
-                    'net_sales' => 'Rp ' . number_format(max(0, $history->total_amount - ($history->total_tax ?? 0) - ($history->total_service_charge ?? 0)), 0, ',', '.'),
+                    'gross_sales' => 'Rp ' . number_format(($history->total_amount ?? 0) + ($history->total_dp ?? 0), 0, ',', '.'),
+                    'net_sales' => 'Rp ' . number_format(max(0, ($history->total_amount ?? 0) + ($history->total_dp ?? 0) - ($history->total_tax ?? 0) - ($history->total_service_charge ?? 0)), 0, ',', '.'),
                     'total_compliment_quantity' => number_format($history->total_compliment_quantity ?? 0, 0, ',', '.'),
                     'total_foc_quantity' => number_format($history->total_foc_quantity ?? 0, 0, ',', '.'),
                     'total_ld_quantity' => number_format($history->total_ld_quantity ?? 0, 0, ',', '.'),
@@ -712,15 +716,15 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-emerald-700">Gross Sales</p>
+                  <p class="text-sm font-medium text-emerald-700">Gross Sales (Included DP)</p>
                   <p class="text-2xl font-bold text-emerald-800 mt-1"
-                     x-text="selectedHistory?.gross_sales ?? 'Rp 0'"></p>
+                     x-text="'Rp ' + Number((Number(selectedHistory?.total_amount_raw || 0) + Number(selectedHistory?.total_dp_raw || 0))).toLocaleString('id-ID')"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                  <p class="text-sm font-medium text-slate-700">Net Sales</p>
+                  <p class="text-sm font-medium text-slate-700">Net Sales (Included DP)</p>
                   <p class="text-2xl font-bold text-slate-800 mt-1"
-                     x-text="selectedHistory?.net_sales ?? 'Rp 0'"></p>
+                     x-text="'Rp ' + Number(Math.max(0, (Number(selectedHistory?.total_amount_raw || 0) + Number(selectedHistory?.total_dp_raw || 0) - Number(selectedHistory?.total_tax_raw || 0) - Number(selectedHistory?.total_service_charge_raw || 0)))).toLocaleString('id-ID')"></p>
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -848,15 +852,15 @@
                   </div>
 
                   <div class="p-4 border border-gray-200 rounded-lg bg-emerald-50">
-                    <p class="text-sm font-medium text-emerald-700">Gross Sales</p>
+                    <p class="text-sm font-medium text-emerald-700">Gross Sales (Included DP)</p>
                     <p class="text-2xl font-bold text-emerald-800 mt-1"
-                       x-text="selectedHistory?.gross_sales ?? 'Rp 0'"></p>
+                       x-text="'Rp ' + Number((Number(selectedHistory?.total_amount_raw || 0) + Number(selectedHistory?.total_dp_raw || 0))).toLocaleString('id-ID')"></p>
                   </div>
 
                   <div class="p-4 border border-gray-200 rounded-lg bg-slate-50">
-                    <p class="text-sm font-medium text-slate-700">Net Sales</p>
+                    <p class="text-sm font-medium text-slate-700">Net Sales (Included DP)</p>
                     <p class="text-2xl font-bold text-slate-800 mt-1"
-                       x-text="selectedHistory?.net_sales ?? 'Rp 0'"></p>
+                       x-text="'Rp ' + Number(Math.max(0, (Number(selectedHistory?.total_amount_raw || 0) + Number(selectedHistory?.total_dp_raw || 0) - Number(selectedHistory?.total_tax_raw || 0) - Number(selectedHistory?.total_service_charge_raw || 0)))).toLocaleString('id-ID')"></p>
                   </div>
 
                   <div class="p-4 border border-gray-200 rounded-lg bg-blue-50">
@@ -1286,11 +1290,7 @@
         },
 
         async loadHistoryTransactions(history) {
-          this.selectedHistory = {
-            ...history,
-            billing_transactions: [],
-            walkin_transactions: [],
-          };
+          this.selectedHistory = this.buildHistorySummary(history, [], []);
           this.historyTransactionRecapTab = 'billing';
           this.historyTransactionsLoading = true;
           this.showHistoryModal = true;
@@ -1307,21 +1307,43 @@
             }
 
             const data = await response.json();
+            const billingTransactions = data.billing_transactions ?? [];
+            const walkInTransactions = data.walkin_transactions ?? [];
 
-            this.selectedHistory = {
-              ...history,
-              billing_transactions: data.billing_transactions ?? [],
-              walkin_transactions: data.walkin_transactions ?? [],
-            };
+            this.selectedHistory = this.buildHistorySummary(history, billingTransactions, walkInTransactions);
           } catch (error) {
-            this.selectedHistory = {
-              ...history,
-              billing_transactions: [],
-              walkin_transactions: [],
-            };
+            this.selectedHistory = this.buildHistorySummary(history, [], []);
           } finally {
             this.historyTransactionsLoading = false;
           }
+        },
+
+        buildHistorySummary(history, billingTransactions = [], walkInTransactions = []) {
+          const totalAmountRaw = Number(history?.total_amount_raw || 0);
+          const totalTaxRaw = Number(history?.total_tax_raw || 0);
+          const totalServiceChargeRaw = Number(history?.total_service_charge_raw || 0);
+          const snapshotDpRaw = Number(history?.total_dp_raw || 0);
+
+          const billingDpRaw = billingTransactions.reduce((sum, transaction) => {
+            return sum + Number(transaction?.down_payment_amount || 0);
+          }, 0);
+
+          const totalDpRaw = Math.max(snapshotDpRaw, billingDpRaw);
+          const grossSalesRaw = totalAmountRaw + totalDpRaw;
+          const netSalesRaw = Math.max(0, grossSalesRaw - totalTaxRaw - totalServiceChargeRaw);
+
+          return {
+            ...history,
+            total_amount_raw: totalAmountRaw,
+            total_tax_raw: totalTaxRaw,
+            total_service_charge_raw: totalServiceChargeRaw,
+            total_dp_raw: totalDpRaw,
+            total_dp: this.formatCurrency(totalDpRaw),
+            gross_sales: this.formatCurrency(grossSalesRaw),
+            net_sales: this.formatCurrency(netSalesRaw),
+            billing_transactions: billingTransactions,
+            walkin_transactions: walkInTransactions,
+          };
         },
 
         toggleTransactionCategory(tab, categoryKey) {

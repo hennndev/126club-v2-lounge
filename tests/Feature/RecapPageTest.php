@@ -1143,6 +1143,7 @@ test('recap page hides live lists when selected end day already exists in histor
         ['id' => 1],
         [
             'total_amount' => 0,
+            'total_dp' => 0,
             'total_tax' => 0,
             'total_service_charge' => 0,
             'total_cash' => 0,
@@ -1644,6 +1645,7 @@ test('recap page shows dashboard preview aggregates', function () {
         ['id' => 1],
         [
             'total_amount' => 500000,
+            'total_dp' => 50000,
             'total_penjualan_rokok' => 42,
             'total_tax' => 15000,
             'total_service_charge' => 12000,
@@ -1664,8 +1666,8 @@ test('recap page shows dashboard preview aggregates', function () {
         ]))
         ->assertSuccessful()
         ->assertViewHas('dashboardPreview', function (array $preview): bool {
-            return (float) ($preview['gross_sales'] ?? 0) === 500000.0
-                && (float) ($preview['net_sales'] ?? 0) === 473000.0;
+            return (float) ($preview['gross_sales'] ?? 0) === 550000.0
+                && (float) ($preview['net_sales'] ?? 0) === 523000.0;
         })
         ->assertSeeText('Preview Dashboard (Akumulasi)')
         ->assertSeeText('Semua transaksi booking + walk-in')
@@ -1673,8 +1675,8 @@ test('recap page shows dashboard preview aggregates', function () {
         ->assertSeeText('Net Sales')
         ->assertSeeText('Total Penjualan Rokok (Qty)')
         ->assertSeeText('42')
-        ->assertSeeText('Rp 500.000')
-        ->assertSeeText('Rp 473.000')
+        ->assertSeeText('Rp 550.000')
+        ->assertSeeText('Rp 523.000')
         ->assertSeeText('Rp 15.000')
         ->assertSeeText('Rp 12.000')
         ->assertSeeText('Rp 120.000')
@@ -1693,6 +1695,7 @@ test('recap cashier table shows payment reference and order item details', funct
         ['id' => 1],
         [
             'total_amount' => 45000,
+            'total_dp' => 0,
             'total_tax' => 0,
             'total_service_charge' => 0,
             'total_cash' => 0,
