@@ -10,6 +10,7 @@ use App\Models\KitchenOrderItem;
 use App\Models\Order;
 use App\Models\Printer;
 use App\Models\RecapHistory;
+use App\Models\TableSession;
 use App\Services\PrinterService;
 use App\Services\RecapClosingService;
 use Illuminate\Contracts\View\View;
@@ -371,7 +372,7 @@ class RecapController extends Controller
             ->values();
 
         $totalDiscount = (float) $cashierTransactions->sum('discount_amount');
-        $liveTotalDownPayment = (float) $cashierTransactions->sum('down_payment_amount');
+        $liveTotalDownPayment = $this->resolveLiveTotalDownPayment($startAt, $endAt);
 
         $dashboardAggregate = Dashboard::query()->find(1);
         $dashboardTotalDp = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_dp ?? 0);
@@ -381,7 +382,8 @@ class RecapController extends Controller
         $resolvedTotalDp = $isSelectedEndDayClosed
             ? 0.0
             : ($dashboardTotalDp > 0 ? $dashboardTotalDp : $liveTotalDownPayment);
-        $grossSales = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_amount ?? 0);
+        $totalAmount = $isSelectedEndDayClosed ? 0.0 : (float) ($dashboardAggregate?->total_amount ?? 0);
+        $grossSales = $isSelectedEndDayClosed ? 0.0 : $totalAmount + $resolvedTotalDp;
         $netSales = $isSelectedEndDayClosed
             ? 0.0
             : max(0.0, $grossSales - (float) ($dashboardAggregate?->total_tax ?? 0) - (float) ($dashboardAggregate?->total_service_charge ?? 0));
@@ -631,6 +633,37 @@ class RecapController extends Controller
             'has_paid_billings' => $paidBillings->isNotEmpty() || $walkInOrdersWithoutPaidBilling->isNotEmpty(),
             'totals' => $paymentMethodTotals,
         ];
+    }
+
+    private function resolveLiveTotalDownPayment(Carbon $startAt, Carbon $endAt): float
+    {
+        $bookingSessionIds = Billing::query()
+            ->where('billing_status', 'paid')
+            ->where('is_booking', true)
+            ->whereNotNull('table_session_id')
+            ->where(function ($query) use ($startAt, $endAt): void {
+                $query->where(function ($paidAtQuery) use ($startAt, $endAt): void {
+                    $paidAtQuery->whereNotNull('paid_at')
+                        ->whereBetween('paid_at', [$startAt, $endAt]);
+                })->orWhere(function ($fallbackQuery) use ($startAt, $endAt): void {
+                    $fallbackQuery->whereNull('paid_at')
+                        ->whereBetween('updated_at', [$startAt, $endAt]);
+                });
+            })
+            ->pluck('table_session_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($bookingSessionIds->isEmpty()) {
+            return 0.0;
+        }
+
+        return (float) TableSession::query()
+            ->with('reservation:id,down_payment_amount')
+            ->whereIn('id', $bookingSessionIds->all())
+            ->get()
+            ->sum(fn (TableSession $session): float => (float) ($session->reservation?->down_payment_amount ?? 0));
     }
 
     /**
@@ -990,6 +1023,9 @@ class RecapController extends Controller
         $liveRecapData = $this->buildRecapData($startAt, $endAt, true);
         $historyBillingTransactions = $this->buildTodayBillingTransactions($startAt, $endAt);
         $historyWalkInTransactions = $this->buildTodayWalkInTransactions($startAt, $endAt);
+        $historyTotalDp = (float) ($recapHistory->total_dp ?? 0);
+        $historyGrossSales = (float) $recapHistory->total_amount + $historyTotalDp;
+        $historyNetSales = max(0.0, $historyGrossSales - (float) $recapHistory->total_tax - (float) $recapHistory->total_service_charge);
 
         return array_merge($liveRecapData, [
             'selectedDate' => $recapHistory->end_day->toDateString(),
@@ -997,8 +1033,8 @@ class RecapController extends Controller
             'selectedEndDatetime' => $endAt->format('d/m/Y H:i'),
             'cashierCount' => (int) $recapHistory->total_transactions,
             'cashierRevenue' => (float) $recapHistory->total_amount,
-            'grossSales' => (float) $recapHistory->total_amount,
-            'netSales' => max(0.0, (float) $recapHistory->total_amount - (float) $recapHistory->total_tax - (float) $recapHistory->total_service_charge),
+            'grossSales' => $historyGrossSales,
+            'netSales' => $historyNetSales,
             'totalPenjualanRokok' => (float) $recapHistory->total_penjualan_rokok,
             'totalFood' => (float) ($recapHistory->total_food ?? 0),
             'totalAlcohol' => (float) ($recapHistory->total_alcohol ?? 0),
@@ -1013,7 +1049,7 @@ class RecapController extends Controller
             'totalTax' => (float) $recapHistory->total_tax,
             'totalServiceCharge' => (float) $recapHistory->total_service_charge,
             'totalDiscount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
-            'totalDownPayment' => (float) ($recapHistory->total_dp ?? 0),
+            'totalDownPayment' => $historyTotalDp,
             'paymentMethodTotals' => [
                 'cash' => (float) $recapHistory->total_cash,
                 'transfer' => (float) $recapHistory->total_transfer,
@@ -1038,12 +1074,12 @@ class RecapController extends Controller
                 'total_foc_quantity' => (int) ($recapHistory->total_foc_quantity ?? 0),
                 'total_ld' => (float) ($recapHistory->total_ld ?? 0),
                 'total_penjualan_rokok' => (float) $recapHistory->total_penjualan_rokok,
-                'gross_sales' => (float) $recapHistory->total_amount,
-                'net_sales' => max(0.0, (float) $recapHistory->total_amount - (float) $recapHistory->total_tax - (float) $recapHistory->total_service_charge),
+                'gross_sales' => $historyGrossSales,
+                'net_sales' => $historyNetSales,
                 'total_tax' => (float) $recapHistory->total_tax,
                 'total_service_charge' => (float) $recapHistory->total_service_charge,
                 'total_discount' => (float) ($liveRecapData['totalDiscount'] ?? 0),
-                'total_down_payment' => (float) ($recapHistory->total_dp ?? 0),
+                'total_down_payment' => $historyTotalDp,
                 'total_cash' => (float) $recapHistory->total_cash,
                 'total_transfer' => (float) $recapHistory->total_transfer,
                 'total_debit' => (float) $recapHistory->total_debit,
